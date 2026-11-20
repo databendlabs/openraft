@@ -7,6 +7,14 @@ This crate stores Raft log entries and metadata in the `logs` and `meta` RocksDB
 `RocksLogStore::open()` creates a standalone database. A caller that already owns a suitable
 database can instead pass an `Arc<rocksdb::DB>` to `RocksLogStore::new()`.
 
+## Reading an `openraft-rocksstore` 0.9 database
+
+`openraft-rocksstore` 0.9 used the same `logs` and `meta` column families and keys, so this crate
+reads the vote and the logs it wrote. Its database also holds the `sm_meta` and `sm_data` column
+families of the state machine, and RocksDB opens a database only with all of them: open it
+yourself and pass it to `RocksLogStore::new()`. [`sm-rocks`](../sm-rocks/) does not read that state
+machine. `tests/rocksstore_0_9.rs` reopens a database that `openraft-rocksstore` 0.9.21 wrote.
+
 ## Performance
 
 Raft log workloads are mostly append-only, with occasional suffix truncation and prefix purging.

@@ -16,9 +16,9 @@ part of each one:
 | Question | What Openraft provides | What the application checks |
 |---|---|---|
 | Port the source | This guide lists every breaking change. | Its own code that names Openraft types. |
-| Reopen 0.9 data | With the default types, the serialized form of log entries, `Vote`, `StoredMembership`, `SnapshotMeta` and `SnapshotSignature` is unchanged; see [Data and wire compatibility](#data-and-wire-compatibility). | Its storage layout, codec and state-machine format: start the new binary on a copy of real 0.9 data. |
+| Reopen 0.9 data | With the default types, the serialized form of log entries, `Vote`, `StoredMembership`, `SnapshotMeta` and `SnapshotSignature` is unchanged, tested against bytes that 0.9 wrote; see [Data and wire compatibility](#data-and-wire-compatibility). | Its storage layout, codec and state-machine format: start the new binary on a copy of real 0.9 data. |
 | Run 0.9 and 0.10 nodes together | No end-to-end test. Some RPC types keep their 0.9 encoding and some do not; see [Data and wire compatibility](#data-and-wire-compatibility). | Every message, response and error body its transport carries, in both directions. |
-| Roll back after 0.10 wrote data | Only `SnapshotMeta` and `SnapshotSignature` are tested in both directions. | Plan the upgrade as forward-only, unless it has tested 0.9 on data that 0.10 wrote. |
+| Roll back after 0.10 wrote data | Log entries, `Vote` and `StoredMembership` are tested to encode as 0.9 did, and `SnapshotMeta` and `SnapshotSignature` to load in 0.9. No store written by 0.10 is tested on 0.9. | Plan the upgrade as forward-only, unless it has tested 0.9 on data that 0.10 wrote. |
 
 A rolling upgrade, one node at a time, needs at least these checks:
 
@@ -71,6 +71,9 @@ on errors.
 - `openraft-rocksstore` and `openraft-sledstore` are not released for 0.10;
   their last version is 0.9.21. The RocksDB store is now the `log-rocks` and
   `sm-rocks` example crates in the repository, which an application can copy.
+  `log-rocks` reads the vote and the logs of an `openraft-rocksstore` 0.9
+  database; `sm-rocks` keeps its state in another layout and does not read
+  that database's state machine.
   The sled store is removed.
 
 Parts of Openraft moved into separate crates. An application adds the ones it
@@ -807,6 +810,11 @@ reading, so snapshots stored by 0.9 load in 0.10 and the other way around,
 under named and positional formats such as `bincode` and `postcard` alike.
 The standard `LeaderId` still encodes `voted_for` as an `Option`, and rejects
 a stored `None`.
+
+The `compat` tests in the repository decode values that openraft 0.9.26
+serialized with `serde_json` and with `bincode` 1.3, and check that 0.10
+encodes the unchanged types to the same bytes. The `log-rocks` example
+reopens a database that `openraft-rocksstore` 0.9.21 wrote.
 
 Between 0.9 and 0.10 peers, `AppendEntriesRequest`, `AppendEntriesResponse`,
 `VoteResponse`, snapshot metadata and the v1 `InstallSnapshotRequest` keep
