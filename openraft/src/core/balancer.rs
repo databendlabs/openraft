@@ -36,11 +36,54 @@ impl Balancer {
     }
 
     pub(crate) fn increase_raft_msg(&mut self) {
-        self.raft_msg = self.raft_msg * 17 / 16;
+        // Grow even when integer division rounds the proportional increase down to zero.
+        let increase = (self.raft_msg / 16).max(1);
+        self.raft_msg = (self.raft_msg + increase).min(self.total / 2);
+    }
+}
 
-        // Always leave some budget for other channels
-        if self.raft_msg > self.total / 2 {
-            self.raft_msg = self.total / 2;
+#[cfg(test)]
+mod tests {
+    use super::Balancer;
+
+    #[test]
+    fn test_raft_msg_budget_recovers_from_one() {
+        let total = 10_000;
+        let ceiling = total / 2;
+        let mut balancer = Balancer::new(total);
+
+        tracing::info!(total, "drive the API budget down with sustained notification demand");
+        {
+            for _ in 0..128 {
+                balancer.increase_notification();
+            }
+            assert_eq!(balancer.raft_msg(), 1);
+        }
+
+        tracing::info!(
+            ceiling,
+            "reverse demand and grow the API budget from one to its ceiling"
+        );
+        {
+            for expected in 2..=16 {
+                balancer.increase_raft_msg();
+                assert_eq!(balancer.raft_msg(), expected);
+            }
+
+            while balancer.raft_msg() < ceiling {
+                let previous = balancer.raft_msg();
+                balancer.increase_raft_msg();
+                assert_eq!(balancer.raft_msg(), (previous * 17 / 16).min(ceiling));
+            }
+        }
+
+        tracing::info!(ceiling, "preserve the notification share under continued API demand");
+        {
+            for _ in 0..16 {
+                balancer.increase_raft_msg();
+                assert_eq!(balancer.raft_msg(), ceiling);
+                assert_eq!(balancer.notification(), total - ceiling);
+            }
         }
     }
 }
