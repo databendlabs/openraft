@@ -25,6 +25,13 @@
 //!
 //! Retry, authentication, compression, and rate limiting are transport concerns, outside this
 //! protocol. A failed or cancelled session is discarded; a new attempt starts from scratch.
+//!
+//! The receiver owns the target directory and its cleanup. Give each attempt an existing, empty
+//! directory, as [`DirWriter::new`] requires, and keep the directory's owning handle, such as a
+//! `tempfile::TempDir`, alive until [`recv_dir`] returns. Dropping a writer leaves the files it
+//! has already created, so after a failure or cancellation, discard the directory and retry into
+//! a new empty one. A retry into the same directory fails with
+//! [`io::ErrorKind::AlreadyExists`](std::io::ErrorKind::AlreadyExists) at the first leftover file.
 
 mod frame;
 mod frame_producer;
