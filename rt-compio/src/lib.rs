@@ -122,7 +122,7 @@ impl AsyncRuntime for CompioRuntime {
     type Mpsc = FlumeMpsc;
     type Watch = See;
     type Oneshot = FuturesOneshot;
-    type Mutex<T: OptionalSend + 'static> = mutex::FlumeMutex<T>;
+    type Mutex<T: OptionalSend + 'static> = mutex::FuturesMutex<T>;
 
     fn spawn<T>(fut: T) -> Self::JoinHandle<T::Output>
     where
