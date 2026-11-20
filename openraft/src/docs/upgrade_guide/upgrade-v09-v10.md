@@ -750,6 +750,11 @@ how to select one.
 - Handle `ClientWriteError::LogEntryDiscarded` apart from `ForwardToLeader`:
   the entry was accepted and then discarded, so its commit status is unknown,
   and a retry needs application-level deduplication.
+- Errors and metrics take the type config as a parameter, so an application
+  with several Raft groups has one type per group. Translate them into
+  application types at its API boundary rather than sending them to clients;
+  see [exposing Raft to clients](crate::docs::components::application_api),
+  which also lists how a client retries each rejection.
 
 Public enums gain variants, which exhaustive matches handle:
 
