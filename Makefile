@@ -86,6 +86,7 @@ test-examples:
 test-runtime:
 	cargo test --manifest-path rt-tokio/Cargo.toml
 	cargo test --manifest-path rt-tokio/Cargo.toml --features single-threaded
+	cargo test --manifest-path rt-tokio/Cargo.toml --features openraft-rt/single-threaded
 	cargo test --manifest-path rt-compio/Cargo.toml
 	cargo test --manifest-path rt-monoio/Cargo.toml
 

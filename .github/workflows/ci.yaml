@@ -171,6 +171,8 @@ jobs:
         run: |
           cargo test --manifest-path "rt-tokio/Cargo.toml"
           cargo test --manifest-path "rt-tokio/Cargo.toml" --features single-threaded
+          # Another crate, such as an adapter of another runtime, enables only openraft-rt's feature.
+          cargo test --manifest-path "rt-tokio/Cargo.toml" --features openraft-rt/single-threaded
         env:
           RUST_LOG: debug
           RUST_BACKTRACE: full

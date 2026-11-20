@@ -26,10 +26,37 @@ pub use watch::TokioWatchSender;
 ///
 /// On wasm targets, [`AsyncRuntime::new`] builds a current-thread runtime and ignores `threads`,
 /// because tokio has no multi-thread runtime there.
+///
+/// When the `single-threaded` feature of `openraft-rt` is enabled, by this crate's
+/// `single-threaded` feature or by any other crate, tasks need not be `Send`:
+/// [`AsyncRuntime::spawn`] starts them with [`tokio::task::spawn_local`], and
+/// [`AsyncRuntime::block_on`] runs its future on a [`tokio::task::LocalSet`].
 pub struct TokioRuntime {
     rt: tokio::runtime::Runtime,
-    #[cfg(feature = "single-threaded")]
-    local: tokio::task::LocalSet,
+    local: LocalTasks,
+}
+
+openraft_rt::__if_single_threaded! {
+    {
+        /// Runs the tasks that [`AsyncRuntime::spawn`] starts with `spawn_local`.
+        type LocalTasks = tokio::task::LocalSet;
+    } else {
+        /// Takes the place of [`tokio::task::LocalSet`] when tasks are `Send`:
+        /// [`AsyncRuntime::spawn`] starts them on the runtime, and [`AsyncRuntime::block_on`] needs
+        /// no local task set.
+        struct LocalTasks;
+
+        impl LocalTasks {
+            fn new() -> Self {
+                LocalTasks
+            }
+
+            fn block_on<F>(&self, rt: &tokio::runtime::Runtime, future: F) -> F::Output
+            where F: Future {
+                rt.block_on(future)
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for TokioRuntime {
@@ -53,14 +80,7 @@ impl AsyncRuntime for TokioRuntime {
         T: Future + OptionalSend + 'static,
         T::Output: OptionalSend + 'static,
     {
-        #[cfg(feature = "single-threaded")]
-        {
-            tokio::task::spawn_local(future)
-        }
-        #[cfg(not(feature = "single-threaded"))]
-        {
-            tokio::task::spawn(future)
-        }
+        openraft_rt::__if_single_threaded!({ tokio::task::spawn_local(future) } else { tokio::task::spawn(future) })
     }
 
     #[inline]
@@ -117,21 +137,13 @@ impl AsyncRuntime for TokioRuntime {
 
         TokioRuntime {
             rt,
-            #[cfg(feature = "single-threaded")]
-            local: tokio::task::LocalSet::new(),
+            local: LocalTasks::new(),
         }
     }
 
     fn block_on<F, T>(&mut self, future: F) -> T
     where F: Future<Output = T> {
-        #[cfg(feature = "single-threaded")]
-        {
-            self.local.block_on(&self.rt, future)
-        }
-        #[cfg(not(feature = "single-threaded"))]
-        {
-            self.rt.block_on(future)
-        }
+        self.local.block_on(&self.rt, future)
     }
 }
 
@@ -151,11 +163,35 @@ mod tests {
     #[test]
     fn test_new_runtime_flavor() {
         let mut rt = TokioRuntime::new(2);
-        let flavor = rt.block_on(async { Handle::current().runtime_flavor() });
+        let (flavor, workers) = rt.block_on(async {
+            let handle = Handle::current();
+            (handle.runtime_flavor(), handle.metrics().num_workers())
+        });
 
         #[cfg(not(target_family = "wasm"))]
-        assert_eq!(RuntimeFlavor::MultiThread, flavor);
+        {
+            assert_eq!(RuntimeFlavor::MultiThread, flavor);
+            assert_eq!(2, workers);
+        }
         #[cfg(target_family = "wasm")]
-        assert_eq!(RuntimeFlavor::CurrentThread, flavor);
+        {
+            assert_eq!(RuntimeFlavor::CurrentThread, flavor);
+            assert_eq!(1, workers);
+        }
+    }
+
+    openraft_rt::__if_single_threaded! {
+        {
+            #[test]
+            fn test_spawn_non_send_task() {
+                let expected = std::rc::Rc::new(3);
+                let value = expected.clone();
+
+                let mut rt = TokioRuntime::new(2);
+                let got = rt.block_on(async move { TokioRuntime::spawn(async move { value }).await });
+
+                assert!(std::rc::Rc::ptr_eq(&expected, &got.unwrap()));
+            }
+        } else {}
     }
 }
