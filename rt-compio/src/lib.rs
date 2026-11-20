@@ -135,7 +135,12 @@ impl AsyncRuntime for CompioRuntime {
     }
 
     fn sleep(duration: std::time::Duration) -> Self::Sleep {
-        Box::pin(compio::time::sleep(duration))
+        // `compio::time::sleep` reads the clock when it is first polled. Take the deadline now, as
+        // tokio and monoio do. A deadline too far to represent never fires.
+        match std::time::Instant::now().checked_add(duration) {
+            Some(deadline) => Self::sleep_until(deadline),
+            None => Box::pin(std::future::pending::<()>()),
+        }
     }
 
     fn sleep_until(deadline: Self::Instant) -> Self::Sleep {
@@ -146,7 +151,7 @@ impl AsyncRuntime for CompioRuntime {
         duration: std::time::Duration,
         future: F,
     ) -> Self::Timeout<R, F> {
-        let delay = Box::pin(compio::time::sleep(duration));
+        let delay = Self::sleep(duration);
         CompioTimeout { future, delay }
     }
 
@@ -177,6 +182,8 @@ impl AsyncRuntime for CompioRuntime {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use openraft_rt::testing::Suite;
 
     use super::*;
@@ -208,5 +215,24 @@ mod tests {
 
         assert!(!CompioRuntime::is_panic(&err));
         assert_eq!("Task was cancelled", err.to_string());
+    }
+
+    #[test]
+    fn test_relative_timers_start_at_creation() {
+        let mut rt = CompioRuntime::new(1);
+        rt.block_on(async {
+            let duration = Duration::from_millis(10);
+            let sleep = CompioRuntime::sleep(duration);
+            let timeout = CompioRuntime::timeout(duration, std::future::pending::<()>());
+
+            // Let the duration pass before either timer is first polled.
+            std::thread::sleep(duration * 2);
+
+            assert_eq!(Some(()), sleep.now_or_never());
+            assert_eq!(Some(Err(Elapsed(()))), timeout.now_or_never());
+
+            // A deadline too far to represent never fires.
+            assert_eq!(None, CompioRuntime::sleep(Duration::MAX).now_or_never());
+        });
     }
 }
