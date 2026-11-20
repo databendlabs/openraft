@@ -77,9 +77,18 @@ where T: OptionalSend + OptionalSync
         // see's changed() returns immediately if version > seen_version.
         // After it returns, we mark the value as seen to fulfill the trait contract:
         // "marks that value seen and returns immediately" or "sleeps until a new message".
-        self.0.changed().await.map_err(|_| watch::RecvError(()))?;
-        self.0.mark_unchanged();
-        Ok(())
+        if self.0.changed().await.is_ok() {
+            self.0.mark_unchanged();
+            return Ok(());
+        }
+
+        // see checks for closure before it compares versions, so its `changed()` fails even when
+        // a value was sent just before the last sender was dropped. Report that value once, as
+        // tokio does, then the closure.
+        if self.0.borrow_and_update().has_changed() {
+            return Ok(());
+        }
+        Err(watch::RecvError(()))
     }
 
     #[inline]
