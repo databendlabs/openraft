@@ -220,3 +220,46 @@ async fn api_as_leader() -> Result<()> {
 
     Ok(())
 }
+
+/// `Raft::runtime_config()` reads back the switches it sets, starting from `Config`.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn api_runtime_config_reads_back_switches() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: true,
+        enable_elect: false,
+        enable_pre_vote: Some(true),
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- initializing a single node cluster");
+    router.new_cluster([0], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+
+    tracing::info!("--- the switches start as Config sets them");
+    {
+        let rc = n0.runtime_config();
+        assert!(!rc.is_tick_enabled());
+        assert!(rc.is_heartbeat_enabled());
+        assert!(!rc.is_elect_enabled());
+        assert!(rc.is_pre_vote_enabled());
+    }
+
+    tracing::info!("--- every setter is read back");
+    {
+        let rc = n0.runtime_config();
+        rc.tick(true);
+        rc.heartbeat(false);
+        rc.elect(true);
+        rc.pre_vote(false);
+
+        assert!(rc.is_tick_enabled());
+        assert!(!rc.is_heartbeat_enabled());
+        assert!(rc.is_elect_enabled());
+        assert!(!rc.is_pre_vote_enabled());
+    }
+
+    Ok(())
+}

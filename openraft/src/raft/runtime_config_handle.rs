@@ -7,7 +7,7 @@ use openraft_macros::since;
 use crate::RaftTypeConfig;
 use crate::raft::RaftInner;
 
-/// RuntimeConfigHandle is an interface to update runtime config.
+/// RuntimeConfigHandle is an interface to update and read runtime config.
 ///
 /// These configs are mainly designed for testing purposes and special use cases.
 /// Usually you don't need to change runtime config.
@@ -57,6 +57,8 @@ where C: RaftTypeConfig
     /// Elections run on their own election timer, whatever [`Self::tick`] says. Re-enabling
     /// elections wakes `RaftCore`, so a node whose election is already due starts it at once, even
     /// with [`Self::tick`] disabled and no incoming messages.
+    ///
+    /// See [a voter that does not campaign](crate::docs::cluster_control::leadership).
     #[since(version = "0.10.1", change = "wakes `RaftCore` to apply the change")]
     #[since(version = "0.10.1", change = "controls elections without `tick`")]
     pub fn elect(&self, enabled: bool) {
@@ -72,5 +74,41 @@ where C: RaftTypeConfig
     pub fn pre_vote(&self, enabled: bool) {
         self.raft_inner.runtime_config.enable_pre_vote.store(enabled, Ordering::Relaxed);
         self.raft_inner.wake_core();
+    }
+
+    /// Return whether a leader's heartbeat timer is enabled, as set by [`Self::tick`].
+    ///
+    /// It starts as [`Config::enable_tick`](crate::Config::enable_tick).
+    #[since(version = "0.10.2")]
+    pub fn is_tick_enabled(&self) -> bool {
+        self.raft_inner.runtime_config.enable_tick.load(Ordering::Relaxed)
+    }
+
+    /// Return whether an idle leader sends heartbeats, as set by [`Self::heartbeat`].
+    ///
+    /// It starts as [`Config::enable_heartbeat`](crate::Config::enable_heartbeat).
+    #[since(version = "0.10.2")]
+    pub fn is_heartbeat_enabled(&self) -> bool {
+        self.raft_inner.runtime_config.enable_heartbeat.load(Ordering::Relaxed)
+    }
+
+    /// Return whether this node starts elections on its own, as set by [`Self::elect`].
+    ///
+    /// It starts as [`Config::enable_elect`](crate::Config::enable_elect). With it disabled, a
+    /// voter still grants votes and still takes over when a leader transfers leadership to it;
+    /// [`Trigger::elect`](crate::raft::trigger::Trigger::elect) starts an election regardless.
+    #[since(version = "0.10.2")]
+    pub fn is_elect_enabled(&self) -> bool {
+        self.raft_inner.runtime_config.enable_elect.load(Ordering::Relaxed)
+    }
+
+    /// Return whether an automatic election starts with a Pre-Vote round, as set by
+    /// [`Self::pre_vote`].
+    ///
+    /// It starts as [`Config::enable_pre_vote`](crate::Config::enable_pre_vote), where `None`
+    /// means disabled.
+    #[since(version = "0.10.2")]
+    pub fn is_pre_vote_enabled(&self) -> bool {
+        self.raft_inner.runtime_config.enable_pre_vote.load(Ordering::Relaxed)
     }
 }

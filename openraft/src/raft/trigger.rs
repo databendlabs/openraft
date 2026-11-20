@@ -139,6 +139,10 @@ where C: RaftTypeConfig
     /// not taken over within an election timeout, this node steps down and starts an election,
     /// which it may win again.
     ///
+    /// It returns once the request is queued, not when `to` has taken over. To learn the outcome,
+    /// wait on the metrics; see
+    /// [handing over leadership](crate::docs::cluster_control::leadership#handing-over-leadership).
+    ///
     /// If this node is not a Leader, it is just ignored.
     ///
     /// [`Config::reset_backoff_on_transfer_leader`]: crate::Config::reset_backoff_on_transfer_leader
