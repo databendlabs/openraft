@@ -300,9 +300,26 @@ fn rewrite_attrs_since(attrs: &mut Vec<syn::Attribute>) -> Result<bool, syn::Err
     Ok(true)
 }
 
-/// Whether `attr` is a `#[since(...)]` marker, matching both `since` and `openraft_macros::since`.
+/// The paths a `#[since(...)]` marker on a field or variant may use: the bare name, this crate,
+/// and its re-exports in `openraft`.
+const MARKER_PATHS: [&[&str]; 4] = [
+    &["since"],
+    &["openraft_macros", "since"],
+    &["openraft", "macros", "since"],
+    &["openraft", "openraft_macros", "since"],
+];
+
+/// Whether `attr` is a `#[since(...)]` marker: its path is exactly one of [`MARKER_PATHS`].
+///
+/// Any other attribute stays on the field for rustc, so another tool's `#[clippy::since]` is kept
+/// and a misspelled path still fails to resolve.
 fn is_since(attr: &syn::Attribute) -> bool {
-    attr.path().segments.last().is_some_and(|s| s.ident == "since")
+    let path = attr.path();
+    path.leading_colon.is_none()
+        && MARKER_PATHS.iter().any(|names| {
+            names.len() == path.segments.len()
+                && names.iter().zip(&path.segments).all(|(name, segment)| segment.ident == *name)
+        })
 }
 
 /// Whether `s` is an existing calendar date written as `yyyy-mm-dd`.
@@ -339,7 +356,37 @@ fn parse_digits(b: &[u8]) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+    use quote::quote;
+    use syn::parse_quote;
+
+    use super::is_since;
     use super::is_valid_date;
+
+    #[test]
+    fn test_is_since() {
+        let markers: [syn::Attribute; 4] = [
+            parse_quote!(#[since(version = "1.0.0")]),
+            parse_quote!(#[openraft_macros::since(version = "1.0.0")]),
+            parse_quote!(#[openraft::macros::since(version = "1.0.0")]),
+            parse_quote!(#[openraft::openraft_macros::since(version = "1.0.0")]),
+        ];
+        for attr in &markers {
+            assert!(is_since(attr), "{}", quote!(#attr));
+        }
+
+        // Another tool's attribute, a misspelled path and other spellings are left for rustc.
+        let others: [syn::Attribute; 6] = [
+            parse_quote!(#[clippy::since]),
+            parse_quote!(#[openraft_macro::since(version = "1.0.0")]),
+            parse_quote!(#[macros::since(version = "1.0.0")]),
+            parse_quote!(#[::openraft_macros::since(version = "1.0.0")]),
+            parse_quote!(#[since::since(version = "1.0.0")]),
+            parse_quote!(#[doc = "since"]),
+        ];
+        for attr in &others {
+            assert!(!is_since(attr), "{}", quote!(#attr));
+        }
+    }
 
     #[test]
     fn test_is_valid_date() {
