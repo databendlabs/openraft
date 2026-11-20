@@ -54,10 +54,12 @@ Tokio runtime typically needs only these steps:
    [Type config](#type-config).
 4. Update the log store and the state machine; see
    [Log storage and state machine](#log-storage-and-state-machine).
-5. Implement [`RaftNetworkV2`][], or wrap a v1 network with `openraft-legacy`;
+5. Run the storage test suites against the ported stores before anything
+   else; see [Test suite](#test-suite).
+6. Implement [`RaftNetworkV2`][], or wrap a v1 network with `openraft-legacy`;
    see [Network](#network).
-6. Update the calls into [`Raft`][]; see [Raft API](#raft-api).
-7. Build [`Config`][] with `..Default::default()`; see [Config](#config).
+7. Update the calls into [`Raft`][]; see [Raft API](#raft-api).
+8. Build [`Config`][] with `..Default::default()`; see [Config](#config).
 
 The other sections matter to code that names Openraft types generically,
 implements its own entry, membership, responder or runtime types, or matches
@@ -313,6 +315,43 @@ still needed, `?` converts an `io::Error` into one.
   }
   ```
 
+- The client gets its answer when the responder sends it, not when `apply()`
+  returns. Send a response only once the entry's effects and the applied log
+  id are where [`RaftStateMachine::apply()`][] requires them. A state machine that persists its state must have made them
+  durable; one that commits a transaction per call holds the responses until
+  the commit:
+
+  ```ignore
+  let mut txn = self.db.transaction();
+  let mut responses = Vec::new();
+  while let Some((entry, responder)) = entries.try_next().await? {
+      let response = match entry.payload {
+          EntryPayload::Blank => Response::none(),
+          EntryPayload::Normal(req) => txn.execute(req)?,
+          EntryPayload::Membership(m) => {
+              txn.save_membership(StoredMembership::new(Some(entry.log_id), m))?;
+              Response::none()
+          }
+      };
+      txn.save_applied(entry.log_id)?;
+      responses.push((responder, response));
+  }
+  txn.commit_durably()?;
+  for (responder, response) in responses {
+      if let Some(responder) = responder {
+          responder.send(response);
+      }
+  }
+  ```
+
+  A state machine kept in memory makes each entry visible to readers before
+  it sends the response. After a restart, Openraft installs its last
+  persisted snapshot and replays the logs after it, up to the committed log
+  id that [`RaftLogStorage::save_committed()`][] persisted. The log store
+  must keep those logs and implement `save_committed()`. Blank and membership
+  entries advance the applied log id like any other entry, and a membership
+  entry also replaces the stored membership.
+
 - `try_create_snapshot_builder()` lets a state machine defer a snapshot that
   Openraft requests. `get_snapshot_builder()` is still required; it will be
   replaced by `try_create_snapshot_builder()`.
@@ -398,7 +437,20 @@ Wipe such a node and add it back to the cluster.
   type as its type parameter.
 - New cases check `entries_stream()` and `leader_bounded_stream()`, that a log
   reader sees entries appended after it was created, and the startup checks
-  above.
+  above. The suite also checks the boundaries a port most easily gets wrong:
+  `purge(id)` removes `id` too, `truncate_after(id)` keeps it, and once every
+  entry is purged, `get_log_state()` reports the last purged log id as the last
+  log id.
+- [`ApplicationSuite`][] is new in 0.10.1. It applies the same entries,
+  including blank and membership entries, all together, one at a time and in
+  uneven groups, and compares the responses, the application state and the
+  applied state with the results the application expects. A port that changed
+  how `apply()` groups or acknowledges entries runs it through an
+  [`ApplicationStoreBuilder`][].
+
+Passing both suites does not test the application's restart, crash recovery
+or snapshot transport: those need tests of their own, run against the real
+store and transport.
 
 ## Network
 
@@ -880,6 +932,10 @@ version as diagnostic text.
 [`ChangeMembers`]: crate::impls::ChangeMembers
 [`leader_id_std::LeaderId`]: crate::impls::leader_id_std::LeaderId
 [`openraft::testing::log::Suite`]: crate::testing::log::Suite
+[`ApplicationSuite`]: crate::testing::log::ApplicationSuite
+[`ApplicationStoreBuilder`]: crate::testing::log::ApplicationStoreBuilder
+[`RaftStateMachine::apply()`]: crate::storage::RaftStateMachine::apply
+[`RaftLogStorage::save_committed()`]: crate::storage::RaftLogStorage::save_committed
 [`single-threaded`]: crate::docs::feature_flags#feature-flag-single-threaded
 [`openraft-legacy`]: https://crates.io/crates/openraft-legacy
 [`openraft-membership`]: https://crates.io/crates/openraft-membership
