@@ -5,6 +5,9 @@ on:
     paths:
       - 'jepsen/**'
       - '.github/workflows/jepsen.yml'
+      - '.cargo/**'
+      - 'Cargo.toml'
+      - 'rust-toolchain'
   push:
     branches:
       - main
@@ -72,6 +75,35 @@ jobs:
 
       - name: Test | Clojure
         run: make -C jepsen unit-test
+
+  node-image:
+    name: Jepsen node image build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check | Node image build inputs
+        id: inputs
+        run: |
+          # The PR merge commit's first parent is the base that CI builds against.
+          changed=$(git diff --name-only HEAD^1 HEAD -- \
+            .github/workflows/jepsen.yml .cargo/ Cargo.toml rust-toolchain \
+            jepsen/Makefile jepsen/docker/ jepsen/openraft-test-app/Cargo.toml \
+            jepsen/openraft-test-app/Cargo.lock)
+          if [[ -n "$changed" ]]; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build | Jepsen node image
+        if: steps.inputs.outputs.build == 'true'
+        run: make -C jepsen build-node
 
   jepsen:
     name: Jepsen (${{ matrix.name }})
