@@ -1,0 +1,5 @@
+error: `version` set multiple times.
+ --> tests/since/fail/duplicate_version.rs:1:55
+  |
+1 | #[openraft_macros::since(version = "1.0.0", version = "1.1.0")]
+  |                                                       ^^^^^^^
