@@ -111,3 +111,6 @@ On 0.10.0 the ticks cost most of the CPU: with heartbeats and elections off, 1,0
 use 67% of a core and 5,000 groups 255%. At 1329ad82, idle groups with heartbeats and elections
 off use no CPU, and with defaults the CPU goes to the heartbeats: 36,685 AppendEntries requests
 a second at 1,000 groups.
+
+[results.md](results.md) has the measurements of the changes that followed, from retiring the
+ticker in #2378 to starting the engine queues empty in #2440.
