@@ -370,6 +370,30 @@ one per request the follower answered.
 |--------------------------|----------------------------|-----------------------------------------------|
 | [`stream_append()`]      | [`AppendEntriesRequest`] stream | remote node [`Raft::stream_append()`]    |
 
+### Pre-Vote and leadership transfer
+
+Two more methods have default implementations, so a transport that leaves them
+out compiles, but the features they carry then do nothing:
+
+| [`RaftNetworkV2`] method | forward request             | to target                                      | default implementation |
+|--------------------------|-----------------------------|------------------------------------------------|------------------------|
+| [`pre_vote()`]           | [`VoteRequest`]             | remote node [`Raft::pre_vote()`]               | grants without contacting the target |
+| [`transfer_leader()`]    | [`TransferLeaderRequest`]   | remote node [`Raft::handle_transfer_leader()`] | reports the target [`Unreachable`]   |
+
+Openraft sends a pre-vote when [`Config::enable_pre_vote`] is set, and on
+`Trigger::elect(true)`. With the default [`pre_vote()`], every peer grants it,
+so a candidate that cannot win still increases its term. Openraft transfers
+leadership on [`Trigger::transfer_leader()`], and on its own when a committed
+membership removes the leader. With the default [`transfer_leader()`], the
+target never hears of the transfer, and an ordinary election follows after an
+election timeout.
+
+To check that a transport carries Pre-Vote, send a pre-vote from a candidate
+whose log is behind to a leader and expect a refusal, which the default would
+not give. The `network-v2-http`
+[pre-vote test](https://github.com/databendlabs/openraft/blob/main/examples/network-v2-http/tests/pre_vote.rs)
+does this.
+
 The canonical example gets both sides from the [`network-v2-http`](https://github.com/databendlabs/openraft/tree/main/examples/network-v2-http)
 crate. Its [client](https://github.com/databendlabs/openraft/blob/main/examples/network-v2-http/src/client.rs)
 demonstrates how to forward messages to other Raft nodes using [`reqwest`](https://docs.rs/reqwest/latest/reqwest/) as network transport layer.
@@ -614,6 +638,11 @@ and links the trait, protocol page, or test suite that defines it.
   reach as [`Unreachable`] so Openraft backs off instead of retrying
   immediately.
 
+- **Pre-Vote and leadership transfer.** Implement [`pre_vote()`] and
+  [`transfer_leader()`]: their defaults grant every pre-vote without asking
+  the peer and report every transfer target unreachable. See
+  [Pre-Vote and leadership transfer](#pre-vote-and-leadership-transfer).
+
 - **Cluster initialization and membership changes.** Call [`Raft::initialize()`]
   once, on one pristine node
   ([cluster formation][`docs::cluster-formation`]). A new voter then joins in two
@@ -698,6 +727,8 @@ library suite does not verify application storage or network adapters.
 [`Raft::append_entries()`]:             `crate::Raft::append_entries`
 [`Raft::stream_append()`]:              `crate::Raft::stream_append`
 [`Raft::vote()`]:                       `crate::Raft::vote`
+[`Raft::pre_vote()`]:                   `crate::Raft::pre_vote`
+[`Raft::handle_transfer_leader()`]:     `crate::Raft::handle_transfer_leader`
 [`Raft::install_full_snapshot()`]:      `crate::Raft::install_full_snapshot`
 
 [`AppendEntriesRequest`]:               `crate::raft::AppendEntriesRequest`
@@ -705,6 +736,9 @@ library suite does not verify application storage or network adapters.
 [`AppendResult`]:                       `crate::raft::AppendResult`
 [`StreamAppendResult`]:                 `crate::raft::StreamAppendResult`
 [`VoteRequest`]:                        `crate::raft::VoteRequest`
+[`TransferLeaderRequest`]:              `crate::raft::TransferLeaderRequest`
+[`Config::enable_pre_vote`]:            `crate::Config::enable_pre_vote`
+[`Trigger::transfer_leader()`]:         `crate::raft::trigger::Trigger::transfer_leader`
 
 [`RaftTypeConfig`]:                     `crate::RaftTypeConfig`
 [`AsyncRuntime`]:                       `crate::AsyncRuntime`
@@ -767,6 +801,8 @@ library suite does not verify application storage or network adapters.
 [`stream_append()`]:                    `crate::network::RaftNetworkV2::stream_append`
 [`vote()`]:                             `crate::network::RaftNetworkV2::vote`
 [`full_snapshot()`]:                    `crate::network::RaftNetworkV2::full_snapshot`
+[`pre_vote()`]:                         `crate::network::RaftNetworkV2::pre_vote`
+[`transfer_leader()`]:                  `crate::network::RaftNetworkV2::transfer_leader`
 [`RPCOption`]:                          `crate::network::RPCOption`
 
 

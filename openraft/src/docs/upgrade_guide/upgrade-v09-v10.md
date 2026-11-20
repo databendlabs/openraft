@@ -432,6 +432,33 @@ tokio's `AsyncRead`, `AsyncWrite` and `AsyncSeek`, as 0.9 required without
 `generic-snapshot-data`. A network that overrode `full_snapshot()` with
 `generic-snapshot-data` implements `RaftNetworkV2::full_snapshot()` instead.
 
+### Sending a snapshot
+
+`RaftNetworkV2::full_snapshot()` receives the whole snapshot as the state
+machine's `SnapshotData` handle, not as one network message. With a v1
+network, Openraft splits a snapshot into `install_snapshot()` chunks; a
+`RaftNetworkV2` transport moves the data itself. For a snapshot in a single
+file, a transfer needs at least these steps:
+
+1. Stage each transfer in a file of its own on the target, created new for
+   that transfer. A fixed scratch name lets a retried or an overlapping
+   transfer append to another transfer's file.
+2. Send chunks of a bounded size, such as `RPCOption::snapshot_chunk_size()`,
+   and stop reading and sending when `cancel` resolves, returning
+   `StreamingError::Closed` with its value.
+3. After the last chunk, flush and sync the file on the target, check it
+   against what the sender declared, such as its length or checksum, and
+   rewind it. Only then call [`Raft::install_full_snapshot()`][] with the
+   vote and the `SnapshotMeta`; its response answers the sender.
+4. Delete the staging file of a transfer that was cancelled or failed.
+
+Test a transfer that disconnects in the middle and is retried, and two
+transfers that overlap. The `raft-kv-rocksdb` example sends a snapshot
+directory this way, as one streamed request per transfer into a new
+directory: see its
+[client](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-rocksdb/src/network/client.rs)
+and [server](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-rocksdb/src/network/server.rs).
+
 ### Chunked snapshots
 
 - On the receiving side, `Raft::install_snapshot()` comes from the
@@ -487,7 +514,8 @@ Replace `is_success()` with `is_ok()`, and `is_conflict()` with
 
 A transport that pipelines AppendEntries overrides `stream_append()`, which
 by default sends the requests one by one through `append_entries()`, and the
-follower passes the received stream to [`Raft::stream_append()`][].
+follower passes the received stream to [`Raft::stream_append()`][]. A port can
+keep the default first and add pipelining later, measured on its own.
 
 ### Other network changes
 
@@ -505,10 +533,12 @@ follower passes the received stream to [`Raft::stream_append()`][].
   exhaustive patterns.
 - `NetworkError` and `Unreachable` take the type config, as in
   `NetworkError::<C>::new(&e)` or `Unreachable::<C>::from_string("msg")`.
-- To use Pre-Vote and leadership transfer, implement `RaftNetworkV2::pre_vote()`
-  and `transfer_leader()`, and pass received requests to `Raft::pre_vote()`
-  and `Raft::handle_transfer_leader()`. By default, `pre_vote()` grants the
-  vote and `transfer_leader()` reports the target unreachable.
+- Implement `RaftNetworkV2::pre_vote()` and `transfer_leader()`, and pass
+  received requests to `Raft::pre_vote()` and `Raft::handle_transfer_leader()`.
+  By default, `pre_vote()` grants the vote without contacting the target, so
+  Pre-Vote no longer protects the term, and `transfer_leader()` reports the
+  target unreachable, also when Openraft hands over from a removed leader. See
+  [Pre-Vote and leadership transfer](crate::docs::getting_started#pre-vote-and-leadership-transfer).
 - `RaftNetworkFactory::new_heartbeat_client()` and `new_snapshot_client()`
   can create dedicated heartbeat and snapshot connections, so a transport that
   cannot multiplex one connection avoids head-of-line blocking. By default
@@ -840,6 +870,7 @@ version as diagnostic text.
 [`Raft::change_membership()`]: crate::Raft::change_membership
 [`Raft::initialize()`]: crate::Raft::initialize
 [`Raft::stream_append()`]: crate::Raft::stream_append
+[`Raft::install_full_snapshot()`]: crate::Raft::install_full_snapshot
 [`Raft::wait()`]: crate::Raft::wait
 [`RaftTypeConfig`]: crate::RaftTypeConfig
 [`declare_raft_types!`]: crate::declare_raft_types

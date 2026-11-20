@@ -27,6 +27,11 @@ serde          = { version = "1.0.114", features = ["derive"] }
 serde_json     = { version = "1.0.57" }
 tokio          = { version = "1.35.1", features = ["full"] }
 
+[dev-dependencies]
+log-mem  = { path = "../log-mem" }
+sm-mem   = { path = "../sm-mem" }
+types-kv = { path = "../types-kv" }
+
 [features]
 default = []
 
