@@ -77,7 +77,55 @@ where C: RaftTypeConfig
     ///
     /// `prev_log_id` and `last_log_id` must describe the request the follower received: a
     /// transport that sent only a prefix of the entries passes the last log id of that prefix.
-    /// This format carries no conflict hint.
+    /// This format carries no conflict hint; a new wire format should carry the [`AppendResult`]
+    /// itself, as the `network-v2-http` example's `AppendReply` does.
+    ///
+    /// [`AppendEntriesRequest::last_log_id()`] gives both log ids for a request sent whole,
+    /// including a heartbeat without entries:
+    ///
+    /// ```
+    /// use openraft::Vote;
+    /// use openraft::entry::RaftEntry;
+    /// use openraft::impls::leader_id_adv::LeaderId;
+    /// use openraft::raft::AppendEntriesRequest;
+    /// use openraft::raft::AppendEntriesResponse;
+    /// use openraft::type_config::alias::EntryOf;
+    /// use openraft::type_config::alias::LogIdOf;
+    /// use openraft::vote::RaftLeaderId;
+    ///
+    /// openraft::declare_raft_types!(TypeConfig);
+    ///
+    /// fn log_id(index: u64) -> LogIdOf<TypeConfig> {
+    ///     LogIdOf::<TypeConfig>::new(LeaderId::new(1, 1), index)
+    /// }
+    ///
+    /// fn request(prev: Option<u64>) -> AppendEntriesRequest<TypeConfig> {
+    ///     AppendEntriesRequest {
+    ///         vote: Vote::new_committed(1, 1),
+    ///         prev_log_id: prev.map(log_id),
+    ///         entries: vec![],
+    ///         leader_commit: None,
+    ///     }
+    /// }
+    ///
+    /// fn accepted(sent: &AppendEntriesRequest<TypeConfig>) -> Option<LogIdOf<TypeConfig>> {
+    ///     let response = AppendEntriesResponse::<TypeConfig>::Success;
+    ///     response.into_append_result(sent.prev_log_id.clone(), sent.last_log_id()).unwrap()
+    /// }
+    ///
+    /// // A heartbeat at the start of the log acknowledges nothing.
+    /// assert_eq!(None, accepted(&request(None)));
+    ///
+    /// // A heartbeat after log 5 acknowledges log 5.
+    /// assert_eq!(Some(log_id(5)), accepted(&request(Some(5))));
+    ///
+    /// // Of the entries 6..=8, the transport sent 6..=7: the follower accepted up to 7.
+    /// let mut sent = request(Some(5));
+    /// sent.entries = (6..=7).map(|i| EntryOf::<TypeConfig>::new_blank(log_id(i))).collect();
+    /// assert_eq!(Some(log_id(7)), accepted(&sent));
+    /// ```
+    ///
+    /// [`AppendEntriesRequest::last_log_id()`]: crate::raft::AppendEntriesRequest::last_log_id
     #[since(version = "0.10.0")]
     pub fn into_append_result(
         self,
