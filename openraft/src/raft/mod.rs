@@ -120,7 +120,6 @@ use crate::core::sm;
 use crate::core::sm::worker;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
-use crate::engine::INITIAL_QUEUE_CAPACITY;
 use crate::entry::RaftPayload;
 use crate::errors::ClientWriteError;
 use crate::errors::Fatal;
@@ -642,9 +641,9 @@ where
                     engine,
                     lease_read_state_publisher,
 
-                    // Start small like the engine queues; the queue grows on demand
-                    // and keeps its capacity after draining.
-                    client_responders: ClientResponderQueue::with_capacity(INITIAL_QUEUE_CAPACITY),
+                    // Allocates on the first client write, like the engine queues, and keeps
+                    // its capacity after draining.
+                    client_responders: ClientResponderQueue::new(),
 
                     pending_reads: PendingReadQueue::default(),
                     pending_read_deadline_notifier: DeadlineNotifier::spawn(tx_notify.clone(), |_| {

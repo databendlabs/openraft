@@ -14,7 +14,6 @@ use crate::engine::ElectionDeadline;
 use crate::engine::EngineOutput;
 use crate::engine::Respond;
 use crate::engine::engine_config::EngineConfig;
-use crate::engine::engine_output::INITIAL_QUEUE_CAPACITY;
 use crate::engine::handler::establish_handler::EstablishHandler;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
@@ -126,7 +125,7 @@ where
             leader: None,
             candidate: None,
             pre_candidate: None,
-            output: EngineOutput::new(INITIAL_QUEUE_CAPACITY),
+            output: EngineOutput::default(),
         }
     }
 
