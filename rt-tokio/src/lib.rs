@@ -31,6 +31,31 @@ pub use watch::TokioWatchSender;
 /// `single-threaded` feature or by any other crate, tasks need not be `Send`:
 /// [`AsyncRuntime::spawn`] starts them with [`tokio::task::spawn_local`], and
 /// [`AsyncRuntime::block_on`] runs its future on a [`tokio::task::LocalSet`].
+///
+/// # Running Openraft on the application's own runtime
+///
+/// When tasks need not be `Send`, [`AsyncRuntime::spawn`] calls `spawn_local`, which panics
+/// outside a `LocalSet` or, from tokio 1.51, a `tokio::runtime::LocalRuntime`.
+/// [`AsyncRuntime::block_on`] provides a `LocalSet`. An application that builds its own Tokio
+/// runtime, such as with `Builder::new_current_thread()`, must run Openraft inside one of the two,
+/// for example inside [`LocalSet::run_until`](tokio::task::LocalSet::run_until), or
+/// [`LocalSet::block_on`](tokio::task::LocalSet::block_on) from synchronous code. The same code
+/// also works when tasks are `Send`:
+///
+/// ```
+/// use openraft_rt::AsyncRuntime;
+/// use openraft_rt_tokio::TokioRuntime;
+///
+/// let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+/// let local = tokio::task::LocalSet::new();
+///
+/// rt.block_on(local.run_until(async {
+///     // Run Openraft here.
+///     let joined = TokioRuntime::spawn(async { 3 }).await;
+///     assert_eq!(3, joined.unwrap());
+/// }));
+/// # Ok::<(), std::io::Error>(())
+/// ```
 pub struct TokioRuntime {
     rt: tokio::runtime::Runtime,
     local: LocalTasks,
@@ -189,6 +214,20 @@ mod tests {
 
                 let mut rt = TokioRuntime::new(2);
                 let got = rt.block_on(async move { TokioRuntime::spawn(async move { value }).await });
+
+                assert!(std::rc::Rc::ptr_eq(&expected, &got.unwrap()));
+            }
+
+            #[test]
+            fn test_spawn_non_send_task_on_own_runtime() {
+                let expected = std::rc::Rc::new(3);
+                let value = expected.clone();
+
+                // The application builds the runtime, and runs Openraft inside a `LocalSet`, as the
+                // docs of `TokioRuntime` describe.
+                let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                let local = tokio::task::LocalSet::new();
+                let got = rt.block_on(local.run_until(async move { TokioRuntime::spawn(async move { value }).await }));
 
                 assert!(std::rc::Rc::ptr_eq(&expected, &got.unwrap()));
             }
