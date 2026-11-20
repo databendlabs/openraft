@@ -1,0 +1,20 @@
+# Writes `../openraft-0.9.26.json`: values serialized by openraft 0.9.26, which
+# `tests/tests/compat` decodes with the current openraft.
+#
+# It is not part of any workspace and CI does not build it. Regenerate with:
+#
+#     cargo run --manifest-path tests/tests/compat/fixtures/gen-openraft-0.9.26/Cargo.toml
+
+[package]
+name = "gen-openraft-0-9-26"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+openraft = { version = "=0.9.26", features = ["serde"] }
+bincode = { version = "=1.3.3" }
+serde = { version = "1" }
+serde_json = { version = "1" }
+
+[workspace]

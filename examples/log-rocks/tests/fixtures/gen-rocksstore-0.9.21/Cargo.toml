@@ -1,0 +1,20 @@
+# Writes `../rocksstore-0.9.21`: a RocksDB directory produced by
+# `openraft-rocksstore` 0.9.21, which `tests/rocksstore_0_9.rs` reopens with
+# `log-rocks`.
+#
+# It is not part of any workspace and CI does not build it. Regenerate with:
+#
+#     cargo run --manifest-path examples/log-rocks/tests/fixtures/gen-rocksstore-0.9.21/Cargo.toml
+
+[package]
+name = "gen-rocksstore-0-9-21"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+openraft = { version = "=0.9.26", features = ["serde"] }
+openraft-rocksstore = { version = "=0.9.21" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[workspace]

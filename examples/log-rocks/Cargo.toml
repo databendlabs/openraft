@@ -23,6 +23,9 @@ serde      = { version = "1.0.114" }
 serde_json = { version = "1.0.57" }
 tracing    = { version = "0.1.40" }
 
+[dev-dependencies]
+tempfile = { version = "3.4.0" }
+
 [features]
 bt = ["openraft/bt"]
 
