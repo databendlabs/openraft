@@ -41,4 +41,57 @@ where From: Upgrade<To>
             Self::New(x) => x,
         }
     }
+
+    fn try_upgrade(self) -> Result<To, (Self, &'static str)> {
+        match self {
+            Self::Old(o) => o.try_upgrade().map_err(|(old, reason)| (Self::Old(old), reason)),
+            Self::New(x) => Ok(x),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Compat;
+    use super::Upgrade;
+
+    #[derive(Debug)]
+    struct Old(u8);
+
+    impl Upgrade<u16> for Old {
+        fn upgrade(self) -> u16 {
+            self.0.into()
+        }
+
+        fn try_upgrade(self) -> Result<u16, (Self, &'static str)> {
+            if self.0 == 0 {
+                Err((self, "reserved value"))
+            } else {
+                Ok(self.upgrade())
+            }
+        }
+    }
+
+    #[test]
+    fn try_upgrade() {
+        tracing::info!(value = 7, "upgrade a supported old value");
+        {
+            let old = Compat::Old(Old(7));
+            assert_eq!(old.try_upgrade().unwrap(), 7);
+        }
+
+        tracing::info!(value = 0, "return a rejected old value and its reason");
+        {
+            let old = Compat::Old(Old(0));
+            let (input, reason) = old.try_upgrade().expect_err("reserved value must be rejected");
+            assert!(matches!(input, Compat::Old(Old(0))));
+            assert_eq!(reason, "reserved value");
+        }
+
+        tracing::info!(value = 300, "pass through an already-current value");
+        {
+            let new = Compat::<Old, _>::New(300);
+            assert_eq!(new.try_upgrade().unwrap(), 300);
+        }
+    }
 }
