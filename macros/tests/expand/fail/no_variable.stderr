@@ -1,0 +1,17 @@
+error: Expected at least one template variable
+ --> tests/expand/fail/no_variable.rs:4:9
+  |
+4 |         () => {},
+  |         ^^
+
+error: Expected at least one template variable
+ --> tests/expand/fail/no_variable.rs:9:9
+  |
+9 |         () => {},
+  |         ^^
+
+error: Expected at least one template variable
+  --> tests/expand/fail/no_variable.rs:14:9
+   |
+14 |         () => {},
+   |         ^^

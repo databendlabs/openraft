@@ -211,6 +211,13 @@ impl Parse for Expand {
             variables.push(segment.ident.to_string());
         }
 
+        if variables.is_empty() {
+            return Err(syn::Error::new_spanned(
+                &variables_tuple,
+                "Expected at least one template variable",
+            ));
+        }
+
         // Template body
         // => { ... }
         input.parse::<Token![=>]>()?;
