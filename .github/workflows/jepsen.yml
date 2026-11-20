@@ -62,10 +62,15 @@ jobs:
         run: make -C jepsen clojure-lint
 
       - name: Setup | System RocksDB
+        # Use the node image's apt sources: the CI mirror first, then Ubuntu's
+        # archive. jepsen/docker/node.Dockerfile explains the undelayed retries.
         run: |
-          sudo sed -i "s|^URIs: .*|URIs: $UBUNTU_APT_MIRROR|" /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=3 update --error-on=any
-          sudo apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=3 install -y librocksdb-dev
+          printf '%s\tpriority:1\nhttp://archive.ubuntu.com/ubuntu/\tpriority:2\n' "$UBUNTU_APT_MIRROR" \
+            | sudo tee /etc/apt/jepsen-mirrors.list > /dev/null
+          sudo sed -i "s|^URIs: .*|URIs: mirror+file:/etc/apt/jepsen-mirrors.list|" /etc/apt/sources.list.d/ubuntu.sources
+          apt_opts=(-o Acquire::http::Timeout=15 -o Acquire::Retries=3 -o Acquire::Retries::Delay=false)
+          sudo apt-get "${apt_opts[@]}" update --error-on=any
+          sudo apt-get "${apt_opts[@]}" install -y librocksdb-dev
 
       - name: Check | Test app
         run: make -C jepsen app-lint
