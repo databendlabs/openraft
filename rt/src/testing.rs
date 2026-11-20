@@ -30,6 +30,7 @@ use crate::mpsc::MpscReceiver;
 use crate::mpsc::MpscSender;
 use crate::mpsc::MpscWeakSender;
 use crate::mpsc::TryRecvError;
+use crate::watch::RecvError;
 use crate::watch::WatchReceiver;
 use crate::watch::WatchSender;
 
@@ -129,6 +130,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_watch_changed_marks_as_seen().await;
             Self::test_watch_borrow_and_update_marks_seen().await;
             Self::test_watch_changed_returns_immediately_when_unseen().await;
+            Self::test_watch_changed_reports_final_value_before_close().await;
             Self::test_watch_multiple_borrow_then_changed().await;
             Self::test_watch_wait_loop_pattern().await;
             Self::test_watch_multiple_receivers().await;
@@ -1035,6 +1037,54 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         {
             let val = rx.borrow_watched();
             assert_eq!(*val, 1);
+        }
+    }
+
+    /// Test that `changed()` reports a value sent just before the last sender is dropped, once,
+    /// and then the closure.
+    ///
+    /// As with tokio's watch channel, every receiver sees the final value before `changed()`
+    /// returns [`RecvError`], including a receiver that was already waiting when it was sent.
+    #[since(version = "0.10.2")]
+    pub async fn test_watch_changed_reports_final_value_before_close() {
+        // A waiting `changed()` and an idle receiver each see the final value once.
+        {
+            let (tx, mut rx) = Rt::Watch::channel(0i32);
+            let mut rx2 = rx.clone();
+            {
+                let mut changed = pin!(rx.changed());
+                assert!(poll_in_place(changed.as_mut()).is_pending());
+
+                tx.send(1).unwrap();
+                drop(tx);
+
+                assert_eq!(Ok(()), changed.await);
+            }
+            assert_eq!(1, *rx.borrow_watched());
+            assert_eq!(Err(RecvError(())), rx.changed().await);
+
+            assert_eq!(Ok(()), rx2.changed().await);
+            assert_eq!(1, *rx2.borrow_watched());
+            assert_eq!(Err(RecvError(())), rx2.changed().await);
+        }
+
+        // A waiting `wait_until_ge()` returns the final value.
+        {
+            let (tx, mut rx) = Rt::Watch::channel(0i32);
+            let mut wait = pin!(rx.wait_until_ge(&1));
+            assert!(poll_in_place(wait.as_mut()).is_pending());
+
+            tx.send(1).unwrap();
+            drop(tx);
+
+            assert_eq!(Ok(1), wait.await);
+        }
+
+        // A receiver that has seen every value gets the closure at once.
+        {
+            let (tx, mut rx) = Rt::Watch::channel(0i32);
+            drop(tx);
+            assert_eq!(Err(RecvError(())), rx.changed().await);
         }
     }
 
