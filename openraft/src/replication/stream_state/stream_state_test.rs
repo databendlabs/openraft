@@ -30,6 +30,7 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::VoteOf;
+use crate::type_config::alias::WatchSenderOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
 /// Returns one entry per read, optionally preceded by an empty read.
@@ -102,7 +103,7 @@ fn probe_stops_after_storage_limited_prefix() {
                 let range = LogIdRange::new(Some(log_id(1, 1, 52)), Some(log_id(1, 1, 60)));
                 let inflight_id = InflightId::new(1);
                 let (_replicate_tx, replicate_rx) =
-                    UTConfig::<()>::watch_channel(Replicate::new_probe(range, inflight_id));
+                    UTConfig::<()>::watch_channel(Some(Replicate::new_probe(range, inflight_id)));
                 let (_committed_tx, committed_rx) = UTConfig::<()>::watch_channel(None);
                 let (_io_tx, io_rx) = UTConfig::<()>::watch_channel(IOId::new_log_io(vote.clone(), range.last));
                 let (_cancel_tx, cancel_rx) = UTConfig::<()>::watch_channel(());
@@ -185,7 +186,7 @@ fn stale_stream_does_not_mix_votes_and_later_commits() {
                 let range = LogIdRange::new(Some(prefix_end), Some(old_entry));
                 let inflight_id = InflightId::new(1);
                 let replicate = Replicate::new_probe(range, inflight_id);
-                let (_replicate_tx, replicate_rx) = UTConfig::<()>::watch_channel(replicate);
+                let (_replicate_tx, replicate_rx) = UTConfig::<()>::watch_channel(Some(replicate));
                 let (committed_tx, committed_rx) = UTConfig::<()>::watch_channel(Some(prefix_end));
                 let accepted = IOId::new_log_io(old_vote.to_committed(), Some(old_entry));
                 let (io_tx, io_rx) = UTConfig::<()>::watch_channel(accepted);
@@ -284,5 +285,142 @@ fn stale_stream_does_not_mix_votes_and_later_commits() {
                 );
             }
         }
+    });
+}
+
+/// Build a stream to node 2 that runs `payload` as `inflight_id`, while RaftCore's current plan for
+/// node 2 has the inflight id `current`, or is dropped if `current` is `None`. The log is submitted
+/// through index 20. The sender publishes RaftCore's plan; the last value keeps the other channels
+/// open.
+fn new_stream(
+    payload: Payload<UTConfig>,
+    inflight_id: Option<InflightId>,
+    current: Option<InflightId>,
+) -> (
+    StreamState<UTConfig, PrefixStore>,
+    WatchSenderOf<UTConfig, Option<Replicate<UTConfig>>>,
+    impl Sized,
+) {
+    let vote = VoteOf::<UTConfig>::new_committed(1, 1).to_committed();
+    let current = current.map(|id| Replicate::new_logs_since(Some(log_id(1, 1, 1)), id));
+    let (replicate_tx, replicate_rx) = UTConfig::<()>::watch_channel(current);
+    let (committed_tx, committed_rx) = UTConfig::<()>::watch_channel(None);
+    let submitted = IOId::new_log_io(vote.clone(), Some(log_id(1, 1, 20)));
+    let (io_tx, io_rx) = UTConfig::<()>::watch_channel(submitted);
+    let (cancel_tx, cancel_rx) = UTConfig::<()>::watch_channel(());
+    let (backoff_reset_tx, backoff_reset_rx) = UTConfig::<()>::watch_channel(());
+    let (probe_tx, quorum_loss_probe_rx) = UTConfig::<()>::watch_channel(None);
+    let (tx_notify, rx_notify) = UTConfig::<()>::mpsc(1);
+
+    let state = StreamState::<UTConfig, PrefixStore> {
+        replication_context: ReplicationContext {
+            id: 1,
+            target: 2,
+            leader_vote: vote,
+            stream_id: StreamId::new(1),
+            config: Arc::new(Config::default()),
+            tx_notify,
+            cancel_rx,
+            replicate_batch: SharedReplicateBatch::new(),
+            quorum_loss_probe_rx,
+        },
+        event_watcher: EventWatcher {
+            replicate_rx,
+            committed_rx,
+            io_accepted_rx: io_rx.clone(),
+            io_submitted_rx: io_rx,
+        },
+        log_reader: PrefixStore {
+            empty_first: false,
+            reads: vec![],
+        },
+        payload: Some(payload),
+        inflight_id,
+        backoff_consumer: BackoffState::new().consumer(backoff_reset_rx),
+        after_leader_check: None,
+    };
+
+    let channels = (committed_tx, io_tx, cancel_tx, backoff_reset_tx, probe_tx, rx_notify);
+    (state, replicate_tx, channels)
+}
+
+/// A `LogsSince` stream ends at its next request once RaftCore drops its plan, although entries are
+/// left to send and no other plan is published: RaftCore may purge those entries next.
+#[test]
+fn logs_since_ends_once_its_plan_is_dropped() {
+    UTConfig::<()>::run(async {
+        let inflight_id = InflightId::new(1);
+
+        tracing::info!("--- with its plan current, the stream sends entry 6 after prev 5");
+        let payload = Payload::LogsSince {
+            prev: Some(log_id(1, 1, 5)),
+        };
+        let (mut state, replicate_tx, _channels) = new_stream(payload, Some(inflight_id), Some(inflight_id));
+        let reads = {
+            let request = state.next_request().await.unwrap().unwrap();
+            assert_eq!(Some(log_id(1, 1, 5)), request.prev_log_id);
+            assert_eq!(vec![EntryOf::<UTConfig>::new_blank(log_id(1, 1, 6))], request.entries);
+            state.log_reader.reads.len()
+        };
+
+        tracing::info!("--- RaftCore drops the plan while entries 7 to 20 are left: the stream ends");
+        {
+            replicate_tx.send(None).unwrap();
+
+            let request = state.next_request().await.unwrap();
+            assert!(request.is_none(), "expect no request, got {:?}", request);
+            assert_eq!(reads, state.log_reader.reads.len(), "no read after the plan is dropped");
+        }
+
+        tracing::info!("--- a stream waiting for entries after 20 ends once RaftCore drops its plan");
+        {
+            let payload = Payload::LogsSince {
+                prev: Some(log_id(1, 1, 20)),
+            };
+            let (mut state, replicate_tx, _channels) = new_stream(payload, Some(inflight_id), Some(inflight_id));
+
+            let drop_plan = async {
+                replicate_tx.send(None).unwrap();
+            };
+            let (request, ()) = futures_util::future::join(state.next_request(), drop_plan).await;
+            let request = request.unwrap();
+            assert!(request.is_none(), "expect no request, got {:?}", request);
+            assert!(state.log_reader.reads.is_empty());
+        }
+    });
+}
+
+/// A `LogsSince` stream ends at its next request once RaftCore publishes another plan, although
+/// entries are left to send.
+#[test]
+fn logs_since_ends_once_its_plan_is_replaced() {
+    UTConfig::<()>::run(async {
+        let payload = Payload::LogsSince {
+            prev: Some(log_id(1, 1, 5)),
+        };
+        let (mut state, _replicate_tx, _channels) =
+            new_stream(payload, Some(InflightId::new(1)), Some(InflightId::new(2)));
+
+        let request = state.next_request().await.unwrap();
+        assert!(request.is_none(), "expect no request, got {:?}", request);
+        assert!(state.log_reader.reads.is_empty());
+    });
+}
+
+/// A one-shot probe sends its only request while RaftCore has no current plan, as the entry-less
+/// probe that delivers a commit after a dropped plan does.
+#[test]
+fn one_shot_probe_sends_without_a_current_plan() {
+    UTConfig::<()>::run(async {
+        let matching = Some(log_id(1, 1, 3));
+        let payload = Payload::Probe {
+            log_id_range: LogIdRange::new(matching, matching),
+        };
+        let (mut state, _replicate_tx, _channels) = new_stream(payload, None, None);
+
+        let request = state.next_request().await.unwrap().unwrap();
+        assert_eq!(matching, request.prev_log_id);
+        assert!(request.entries.is_empty());
+        assert!(state.next_request().await.unwrap().is_none());
     });
 }

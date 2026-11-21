@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
@@ -242,6 +243,39 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// A heartbeat's conflict that finds the target's log reverted drops its `LogsSince` plan, which
+/// the target's stream never hears of. The leader must clear the plan from the stream before it
+/// purges the entries the plan was holding back.
+#[test]
+fn reverted_log_clears_the_logs_since_plan_before_the_purge() {
+    let mut eng = eng();
+    eng.config.allow_log_reversion = true;
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 1), log_id(2, 1, 3), log_id(2, 1, 10)]);
+    eng.state.purge_upto = Some(log_id(2, 1, 8));
+    update_entry(&mut eng, 2, |entry| {
+        entry.matching = Some(log_id(2, 1, 5));
+        entry.data.searching_end = 6;
+        entry.data.inflight = Inflight::logs_since(Some(log_id(2, 1, 5)), InflightId::new(7));
+    });
+    let stream_id = entry(&eng, 2).data.stream_id;
+
+    tracing::info!(target = 2, "a heartbeat at index 5 finds the log of node 2 reverted");
+    {
+        let response = Progress {
+            target: 2,
+            result: Ok(ReplicationResult(Err(log_id(2, 1, 5)))),
+            hint: None,
+        };
+        eng.replication_handler().update_progress(stream_id, response, None);
+
+        let expected = vec![Command::ClearReplicate { target: 2 }, Command::PurgeLog {
+            upto: log_id(2, 1, 8),
+        }];
+        assert_eq!(expected, eng.output.take_commands());
+        assert_eq!(Inflight::None, entry(&eng, 2).data.inflight);
+    }
 }
 
 fn hint_probe_engine() -> Engine<UTConfig> {

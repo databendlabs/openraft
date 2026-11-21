@@ -259,6 +259,11 @@ where
     /// Returns `false` if the response is stale or `target` has no progress entry, so nothing was
     /// applied.
     ///
+    /// A conflict that drops the target's `LogsSince` plan also emits [`Command::ClearReplicate`],
+    /// because the stream that runs the plan learns only of the conflicts it receives itself, not
+    /// of a heartbeat's, such as one that finds the target's log reverted. The command comes before
+    /// the purge that [`Self::try_purge_log()`] may then submit.
+    ///
     /// This method intentionally bypasses `VecProgress::update_entry_with()`: when log
     /// reversion is explicitly allowed, [`Updater::update_conflicting()`] may reset
     /// `matching` to `None`. `VecProgress::reset_entry_with()` moves the entry down to
@@ -272,11 +277,18 @@ where
         inflight_id: Option<InflightId>,
     ) -> bool {
         let mut applied = false;
+        let mut plan_dropped = false;
 
         self.leader.progress.reset_entry_with(&target, |entry| {
+            let ran_logs_since = entry.data.inflight.is_logs_since();
             let mut updater = Updater::new(&*self.config, entry);
             applied = updater.update_conflicting(conflict.index(), inflight_id);
+            plan_dropped = ran_logs_since && entry.data.inflight.is_none();
         });
+
+        if plan_dropped {
+            self.output.push_command(Command::ClearReplicate { target });
+        }
 
         applied
     }

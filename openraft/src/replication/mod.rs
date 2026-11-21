@@ -269,34 +269,34 @@ where
 
     /// Decide what the next stream should carry.
     ///
-    /// With nothing left over, block until [`RaftCore`] hands over work. With a payload still
-    /// unfinished, adopt whatever [`RaftCore`] has since published instead: in `LogsSince` mode a
-    /// reverted log makes the unfinished payload obsolete, so resuming it would send entries that
-    /// no longer exist.
+    /// A payload still unfinished is resumed only while its plan is [`RaftCore`]'s current one.
+    /// Otherwise run the plan published since, as when a reverted log makes a `LogsSince` payload
+    /// obsolete, or nothing if [`RaftCore`] dropped the plan: resuming the payload would send
+    /// entries that may no longer exist. With nothing to run, block until [`RaftCore`] hands over
+    /// work.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn select_next_payload(&mut self) -> Result<Payload<C>, ReplicationClosed> {
-        if self.next_action.is_none() {
-            self.drain_events().await?;
-        } else {
-            // If there is new data to send, even when the current data is not yet finished sending
-            // discard the current data, start to send the new data.
-            // When data is reverted in LogsSince mode, it needs such a mechanism.
-            //
+        if self.next_action.is_some() {
             // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
             // would leave the change notification pending, and `drain_events()` would
             // later observe it and replay the same command, re-running an
             // already-acknowledged payload.
-            let new_data = self.event_watcher.replicate_rx.borrow_and_update().clone();
-            if self.inflight_id != Some(new_data.inflight_id) {
+            let current = self.event_watcher.replicate_rx.borrow_and_update().clone();
+            let current_id = current.as_ref().map(|replicate| replicate.inflight_id);
+            if self.inflight_id != current_id {
                 tracing::info!(
-                    "ReplicationCore replaced current data with inflight id {:?} with new {}",
-                    self.inflight_id,
-                    new_data.inflight_id
+                    "ReplicationCore replaced current data with inflight id {} with {}",
+                    self.inflight_id.display(),
+                    current.display()
                 );
-                self.inflight_id = Some(new_data.inflight_id);
-                self.next_action = Some(new_data.payload);
+                self.inflight_id = current_id;
+                self.next_action = current.map(|replicate| replicate.payload);
             }
+        }
+
+        if self.next_action.is_none() {
+            self.drain_events().await?;
         }
 
         Ok(self.next_action.take().unwrap())
@@ -540,38 +540,46 @@ where
     /// - For committed update: sets `inflight_id = None` and `next_action =
     ///   Some(empty_range_payload)`
     ///
-    /// It blocks until at least one event is received.
+    /// It blocks until at least one event is received. A dropped plan, published as `None`, leaves
+    /// nothing to run and is skipped.
     #[tracing::instrument(level = "trace", skip_all)]
     pub async fn drain_events(&mut self) -> Result<(), ReplicationClosed> {
         tracing::debug!("drain_events");
 
-        let entries = self.event_watcher.replicate_rx.changed();
-        let committed = self.event_watcher.committed_rx.changed();
+        loop {
+            let entries = self.event_watcher.replicate_rx.changed();
+            let committed = self.event_watcher.committed_rx.changed();
 
-        let selected = C::select2(entries, committed).await;
-        match selected {
-            Select2::First(entries_res) => {
-                entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
-                // This read delivers the command: `borrow_and_update()` marks it as seen so a
-                // value arriving after `changed()` resolved is not delivered a second time.
-                let data = self.event_watcher.replicate_rx.borrow_and_update().clone();
-                self.inflight_id = Some(data.inflight_id);
-                self.next_action = Some(data.payload);
-            }
-            Select2::Second(committed_res) => {
-                committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
+            let selected = C::select2(entries, committed).await;
+            match selected {
+                Select2::First(entries_res) => {
+                    entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
+                    // This read delivers the command: `borrow_and_update()` marks it as seen so a
+                    // value arriving after `changed()` resolved is not delivered a second time.
+                    let data = self.event_watcher.replicate_rx.borrow_and_update().clone();
+                    let Some(data) = data else {
+                        tracing::debug!("drain_events: RaftCore dropped the log plan; wait for the next");
+                        continue;
+                    };
+                    self.inflight_id = Some(data.inflight_id);
+                    self.next_action = Some(data.payload);
+                }
+                Select2::Second(committed_res) => {
+                    committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
 
-                // Committed update: create an empty-range payload to sync commit index.
-                // This read delivers the event, thus it marks the value as seen.
-                let committed = self.event_watcher.committed_rx.borrow_and_update().clone();
-                self.replication_progress.local_committed = committed;
+                    // Committed update: create an empty-range payload to sync commit index.
+                    // This read delivers the event, thus it marks the value as seen.
+                    let committed = self.event_watcher.committed_rx.borrow_and_update().clone();
+                    self.replication_progress.local_committed = committed;
 
-                let m = self.replication_progress.remote_matched.clone();
-                let log_id_range = LogIdRange::new(m.clone(), m);
-                self.inflight_id = None;
-                self.next_action = Some(Payload::Probe { log_id_range });
-            }
-        };
+                    let m = self.replication_progress.remote_matched.clone();
+                    let log_id_range = LogIdRange::new(m.clone(), m);
+                    self.inflight_id = None;
+                    self.next_action = Some(Payload::Probe { log_id_range });
+                }
+            };
+            break;
+        }
 
         tracing::debug!(
             "drain_events set: inflight_id={:?}, next_action={:?}",

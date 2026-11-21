@@ -147,6 +147,12 @@ where
         // pipeline mode:
 
         loop {
+            // Checked before every request, not only while waiting: a stream with entries left to
+            // send never waits, and RaftCore may purge them once it drops the plan.
+            if !self.is_plan_current() {
+                return None;
+            }
+
             let current: IOId<C> = self.event_watcher.io_submitted_rx.borrow_watched().clone();
             let last_log_id = current.last_log_id().cloned();
 
@@ -166,15 +172,8 @@ where
                 let selected = C::select4(cancel, data_change, io_change, committed_change).await;
                 match selected {
                     Select4::Second(_) => {
-                        let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
-                        if Some(new_data.inflight_id) != self.inflight_id {
-                            tracing::info!(
-                                "current inflight_id: {} received payload with new inflight_id: {}, quit",
-                                self.inflight_id.display(),
-                                new_data.inflight_id
-                            );
-                            return None;
-                        }
+                        tracing::debug!("replicate_rx changed");
+                        // Continue: the loop checks whether this plan is still current.
                     }
                     Select4::Third(_) => {
                         tracing::debug!("io_submitted_rx changed");
@@ -202,6 +201,24 @@ where
     /// Waits for the backoff duration if backoff is enabled, or returns immediately.
     async fn backoff_if_enabled(&mut self) {
         self.backoff_consumer.backoff_if_enabled(self.replication_context.cancel_rx.changed()).await;
+    }
+
+    /// Return `true` if RaftCore's current log plan for the target is the one this stream runs.
+    ///
+    /// RaftCore publishes another plan, with a new inflight id, when it replaces this one, and
+    /// `None` when it drops it, as when a heartbeat finds the follower's log reverted.
+    fn is_plan_current(&self) -> bool {
+        let current = self.event_watcher.replicate_rx.borrow_watched().as_ref().map(|replicate| replicate.inflight_id);
+        if current == self.inflight_id {
+            return true;
+        }
+
+        tracing::info!(
+            "inflight_id: {} is no longer the current plan, which is {}; quit",
+            self.inflight_id.display(),
+            current.display()
+        );
+        false
     }
 
     /// Advances the payload after generating a request through `sent`.
