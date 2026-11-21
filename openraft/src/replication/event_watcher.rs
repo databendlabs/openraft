@@ -8,7 +8,10 @@ use crate::type_config::alias::WatchReceiverOf;
 pub(crate) struct EventWatcher<C>
 where C: RaftTypeConfig
 {
-    pub(crate) replicate_rx: WatchReceiverOf<C, Replicate<C>>,
+    /// The leader's current log plan for the target, or `None` before it publishes one.
+    ///
+    /// A plan without payload clears the plan before it, see [`Replicate::payload`].
+    pub(crate) replicate_rx: WatchReceiverOf<C, Option<Replicate<C>>>,
     pub(crate) committed_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 
     pub(crate) io_accepted_rx: WatchReceiverOf<C, IOId<C>>,

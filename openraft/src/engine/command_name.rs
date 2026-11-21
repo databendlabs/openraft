@@ -24,6 +24,7 @@ pub enum SMCommandName {
 ///
 /// This provides an efficient way to identify command types without
 /// string comparisons, useful for logging, metrics, and debugging.
+#[since(version = "0.10.2", change = "added `ClearReplicate` variant")]
 #[since(version = "0.10.1", change = "marked #[non_exhaustive]")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
@@ -41,6 +42,9 @@ pub enum CommandName {
     SaveCommittedAndApply,
     /// Replicate log entries to a target.
     Replicate,
+    /// Ask the replication task of a target to confirm that it no longer reads the log for the
+    /// plan the leader dropped.
+    ClearReplicate,
     /// Replicate a snapshot to a target.
     ReplicateSnapshot,
     /// Send a leadership transfer message to all other nodes.
@@ -142,6 +146,13 @@ mod tests {
         };
         assert_eq!(cmd.name(), CommandName::Replicate);
 
+        // ClearReplicate
+        let cmd: Command<C> = Command::ClearReplicate {
+            target: 1,
+            inflight_id: InflightId::new(1),
+        };
+        assert_eq!(cmd.name(), CommandName::ClearReplicate);
+
         // ReplicateSnapshot
         let cmd: Command<C> = Command::ReplicateSnapshot {
             leader_vote: cv.clone(),
@@ -230,6 +241,7 @@ mod tests {
         assert_eq!(CommandName::BroadcastHeartbeat.as_str(), "BroadcastHeartbeat");
         assert_eq!(CommandName::SaveCommittedAndApply.as_str(), "SaveCommittedAndApply");
         assert_eq!(CommandName::Replicate.as_str(), "Replicate");
+        assert_eq!(CommandName::ClearReplicate.as_str(), "ClearReplicate");
         assert_eq!(CommandName::ReplicateSnapshot.as_str(), "ReplicateSnapshot");
         assert_eq!(CommandName::BroadcastTransferLeader.as_str(), "BroadcastTransferLeader");
         assert_eq!(CommandName::CloseReplicationStreams.as_str(), "CloseReplicationStreams");

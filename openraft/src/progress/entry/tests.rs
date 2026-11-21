@@ -46,6 +46,13 @@ fn test_is_log_range_inflight() -> anyhow::Result<()> {
     assert_eq!(true, pe.is_log_range_inflight(&log_id(3)));
     assert_eq!(true, pe.is_log_range_inflight(&log_id(100)));
 
+    // Clear: the replication task may still read any log after prev for the dropped plan
+    let clear = Inflight::logs_since(Some(log_id(2)), InflightId::new(0)).into_clear(InflightId::new(1));
+    pe.data.inflight = clear.unwrap();
+    assert_eq!(false, pe.is_log_range_inflight(&log_id(2)));
+    assert_eq!(true, pe.is_log_range_inflight(&log_id(3)));
+    assert_eq!(true, pe.is_log_range_inflight(&log_id(100)));
+
     Ok(())
 }
 
@@ -183,6 +190,13 @@ fn test_next_send_inflight_busy() -> anyhow::Result<()> {
 
     let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
     assert_eq!(Err(&inflight_probe(10, 11)), res);
+
+    // A clear waits for the replication task: no other plan starts before it answers
+    let clear = inflight_probe(10, 11).into_clear(InflightId::new(1)).unwrap();
+    pe.data.inflight = clear;
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
+    assert_eq!(Err(&clear), res);
 
     Ok(())
 }

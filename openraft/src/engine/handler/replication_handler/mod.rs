@@ -259,6 +259,12 @@ where
     /// Returns `false` if the response is stale or `target` has no progress entry, so nothing was
     /// applied.
     ///
+    /// A conflict that drops the target's `LogsSince` plan starts an [`Inflight::Clear`], because
+    /// the stream that runs the plan may still read the log: a heartbeat's conflict, such as one
+    /// that finds the target's log reverted, never reaches the stream, and a stream pipelines its
+    /// reads ahead of the answers. The logs the plan could read stay unpurged until the replication
+    /// task confirms the clear, see [`Self::update_cleared()`].
+    ///
     /// This method intentionally bypasses `VecProgress::update_entry_with()`: when log
     /// reversion is explicitly allowed, [`Updater::update_conflicting()`] may reset
     /// `matching` to `None`. `VecProgress::reset_entry_with()` moves the entry down to
@@ -272,11 +278,20 @@ where
         inflight_id: Option<InflightId>,
     ) -> bool {
         let mut applied = false;
+        let mut dropped = None;
 
         self.leader.progress.reset_entry_with(&target, |entry| {
+            let plan = entry.data.inflight.clone();
             let mut updater = Updater::new(&*self.config, entry);
             applied = updater.update_conflicting(conflict.index(), inflight_id);
+            if plan.is_logs_since() && entry.data.inflight.is_none() {
+                dropped = Some(plan);
+            }
         });
+
+        if let Some(plan) = dropped {
+            self.clear_plan(target, plan);
+        }
 
         applied
     }
@@ -387,14 +402,71 @@ where
             Err(err_str) => {
                 tracing::warn!("update progress error: {}", err_str);
 
-                // Reset inflight state and it will retry.
-                self.leader.progress.update_data_with(&target, |data| data.inflight = Inflight::None);
+                // Reset inflight state and it will retry. A clear stays: it waits for the
+                // replication task, which may still read the log for the plan the clear dropped,
+                // and an error of that plan says nothing about whether it still does.
+                let mut dropped = None;
+                self.leader.progress.update_data_with(&target, |data| match data.inflight {
+                    Inflight::Clear { .. } => {}
+                    Inflight::Probe { .. } | Inflight::LogsSince { .. } => {
+                        dropped = Some(std::mem::replace(&mut data.inflight, Inflight::None));
+                    }
+                    Inflight::None | Inflight::Snapshot { .. } => data.inflight = Inflight::None,
+                });
+
+                // A transport that pulls requests on a task of its own may still read the log for
+                // the dropped plan.
+                if let Some(plan) = dropped {
+                    self.clear_plan(target, plan);
+                }
             }
         };
 
         // The purge job may be postponed because a replication task is using them.
         // Thus, we just try again to purge when progress is updated.
         self.try_purge_log();
+    }
+
+    /// Drop `plan`, the log plan of `target`, and ask the replication task to confirm that it no
+    /// longer reads the log for it.
+    ///
+    /// Until the task confirms, the progress entry holds back the purge of the logs the plan could
+    /// read and starts no other plan, see [`Inflight::Clear`].
+    fn clear_plan(&mut self, target: C::NodeId, plan: Inflight<C>) {
+        let inflight_id = self.state.new_inflight_id();
+        let Some(clear) = plan.into_clear(inflight_id) else {
+            return;
+        };
+
+        self.leader.progress.update_data_with(&target, |data| data.inflight = clear);
+        self.output.push_command(Command::ClearReplicate { target, inflight_id });
+    }
+
+    /// Apply the replication task's answer to [`Command::ClearReplicate`]: it no longer reads the
+    /// log for the plan the leader dropped, so the purge that the plan held back may run.
+    ///
+    /// An answer to an earlier clear, or from a replication stream that has been replaced, is
+    /// ignored.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_cleared(&mut self, stream_id: StreamId, target: C::NodeId, inflight_id: InflightId) {
+        tracing::debug!(
+            "{}: target: {}, stream_id: {}, inflight_id: {}",
+            func_name!(),
+            target,
+            stream_id,
+            inflight_id
+        );
+
+        if !self.leader.is_replication_stream_valid(&target, stream_id) {
+            return;
+        }
+
+        let mut cleared = false;
+        self.leader.progress.update_data_with(&target, |data| cleared = data.inflight.cleared(inflight_id));
+
+        if cleared {
+            self.try_purge_log();
+        }
     }
 
     /// Update replication streams to reflect replication progress change.
@@ -469,6 +541,7 @@ where
     ) {
         match inflight {
             Inflight::None => unreachable!("no data to send"),
+            Inflight::Clear { .. } => unreachable!("next_send() never plans a clear"),
             Inflight::Probe {
                 log_id_range,
                 inflight_id,

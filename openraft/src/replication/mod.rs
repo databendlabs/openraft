@@ -17,6 +17,9 @@ pub(crate) mod snapshot_transmitter_handle;
 pub(crate) mod stream_context;
 pub(crate) mod stream_state;
 
+#[cfg(test)]
+mod clear_plan_test;
+
 use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -60,6 +63,7 @@ use crate::raft_state::IOId;
 use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
 use crate::replication::inflight_append_queue::InflightAppendQueue;
+use crate::replication::replicate::Replicate;
 use crate::replication::replication_context::ReplicationContext;
 use crate::replication::stream_context::StreamContext;
 use crate::storage::RaftLogStorage;
@@ -269,37 +273,75 @@ where
 
     /// Decide what the next stream should carry.
     ///
-    /// With nothing left over, block until [`RaftCore`] hands over work. With a payload still
-    /// unfinished, adopt whatever [`RaftCore`] has since published instead: in `LogsSince` mode a
-    /// reverted log makes the unfinished payload obsolete, so resuming it would send entries that
-    /// no longer exist.
+    /// A payload still unfinished is resumed only while its plan is [`RaftCore`]'s current one.
+    /// Otherwise adopt the plan published since, as when a reverted log makes a `LogsSince` payload
+    /// obsolete: resuming the payload would send entries that may no longer exist. With nothing to
+    /// run, block until [`RaftCore`] hands over work.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn select_next_payload(&mut self) -> Result<Payload<C>, ReplicationClosed> {
-        if self.next_action.is_none() {
-            self.drain_events().await?;
-        } else {
-            // If there is new data to send, even when the current data is not yet finished sending
-            // discard the current data, start to send the new data.
-            // When data is reverted in LogsSince mode, it needs such a mechanism.
-            //
+        if self.next_action.is_some() {
             // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
             // would leave the change notification pending, and `drain_events()` would
             // later observe it and replay the same command, re-running an
             // already-acknowledged payload.
-            let new_data = self.event_watcher.replicate_rx.borrow_and_update().clone();
-            if self.inflight_id != Some(new_data.inflight_id) {
+            let current = self.event_watcher.replicate_rx.borrow_and_update().clone();
+            if let Some(current) = current
+                && self.inflight_id != Some(current.inflight_id)
+            {
                 tracing::info!(
-                    "ReplicationCore replaced current data with inflight id {:?} with new {}",
-                    self.inflight_id,
-                    new_data.inflight_id
+                    "ReplicationCore replaced current data with inflight id {} with {}",
+                    self.inflight_id.display(),
+                    current
                 );
-                self.inflight_id = Some(new_data.inflight_id);
-                self.next_action = Some(new_data.payload);
+                self.adopt(current).await;
             }
         }
 
+        while self.next_action.is_none() {
+            self.drain_events().await?;
+        }
+
         Ok(self.next_action.take().unwrap())
+    }
+
+    /// Run `replicate` from now on, in place of the plan this task ran before.
+    ///
+    /// A plan without payload clears the earlier plan: [`RaftCore`] waits for this task to confirm
+    /// that it no longer reads the log for it, and only then purges the logs that plan could read.
+    /// The task adopts a plan only between stream sessions. A session for the earlier plan ends
+    /// once its request stream ends, which the stream does at its next request after the plan
+    /// changes, and the transport has answered the requests in flight. It is not cut short: a
+    /// transport may not survive a request dropped halfway, and a dropped request may take with it
+    /// a commit that no later request carries.
+    ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    async fn adopt(&mut self, replicate: Replicate<C>) {
+        self.inflight_id = Some(replicate.inflight_id);
+        self.next_action = replicate.payload;
+
+        if self.next_action.is_none() {
+            self.confirm_clear(replicate.inflight_id).await;
+        }
+    }
+
+    /// Confirm to [`RaftCore`], answering the clear request `inflight_id`, that this task no longer
+    /// reads the log for the plan [`RaftCore`] dropped.
+    ///
+    /// Only the request stream reads the log, and only while it holds the stream state. Taking the
+    /// state waits for a read that the stream has started, which a transport that polls the stream
+    /// on a task of its own may still run after the stream session ended. Dropping the payload then
+    /// leaves the stream nothing to read.
+    ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    async fn confirm_clear(&mut self, inflight_id: InflightId) {
+        {
+            let mut stream_state = self.stream_state.lock().await;
+            stream_state.payload = None;
+        }
+
+        tracing::debug!("ReplicationCore cleared its plan; confirm inflight_id: {}", inflight_id);
+        self.replication_context.notify_cleared(inflight_id).await;
     }
 
     /// Stream `payload` to the target and consume the responses.
@@ -537,6 +579,8 @@ where
     /// Receive and process events from RaftCore and set `next_action` and `inflight_id`.
     ///
     /// - For log entries: sets `inflight_id = Some(id)` and `next_action = Some(payload)`
+    /// - For a clear: sets `inflight_id = Some(id)`, leaves `next_action = None`, and confirms the
+    ///   clear to RaftCore, see [`Self::adopt()`]
     /// - For committed update: sets `inflight_id = None` and `next_action =
     ///   Some(empty_range_payload)`
     ///
@@ -555,8 +599,10 @@ where
                 // This read delivers the command: `borrow_and_update()` marks it as seen so a
                 // value arriving after `changed()` resolved is not delivered a second time.
                 let data = self.event_watcher.replicate_rx.borrow_and_update().clone();
-                self.inflight_id = Some(data.inflight_id);
-                self.next_action = Some(data.payload);
+                // RaftCore publishes `None` only as the initial value, before any plan.
+                if let Some(data) = data {
+                    self.adopt(data).await;
+                }
             }
             Select2::Second(committed_res) => {
                 committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;
