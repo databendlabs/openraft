@@ -105,6 +105,18 @@ where
     /// Replicate log entries to a target.
     Replicate { target: C::NodeId, req: Replicate<C> },
 
+    /// Tell the replication task of `target` that the leader dropped the log plan it runs, and ask
+    /// it to confirm, with `inflight_id`, that it no longer reads the log for that plan.
+    ///
+    /// The task ends the stream session that runs the plan and answers with
+    /// [`Notification::ReplicateCleared`] once no read for the plan is running or can start. Until
+    /// then the progress entry of `target` holds back the [`Command::PurgeLog`] of the logs the
+    /// plan could read, see [`Inflight::Clear`], so the task never reads a purged log.
+    ///
+    /// [`Notification::ReplicateCleared`]: crate::core::notification::Notification::ReplicateCleared
+    /// [`Inflight::Clear`]: crate::progress::Inflight::Clear
+    ClearReplicate { target: C::NodeId, inflight_id: InflightId },
+
     /// Replicate snapshot to a target.
     ReplicateSnapshot {
         leader_vote: CommittedVoteOf<C>,
@@ -222,6 +234,9 @@ where
             Command::Replicate { target, req } => {
                 write!(f, "Replicate: target={}, req: {}", target, req)
             }
+            Command::ClearReplicate { target, inflight_id } => {
+                write!(f, "ClearReplicate: target={}, inflight_id: {}", target, inflight_id)
+            }
             Command::ReplicateSnapshot {
                 leader_vote,
                 target,
@@ -287,6 +302,7 @@ where
             (Command::BroadcastHeartbeat { session_id, bypass_min_interval },       Command::BroadcastHeartbeat { session_id: sb, bypass_min_interval: ib }, ) => session_id == sb && bypass_min_interval == ib,
             (Command::SaveCommittedAndApply { already_applied: already_committed, upto, },      Command::SaveCommittedAndApply { already_applied: b_committed, upto: b_upto, }, )  => already_committed == b_committed && upto == b_upto,
             (Command::Replicate { target, req },               Command::Replicate { target: b_target, req: other_req, }, )           => target == b_target && req == other_req,
+            (Command::ClearReplicate { target, inflight_id },  Command::ClearReplicate { target: b, inflight_id: ib })               => target == b && inflight_id == ib,
             (Command::BroadcastTransferLeader { req },         Command::BroadcastTransferLeader { req: b, }, )                       => req == b,
             (Command::RebuildReplicationStreams { leader_vote, targets, close_old_streams },   Command::RebuildReplicationStreams { leader_vote: lb, targets: b, close_old_streams: cb }, ) => leader_vote == lb && targets == b && close_old_streams == cb,
             (Command::SaveVote { vote },                       Command::SaveVote { vote: b })                                        => vote == b,
@@ -310,6 +326,7 @@ where
             (Command::BroadcastHeartbeat { .. },        _) => false,
             (Command::SaveCommittedAndApply { .. },     _) => false,
             (Command::Replicate { .. },                 _) => false,
+            (Command::ClearReplicate { .. },            _) => false,
             (Command::ReplicateSnapshot { .. },         _) => false,
             (Command::BroadcastTransferLeader { .. },   _) => false,
             (Command::CloseReplicationStreams,          _) => false,
@@ -341,6 +358,7 @@ where
             Command::BroadcastHeartbeat { .. }        => CommandName::BroadcastHeartbeat,
             Command::SaveCommittedAndApply { .. }     => CommandName::SaveCommittedAndApply,
             Command::Replicate { .. }                 => CommandName::Replicate,
+            Command::ClearReplicate { .. }            => CommandName::ClearReplicate,
             Command::ReplicateSnapshot { .. }         => CommandName::ReplicateSnapshot,
             Command::BroadcastTransferLeader { .. }   => CommandName::BroadcastTransferLeader,
             Command::CloseReplicationStreams          => CommandName::CloseReplicationStreams,
@@ -376,6 +394,7 @@ where
             Command::ReplicateCommitted { .. }        => CommandKind::Network,
             Command::BroadcastHeartbeat { .. }        => CommandKind::Network,
             Command::Replicate { .. }                 => CommandKind::Network,
+            Command::ClearReplicate { .. }            => CommandKind::Network,
             Command::ReplicateSnapshot { .. }         => CommandKind::Network,
             Command::BroadcastTransferLeader { .. }   => CommandKind::Network,
             Command::SendVote { .. }                  => CommandKind::Network,
@@ -405,6 +424,7 @@ where
             Command::ReplicateCommitted { .. }        => None,
             Command::BroadcastHeartbeat { .. }        => None,
             Command::Replicate { .. }                 => None,
+            Command::ClearReplicate { .. }            => None,
             Command::ReplicateSnapshot { .. }         => None,
             Command::BroadcastTransferLeader { .. }   => None,
             Command::SendVote { .. }                  => None,

@@ -48,6 +48,19 @@ where C: RaftTypeConfig
     Snapshot {
         inflight_id: InflightId,
     },
+
+    /// Waiting for the replication task to confirm that it no longer reads the log for a plan the
+    /// leader dropped, a probe or a stream of the logs after `prev`.
+    ///
+    /// The leader asks with [`Command::ClearReplicate`], and the task answers with the same
+    /// `inflight_id` once no read for the dropped plan is running or can start. Until then the
+    /// logs after `prev` must not be purged, and no other plan starts.
+    ///
+    /// [`Command::ClearReplicate`]: crate::engine::Command::ClearReplicate
+    Clear {
+        prev: Option<LogIdOf<C>>,
+        inflight_id: InflightId,
+    },
 }
 
 impl<C> Copy for Inflight<C>
@@ -66,6 +79,7 @@ where C: RaftTypeConfig
             Inflight::Probe { log_id_range: r, .. } => r.validate(),
             Inflight::LogsSince { .. } => Ok(()),
             Inflight::Snapshot { .. } => Ok(()),
+            Inflight::Clear { .. } => Ok(()),
         }
     }
 }
@@ -84,6 +98,9 @@ where C: RaftTypeConfig
                 write!(f, "LogsSince:{:?}, inflight_id:{}", prev, inflight_id)
             }
             Inflight::Snapshot { inflight_id } => write!(f, "Snapshot, inflight_id:{}", inflight_id),
+            Inflight::Clear { prev, inflight_id } => {
+                write!(f, "Clear:{:?}, inflight_id:{}", prev, inflight_id)
+            }
         }
     }
 }
@@ -115,6 +132,20 @@ where C: RaftTypeConfig
         Self::LogsSince { prev, inflight_id }
     }
 
+    /// Turn this log plan, which the leader drops, into the [`Inflight::Clear`] that waits for the
+    /// replication task to answer `inflight_id`.
+    ///
+    /// Returns `None` if `self` is not a log plan: no replication task reads the log for it.
+    pub(crate) fn into_clear(self, inflight_id: InflightId) -> Option<Self> {
+        let prev = match self {
+            Inflight::Probe { log_id_range, .. } => log_id_range.prev,
+            Inflight::LogsSince { prev, .. } => prev,
+            Inflight::None | Inflight::Snapshot { .. } | Inflight::Clear { .. } => return None,
+        };
+
+        Some(Self::Clear { prev, inflight_id })
+    }
+
     #[allow(dead_code)]
     pub(crate) fn with_id(self, id: u64) -> Self {
         match self {
@@ -130,6 +161,10 @@ where C: RaftTypeConfig
                 inflight_id: InflightId::new(id),
             },
             Inflight::LogsSince { prev, inflight_id: _ } => Inflight::LogsSince {
+                prev,
+                inflight_id: InflightId::new(id),
+            },
+            Inflight::Clear { prev, inflight_id: _ } => Inflight::Clear {
                 prev,
                 inflight_id: InflightId::new(id),
             },
@@ -205,6 +240,8 @@ where C: RaftTypeConfig
                 *prev = upto;
                 true
             }
+            // No follower answers a clear: only the replication task does, see `cleared()`.
+            Inflight::Clear { .. } => false,
         }
     }
 
@@ -241,6 +278,22 @@ where C: RaftTypeConfig
                 *self = Inflight::None;
                 true
             }
+            Inflight::Clear { .. } => false,
+        }
+    }
+
+    /// Update inflight state when the replication task confirms that it no longer reads the log for
+    /// the plan the leader dropped.
+    ///
+    /// Returns `true` if the confirmation answered the current [`Inflight::Clear`] and was applied;
+    /// `false` if it was stale and ignored.
+    pub(crate) fn cleared(&mut self, from_inflight_id: InflightId) -> bool {
+        match self {
+            Inflight::Clear { inflight_id, .. } if *inflight_id == from_inflight_id => {
+                *self = Inflight::None;
+                true
+            }
+            _ => false,
         }
     }
 }

@@ -112,14 +112,14 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                 target: 3,
                 req: Replicate {
                     inflight_id: InflightId::new(1),
-                    payload: Payload::LogsSince { prev: None },
+                    payload: Some(Payload::LogsSince { prev: None }),
                 },
             },
             Command::Replicate {
                 target: 4,
                 req: Replicate {
                     inflight_id: InflightId::new(2),
-                    payload: Payload::LogsSince { prev: None },
+                    payload: Some(Payload::LogsSince { prev: None }),
                 },
             },
         ],

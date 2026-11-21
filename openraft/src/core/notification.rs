@@ -85,6 +85,18 @@ where C: RaftTypeConfig
         inflight_id: Option<InflightId>,
     },
 
+    /// The replication task of `target` no longer reads the log for the plan the leader dropped.
+    ///
+    /// It answers [`Command::ClearReplicate`] with the same `inflight_id`, and it is sent only
+    /// once no read for the dropped plan is running or can start.
+    ///
+    /// [`Command::ClearReplicate`]: crate::engine::Command::ClearReplicate
+    ReplicateCleared {
+        stream_id: StreamId,
+        target: C::NodeId,
+        inflight_id: InflightId,
+    },
+
     HeartbeatProgress {
         stream_id: StreamId,
         sending_time: SendStamp<InstantOf<C>>,
@@ -124,6 +136,7 @@ where C: RaftTypeConfig
             Self::LocalIO { .. } => NotificationName::LocalIO,
             Self::LogPurged { .. } => NotificationName::LogPurged,
             Self::ReplicationProgress { .. } => NotificationName::ReplicationProgress,
+            Self::ReplicateCleared { .. } => NotificationName::ReplicateCleared,
             Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
             Self::StateMachine { .. } => NotificationName::StateMachine,
             Self::Tick { .. } => NotificationName::Tick,
@@ -196,6 +209,17 @@ where C: RaftTypeConfig
                     f,
                     "HeartbeatProgress: target={}, leader_vote: {}, sending_time: {}",
                     target, leader_vote, sending_time,
+                )
+            }
+            Self::ReplicateCleared {
+                stream_id,
+                target,
+                inflight_id,
+            } => {
+                write!(
+                    f,
+                    "ReplicateCleared: target={}, stream_id: {}, inflight_id: {}",
+                    target, stream_id, inflight_id
                 )
             }
             Self::StateMachine { command_result } => {

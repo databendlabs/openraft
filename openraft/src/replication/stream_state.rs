@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use display_more::DisplayOptionExt;
+use futures_util::FutureExt;
 
 use crate::LogIdOptionExt;
 use crate::RaftLogReader;
@@ -77,7 +78,8 @@ where
 
         let res = self.read_log_entries(log_id_range).await;
         let (entries, sending_range) = match res {
-            Ok(x) => x,
+            Ok(Some(x)) => x,
+            Ok(None) => return Ok(None),
             Err(sto_err) => {
                 tracing::error!("{} replication to target={}", sto_err, self.replication_context.target);
 
@@ -147,6 +149,14 @@ where
         // pipeline mode:
 
         loop {
+            // Checked before every request, not only while waiting: a stream with entries left to
+            // send never waits. A transport that polls the stream on a task of its own may keep
+            // polling it after the session ends, and the stream must then read nothing more for a
+            // plan that RaftCore dropped or replaced, or once RaftCore closed it.
+            if !self.is_plan_current() {
+                return None;
+            }
+
             let current: IOId<C> = self.event_watcher.io_submitted_rx.borrow_watched().clone();
             let last_log_id = current.last_log_id().cloned();
 
@@ -166,15 +176,8 @@ where
                 let selected = C::select4(cancel, data_change, io_change, committed_change).await;
                 match selected {
                     Select4::Second(_) => {
-                        let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
-                        if Some(new_data.inflight_id) != self.inflight_id {
-                            tracing::info!(
-                                "current inflight_id: {} received payload with new inflight_id: {}, quit",
-                                self.inflight_id.display(),
-                                new_data.inflight_id
-                            );
-                            return None;
-                        }
+                        tracing::debug!("replicate_rx changed");
+                        // Continue: the loop checks whether this plan is still current.
                     }
                     Select4::Third(_) => {
                         tracing::debug!("io_submitted_rx changed");
@@ -204,6 +207,36 @@ where
         self.backoff_consumer.backoff_if_enabled(self.replication_context.cancel_rx.changed()).await;
     }
 
+    /// Return `true` if this stream still runs RaftCore's current log plan for the target.
+    ///
+    /// RaftCore publishes another plan, with a new inflight id, when it replaces this one, and a
+    /// clear, a plan without payload, when it drops it, as when a heartbeat finds the follower's
+    /// log reverted. When it removes the target or stops leading, it closes the stream, which then
+    /// runs no plan at all.
+    fn is_plan_current(&mut self) -> bool {
+        // RaftCore sends nothing on `cancel_rx`: it resolves only once RaftCore drops the sender.
+        let closed = self.replication_context.cancel_rx.changed().now_or_never().is_some();
+        if closed {
+            tracing::info!(
+                "the stream of inflight_id: {} is closed; quit",
+                self.inflight_id.display()
+            );
+            return false;
+        }
+
+        let current = self.event_watcher.replicate_rx.borrow_watched().as_ref().map(|replicate| replicate.inflight_id);
+        if current == self.inflight_id {
+            return true;
+        }
+
+        tracing::info!(
+            "inflight_id: {} is no longer the current plan, which is {}; quit",
+            self.inflight_id.display(),
+            current.display()
+        );
+        false
+    }
+
     /// Advances the payload after generating a request through `sent`.
     ///
     /// Clears the payload when its completion rule is satisfied.
@@ -220,11 +253,12 @@ where
     /// Reads log entries from storage for the given range.
     ///
     /// Returns the entries and the actual range covered (may be smaller than requested
-    /// due to `limited_get_log_entries`).
+    /// due to `limited_get_log_entries`). Returns `None` if the plan this stream runs is no longer
+    /// current once the read returns.
     async fn read_log_entries(
         &mut self,
         log_id_range: LogIdRange<C>,
-    ) -> Result<(Vec<EntryOf<C>>, LogIdRange<C>), StorageError<C>> {
+    ) -> Result<Option<(Vec<EntryOf<C>>, LogIdRange<C>)>, StorageError<C>> {
         tracing::debug!("read_log_entries: log_id_range: {}", log_id_range);
 
         // Series of logs to send, and the last log id to send
@@ -246,13 +280,24 @@ where
             );
             // Heartbeat RPC, no logs to send, last log id is the same as prev_log_id
             let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
-            Ok((vec![], r))
+            Ok(Some((vec![], r)))
         } else {
             let max_entries = self.replication_context.config.max_payload_entries;
             let end = std::cmp::min(end, start + max_entries);
 
             // limited_get_log_entries will return logs smaller than the range [start, end).
             let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
+
+            // RaftCore keeps the entries of a plan it dropped until this task confirms the clear,
+            // which waits for this read. Once it closes the stream, as when it removes the target
+            // or stops leading, it may purge without waiting, so a read that overlapped the close
+            // may have been cut short by a purge. Its entries may not follow `prev`, and a follower
+            // checks that only with a `debug_assert!`: a release build would append them after
+            // `prev` and could leave a hole in its log. A read whose plan RaftCore dropped or
+            // replaced meanwhile is stale and is not sent either.
+            if !self.is_plan_current() {
+                return Ok(None);
+            }
 
             // Handle empty result gracefully: treat as heartbeat.
             // This violates the API contract but we don't panic.
@@ -269,7 +314,7 @@ where
                 );
                 C::sleep(sleep_duration).await;
                 let r = LogIdRange::new(rng.prev.clone(), rng.prev.clone());
-                return Ok((vec![], r));
+                return Ok(Some((vec![], r)));
             }
 
             let first = logs.first().map(|ent| ent.ref_log_id()).unwrap();
@@ -286,7 +331,7 @@ where
             );
 
             let r = LogIdRange::new(rng.prev.clone(), Some(last));
-            Ok((logs, r))
+            Ok(Some((logs, r)))
         }
     }
 }

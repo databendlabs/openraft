@@ -21,33 +21,24 @@ where C: RaftTypeConfig
     pub(crate) inflight_id: InflightId,
 
     /// Specifies which logs to replicate.
-    pub(crate) payload: Payload<C>,
-}
-
-impl<C> Default for Replicate<C>
-where C: RaftTypeConfig
-{
-    fn default() -> Self {
-        Replicate {
-            inflight_id: InflightId::new(0),
-            payload: Payload::Probe {
-                log_id_range: LogIdRange::new(None, None),
-            },
-        }
-    }
+    ///
+    /// `None` clears the plan the replication task ran before: the task stops reading the log for
+    /// it and confirms that to RaftCore with `inflight_id`, see
+    /// [`Command::ClearReplicate`](crate::engine::Command::ClearReplicate).
+    pub(crate) payload: Option<Payload<C>>,
 }
 
 impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.payload {
-            Payload::Probe { log_id_range } => {
+            Some(Payload::Probe { log_id_range }) => {
                 write!(
                     f,
                     "Replicate{{probe: {}, inflight_id: {}}}",
                     log_id_range, self.inflight_id
                 )
             }
-            Payload::LogsSince { prev } => {
+            Some(Payload::LogsSince { prev }) => {
                 write!(
                     f,
                     "Replicate{{logs_since: {}, inflight_id: {}}}",
@@ -55,6 +46,7 @@ impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
                     self.inflight_id
                 )
             }
+            None => write!(f, "Replicate{{clear, inflight_id: {}}}", self.inflight_id),
         }
     }
 }
@@ -66,7 +58,7 @@ where C: RaftTypeConfig
     pub(crate) fn new_probe(log_id_range: LogIdRange<C>, inflight_id: InflightId) -> Self {
         Self {
             inflight_id,
-            payload: Payload::Probe { log_id_range },
+            payload: Some(Payload::Probe { log_id_range }),
         }
     }
 
@@ -74,7 +66,16 @@ where C: RaftTypeConfig
     pub(crate) fn new_logs_since(prev: Option<LogIdOf<C>>, inflight_id: InflightId) -> Self {
         Self {
             inflight_id,
-            payload: Payload::LogsSince { prev },
+            payload: Some(Payload::LogsSince { prev }),
+        }
+    }
+
+    /// Creates a request to clear the plan the replication task ran before, which the task answers
+    /// with `inflight_id`.
+    pub(crate) fn new_clear(inflight_id: InflightId) -> Self {
+        Self {
+            inflight_id,
+            payload: None,
         }
     }
 }

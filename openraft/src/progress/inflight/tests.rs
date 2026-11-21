@@ -286,3 +286,63 @@ fn test_inflight_logs_since_conflict() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_inflight_into_clear() -> anyhow::Result<()> {
+    // A dropped log plan keeps the logs after its prev until the replication task answers
+    let probe = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), InflightId::new(1));
+    let logs_since = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(1));
+    for plan in [probe, logs_since] {
+        let expected = Inflight::Clear {
+            prev: Some(log_id(5)),
+            inflight_id: InflightId::new(2),
+        };
+        assert_eq!(Some(expected), plan.into_clear(InflightId::new(2)));
+    }
+
+    // No replication task reads the log for anything else
+    let snapshot = Inflight::<UTConfig>::snapshot(InflightId::new(1));
+    let clear = logs_since.into_clear(InflightId::new(2)).unwrap();
+    for other in [Inflight::None, snapshot, clear] {
+        assert_eq!(None, other.into_clear(InflightId::new(3)));
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_inflight_cleared() -> anyhow::Result<()> {
+    let clear = Inflight::<UTConfig>::Clear {
+        prev: Some(log_id(5)),
+        inflight_id: InflightId::new(2),
+    };
+
+    // Only the answer to this clear ends it
+    {
+        let mut f = clear;
+        assert!(!f.cleared(InflightId::new(1)), "an answer to an earlier clear is stale");
+        assert_eq!(clear, f);
+
+        assert!(f.cleared(InflightId::new(2)));
+        assert_eq!(Inflight::<UTConfig>::None, f);
+        assert!(!f.cleared(InflightId::new(2)), "a repeated answer is stale");
+    }
+
+    // A late ack or conflict of the dropped plan does not end it
+    {
+        let mut f = clear;
+        assert!(!f.ack(Some(log_id(7)), InflightId::new(1)));
+        assert!(!f.conflict(7, InflightId::new(1)));
+        assert_eq!(clear, f);
+    }
+
+    // A plan is no clear
+    {
+        let mut f = Inflight::<UTConfig>::logs_since(Some(log_id(5)), InflightId::new(2));
+        let original = f;
+        assert!(!f.cleared(InflightId::new(2)));
+        assert_eq!(original, f);
+    }
+
+    Ok(())
+}

@@ -86,9 +86,9 @@ fn test_become_leader() -> anyhow::Result<()> {
             target: 0,
             req: Replicate {
                 inflight_id: InflightId::new(1),
-                payload: Payload::Probe {
+                payload: Some(Payload::Probe {
                     log_id_range: crate::log_id_range::LogIdRange::new(None, Some(log_id(2, 1, 0))),
-                },
+                }),
             }
         }
     ]);

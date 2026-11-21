@@ -152,6 +152,21 @@ where C: RaftTypeConfig
         self.tx_notify.send(Notification::StorageError { error }).await.ok();
     }
 
+    /// Confirm to [`RaftCore`] that this task no longer reads the log for the plan RaftCore
+    /// dropped, answering the clear request `inflight_id`.
+    ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    pub(crate) async fn notify_cleared(&self, inflight_id: InflightId) {
+        self.tx_notify
+            .send(Notification::ReplicateCleared {
+                stream_id: self.stream_id,
+                target: self.target.clone(),
+                inflight_id,
+            })
+            .await
+            .ok();
+    }
+
     /// Report that the target answered a request sent at `sending_time`.
     ///
     /// Any successful exchange with the target also proves the leader is still reachable, so this

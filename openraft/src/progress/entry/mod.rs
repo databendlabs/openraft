@@ -179,6 +179,11 @@ where C: RaftTypeConfig
                 let lid = Some(upto);
                 lid > prev.as_ref()
             }
+            Inflight::Clear { prev, .. } => {
+                // The replication task may still read any log after prev for the dropped plan.
+                let lid = Some(upto);
+                lid > prev.as_ref()
+            }
         }
     }
 
@@ -348,6 +353,7 @@ where C: RaftTypeConfig
             }
             Inflight::Snapshot { inflight_id: _ } => {}
             Inflight::LogsSince { .. } => {}
+            Inflight::Clear { .. } => {}
         }
         Ok(())
     }

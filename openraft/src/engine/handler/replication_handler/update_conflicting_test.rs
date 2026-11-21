@@ -7,6 +7,7 @@ use pretty_assertions::assert_eq;
 use crate::Membership;
 use crate::MembershipState;
 use crate::Vote;
+use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
@@ -242,6 +243,68 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// A heartbeat's conflict that finds the target's log reverted drops its `LogsSince` plan, which
+/// the target's stream never hears of. The leader asks the replication task to confirm that it no
+/// longer reads the log for the plan, and starts no other plan and purges the entries the plan held
+/// back only once the task answers.
+#[test]
+fn reverted_log_purges_only_after_the_stream_confirms_the_clear() {
+    let mut eng = eng();
+    eng.config.allow_log_reversion = true;
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 1), log_id(2, 1, 3), log_id(2, 1, 10)]);
+    eng.state.purge_upto = Some(log_id(2, 1, 8));
+    eng.state.last_inflight_id = 10;
+    update_entry(&mut eng, 2, |entry| {
+        entry.matching = Some(log_id(2, 1, 5));
+        entry.data.searching_end = 6;
+        entry.data.inflight = Inflight::logs_since(Some(log_id(2, 1, 5)), InflightId::new(7));
+    });
+    let stream_id = entry(&eng, 2).data.stream_id;
+    let clear = InflightId::new(11);
+
+    tracing::info!(target = 2, "a heartbeat at index 5 finds the log of node 2 reverted");
+    {
+        let response = Progress {
+            target: 2,
+            result: Ok(ReplicationResult(Err(log_id(2, 1, 5)))),
+            hint: None,
+        };
+        eng.replication_handler().update_progress(stream_id, response, None);
+
+        let expected = vec![Command::ClearReplicate {
+            target: 2,
+            inflight_id: clear,
+        }];
+        assert_eq!(expected, eng.output.take_commands());
+        let expected = Inflight::Clear {
+            prev: Some(log_id(2, 1, 5)),
+            inflight_id: clear,
+        };
+        assert_eq!(expected, entry(&eng, 2).data.inflight);
+    }
+
+    tracing::info!(target = 2, "node 2 gets no new plan before the clear is confirmed");
+    {
+        eng.replication_handler().initiate_replication();
+
+        let commands = eng.output.take_commands();
+        let to_node_2 = commands.iter().any(|cmd| match cmd {
+            Command::Replicate { target, .. } | Command::ReplicateSnapshot { target, .. } => *target == 2,
+            _ => false,
+        });
+        assert!(!to_node_2, "expect no plan for node 2, got {:?}", commands);
+    }
+
+    tracing::info!(target = 2, "the replication task confirms the clear: the purge runs");
+    {
+        eng.replication_handler().update_cleared(stream_id, 2, clear);
+
+        let expected = vec![Command::PurgeLog { upto: log_id(2, 1, 8) }];
+        assert_eq!(expected, eng.output.take_commands());
+        assert_eq!(Inflight::None, entry(&eng, 2).data.inflight);
+    }
 }
 
 fn hint_probe_engine() -> Engine<UTConfig> {
