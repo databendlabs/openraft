@@ -49,6 +49,13 @@ where
 
     pub(crate) inflight_id: Option<InflightId>,
 
+    /// Set when this stream stopped because RaftCore no longer counts its plan.
+    ///
+    /// [`ReplicationCore`] then drops the plan instead of resuming it, and waits for the next one.
+    ///
+    /// [`ReplicationCore`]: crate::replication::ReplicationCore
+    pub(crate) plan_obsolete: bool,
+
     /// Handle that samples backoff delays and clears the current backoff on reset.
     /// `ReplicationCore` enables new backoff after RPC errors.
     pub(crate) backoff_consumer: BackoffConsumer<C>,
@@ -147,6 +154,11 @@ where
         // pipeline mode:
 
         loop {
+            if self.is_plan_obsolete(&prev) {
+                self.plan_obsolete = true;
+                return None;
+            }
+
             let current: IOId<C> = self.event_watcher.io_submitted_rx.borrow_watched().clone();
             let last_log_id = current.last_log_id().cloned();
 
@@ -166,15 +178,8 @@ where
                 let selected = C::select4(cancel, data_change, io_change, committed_change).await;
                 match selected {
                     Select4::Second(_) => {
-                        let new_data = self.event_watcher.replicate_rx.borrow_watched().clone();
-                        if Some(new_data.inflight_id) != self.inflight_id {
-                            tracing::info!(
-                                "current inflight_id: {} received payload with new inflight_id: {}, quit",
-                                self.inflight_id.display(),
-                                new_data.inflight_id
-                            );
-                            return None;
-                        }
+                        tracing::debug!("replicate_rx changed");
+                        // Continue: the loop checks whether the new value replaces this plan.
                     }
                     Select4::Third(_) => {
                         tracing::debug!("io_submitted_rx changed");
@@ -202,6 +207,40 @@ where
     /// Waits for the backoff duration if backoff is enabled, or returns immediately.
     async fn backoff_if_enabled(&mut self) {
         self.backoff_consumer.backoff_if_enabled(self.replication_context.cancel_rx.changed()).await;
+    }
+
+    /// Return `true` if RaftCore no longer counts the plan of this `LogsSince` stream, whose next
+    /// entry follows `prev`.
+    ///
+    /// RaftCore replaced the plan if `replicate_rx` holds another inflight id. It also dropped the
+    /// plan if the entry after `prev` is purged, because it purges no entry that a plan in flight
+    /// still has to send. That happens when a follower's log reverts and RaftCore sends it a
+    /// snapshot instead, which this task is not told about: without this check, the stream would
+    /// find its entries purged and keep sending entry-less requests at `prev`.
+    fn is_plan_obsolete(&self, prev: &Option<LogIdOf<C>>) -> bool {
+        let latest = self.event_watcher.replicate_rx.borrow_watched().inflight_id;
+        if self.inflight_id != Some(latest) {
+            tracing::info!(
+                "current inflight_id: {} is replaced by inflight_id: {}, quit",
+                self.inflight_id.display(),
+                latest
+            );
+            return true;
+        }
+
+        let purged = self.event_watcher.purged_rx.borrow_watched().clone();
+        let next_is_purged = purged.as_ref().is_some_and(|purged| prev.next_index() <= purged.index());
+        if next_is_purged {
+            tracing::info!(
+                "the entry after prev: {} is purged through {}; inflight_id: {} is dropped, quit",
+                prev.display(),
+                purged.display(),
+                self.inflight_id.display()
+            );
+            return true;
+        }
+
+        false
     }
 
     /// Advances the payload after generating a request through `sent`.
