@@ -6,6 +6,7 @@ mod send_error;
 mod try_recv_error;
 
 use std::future::Future;
+use std::ops::RangeInclusive;
 
 pub use buffered_receiver::BufferedReceiver;
 use openraft_macros::since;
@@ -34,8 +35,19 @@ pub trait Mpsc: Sized {
     /// Tokio-backed channels of Tokio, Monoio and the simulator panic when `buffer` is 0 or
     /// greater than `tokio::sync::Semaphore::MAX_PERMITS`. Compio accepts 0 and creates a
     /// rendezvous channel, whose send completes only when a receiver takes the value.
+    ///
+    /// [`buffer_size_range()`](Self::buffer_size_range) gives the sizes that this runtime accepts.
     #[track_caller]
     fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>);
+
+    /// The `buffer` sizes that [`channel()`](Self::channel) accepts.
+    ///
+    /// A caller can reject a size outside this range before `channel()` panics on it. The default
+    /// is every size; an adapter whose channel rejects some sizes overrides it.
+    #[since(version = "0.10.2")]
+    fn buffer_size_range() -> RangeInclusive<usize> {
+        0..=usize::MAX
+    }
 }
 
 /// Send values to the associated [`MpscReceiver`].
