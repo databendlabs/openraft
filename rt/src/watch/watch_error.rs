@@ -1,6 +1,9 @@
 use std::fmt;
 
-/// Error returned by the `WatchSender`.
+/// Error returned by [`WatchSender::send()`](crate::WatchSender::send) when every receiver has
+/// been dropped.
+///
+/// The field holds the value that was not sent.
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(pub T);
 
@@ -18,7 +21,8 @@ impl<T> fmt::Display for SendError<T> {
 
 impl<T> std::error::Error for SendError<T> {}
 
-/// Error returned by the `WatchReceiver`.
+/// Error returned by [`WatchReceiver::changed()`](crate::WatchReceiver::changed), and the waits
+/// built on it, once every sender has been dropped and this receiver has seen the final value.
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct RecvError(pub ());
 

@@ -99,7 +99,8 @@ where
 
     /// Creates a new Receiver connected to this Sender.
     ///
-    /// All messages sent after this call will be visible to the new Receiver.
+    /// Values sent after this call notify the new Receiver, but the channel keeps only the latest
+    /// value: a value that is replaced before the Receiver reads it is never observed.
     #[track_caller]
     fn subscribe(&self) -> W::Receiver<T>;
 
@@ -157,7 +158,9 @@ where
     /// - If the newest value has already been marked seen, then the method sleeps until a new
     ///   message is sent by the [`WatchSender`], or until the [`WatchSender`] is dropped.
     ///
-    /// This method returns an error if and only if the [`WatchSender`] is dropped.
+    /// This method returns [`RecvError`] once every [`WatchSender`] is dropped and this receiver
+    /// has seen the final value: a final value that this receiver has not seen is still reported
+    /// as a change first.
     async fn changed(&mut self) -> Result<(), RecvError>;
 
     /// Returns a reference to the most recently sent value
@@ -184,11 +187,15 @@ where
 
     /// Waits until the watched value is greater than or equal to the given value.
     ///
-    /// This method blocks until the watched value becomes `>= value`,
-    /// checking after each change notification from the sender.
+    /// This method checks the latest value when it starts and each time a change wakes it. A
+    /// value that is replaced before a check is never seen.
     ///
     /// Returns `Ok(T)` containing the value that satisfied the condition, or `Err(RecvError)`
-    /// if the sender is dropped before the target value is reached.
+    /// if every sender is dropped before this receiver observes a value `>= value`.
+    ///
+    /// The wait does not mark the returned value as seen. If this receiver had not seen that value
+    /// when the wait began, a following [`changed()`](Self::changed) returns at once for the same
+    /// value; if the wait had to sleep until it arrived, `changed()` waits for a newer one.
     ///
     /// # Requirements
     ///
@@ -196,17 +203,21 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let (tx, mut rx) = watch::channel(0);
+    /// ```
+    /// use openraft_rt::Watch;
+    /// use openraft_rt::WatchReceiver;
+    /// use openraft_rt::WatchSender;
     ///
-    /// // Wait until value is >= 5
-    /// tokio::spawn(async move {
-    ///     let final_value = rx.wait_until_ge(&5).await.unwrap();
-    ///     println!("Value reached: {}", final_value);
-    /// });
+    /// async fn wait_for_five<W>()
+    /// where W: Watch
+    /// {
+    ///     let (tx, mut rx) = W::channel(0_u64);
+    ///     tx.send(3).unwrap();
+    ///     tx.send(5).unwrap();
     ///
-    /// tx.send(3).unwrap();
-    /// tx.send(5).unwrap(); // Unblocks the receiver with value 5
+    ///     let reached = rx.wait_until_ge(&5).await.unwrap();
+    ///     assert_eq!(reached, 5);
+    /// }
     /// ```
     async fn wait_until_ge(&mut self, value: &T) -> Result<T, RecvError>
     where T: PartialOrd + Clone {
@@ -223,11 +234,16 @@ where
 
     /// Waits until the watched value satisfies the given condition.
     ///
-    /// This method blocks until the watched value satisfies `condition`,
-    /// checking after each change notification from the sender.
+    /// This method checks the latest value when it starts and each time a change wakes it, so a
+    /// value that satisfies `condition` only until the next send can be missed.
     ///
     /// Returns `Ok(T)` containing the value that satisfied the condition, or `Err(RecvError)`
-    /// if the sender is dropped before the condition is met.
+    /// if every sender is dropped before this receiver observes a value that satisfies it.
+    ///
+    /// The wait does not mark the returned value as seen. If this receiver had not seen that value
+    /// when the wait began, a following [`changed()`](Self::changed) returns at once for the same
+    /// value; if the wait had to sleep until it arrived, `changed()` waits for a newer one.
+    /// `condition` can be called more than once for the same value.
     ///
     /// # Requirements
     ///
@@ -235,17 +251,24 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let (tx, mut rx) = watch::channel(0);
+    /// The channel starts at an odd value. Both sends happen before the wait first checks, so it
+    /// sees only 4.
     ///
-    /// // Wait until value is even
-    /// tokio::spawn(async move {
-    ///     let final_value = rx.wait_until(|v| v % 2 == 0).await.unwrap();
-    ///     println!("Even value reached: {}", final_value);
-    /// });
+    /// ```
+    /// use openraft_rt::Watch;
+    /// use openraft_rt::WatchReceiver;
+    /// use openraft_rt::WatchSender;
     ///
-    /// tx.send(3).unwrap();
-    /// tx.send(4).unwrap(); // Unblocks the receiver with value 4
+    /// async fn wait_for_even<W>()
+    /// where W: Watch
+    /// {
+    ///     let (tx, mut rx) = W::channel(1_u64);
+    ///     tx.send(3).unwrap();
+    ///     tx.send(4).unwrap();
+    ///
+    ///     let even = rx.wait_until(|v| v % 2 == 0).await.unwrap();
+    ///     assert_eq!(even, 4);
+    /// }
     /// ```
     async fn wait_until<F>(&mut self, condition: F) -> Result<T, RecvError>
     where

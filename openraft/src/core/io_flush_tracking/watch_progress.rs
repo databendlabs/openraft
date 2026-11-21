@@ -83,6 +83,10 @@ where
     /// Returns the current progress state once the condition is satisfied. If the progress
     /// is already >= `target`, returns immediately.
     ///
+    /// The wait does not mark the returned state as seen: if this handle had not seen that state
+    /// when the wait began, a following [`next()`](Self::next) or [`changed()`](Self::changed)
+    /// returns at once for the same state.
+    ///
     /// # Errors
     ///
     /// Returns `RecvError` if the sender is dropped (node is shutting down).
@@ -102,6 +106,11 @@ where
     ///
     /// Returns the current progress state once the condition is satisfied. If the progress
     /// already satisfies the condition, returns immediately.
+    ///
+    /// The wait does not mark the returned state as seen: if this handle had not seen that state
+    /// when the wait began, a following [`next()`](Self::next) or [`changed()`](Self::changed)
+    /// returns at once for the same state. `condition` can be called more than once for the same
+    /// state.
     ///
     /// # Errors
     ///
