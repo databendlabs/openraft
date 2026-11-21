@@ -25,21 +25,6 @@ impl<K: fmt::Display, V: fmt::Display> fmt::Display for DisplayBTreeMapOptValue<
     }
 }
 
-#[allow(unused)]
-pub(crate) trait DisplayBtreeMapOptValueExt<'a, K: fmt::Display, V: fmt::Display> {
-    fn display(&'a self) -> DisplayBTreeMapOptValue<'a, K, V>;
-}
-
-impl<K, V> DisplayBtreeMapOptValueExt<'_, K, V> for BTreeMap<K, Option<V>>
-where
-    K: fmt::Display,
-    V: fmt::Display,
-{
-    fn display(&self) -> DisplayBTreeMapOptValue<'_, K, V> {
-        DisplayBTreeMapOptValue(self)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
