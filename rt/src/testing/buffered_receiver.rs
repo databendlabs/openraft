@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::time::Duration;
 
 use super::Suite;
@@ -49,6 +50,43 @@ where S: OneshotSender<()>
             return;
         };
         let _ = dropped.send(());
+    }
+}
+
+/// A source whose third receive takes its value from `inner`, signals `taken`, and returns the
+/// value only after `release` completes: dropping that receive loses the value.
+struct SlowThirdReceiver<R, S, Rx>
+where S: OneshotSender<()>
+{
+    inner: R,
+    received: usize,
+    taken: Option<S>,
+    release: Option<Rx>,
+}
+
+impl<R, S, Rx, T> MpscReceiver<T> for SlowThirdReceiver<R, S, Rx>
+where
+    R: MpscReceiver<T>,
+    S: OneshotSender<()>,
+    Rx: Future + OptionalSend,
+    T: OptionalSend,
+{
+    async fn recv(&mut self) -> Option<T> {
+        let value = self.inner.recv().await?;
+        self.received += 1;
+        if self.received == 3 {
+            if let Some(taken) = self.taken.take() {
+                let _ = taken.send(());
+            }
+            if let Some(release) = self.release.take() {
+                release.await;
+            }
+        }
+        Some(value)
+    }
+
+    fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        self.inner.try_recv()
     }
 }
 
@@ -133,6 +171,41 @@ where Rt: AsyncRuntime
         assert_eq!(Some(42), received);
         let closed = Rt::timeout(TIMEOUT, rx.recv()).await.unwrap();
         assert_eq!(None, closed);
+    }
+
+    /// A receive that is pending when the output takes the previous send keeps its value.
+    pub(super) async fn test_buffered_receiver_keeps_a_pending_receive() {
+        let (tx, rx) = Rt::Mpsc::channel(4);
+        for value in 1..=4_u64 {
+            tx.send(value).await.unwrap();
+        }
+        drop(tx);
+
+        let (taken, taken_rx) = Rt::Oneshot::channel();
+        let (release, release_rx) = Rt::Oneshot::channel::<()>();
+        let source = SlowThirdReceiver {
+            inner: rx,
+            received: 0,
+            taken: Some(taken),
+            release: Some(release_rx),
+        };
+        let mut rx = source.with_unbounded_buffer::<Rt>();
+
+        // The output holds 1, the send of 2 waits for room, and the receive holding 3 waits.
+        Rt::timeout(TIMEOUT, taken_rx).await.unwrap().unwrap();
+        let first = Rt::timeout(TIMEOUT, rx.recv()).await.unwrap();
+        assert_eq!(Some(1), first);
+        let _ = release.send(());
+
+        let drain = async {
+            let mut received = Vec::new();
+            while let Some(value) = rx.recv().await {
+                received.push(value);
+            }
+            received
+        };
+        let rest = Rt::timeout(TIMEOUT, drain).await.unwrap();
+        assert_eq!(vec![2, 3, 4], rest);
     }
 
     #[cfg(feature = "single-threaded")]

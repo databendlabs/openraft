@@ -109,6 +109,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_buffered_receiver_drop_idle().await;
             Self::test_buffered_receiver_drop_backlog().await;
             Self::test_buffered_receiver_cancel_receive().await;
+            Self::test_buffered_receiver_keeps_a_pending_receive().await;
             #[cfg(feature = "single-threaded")]
             Self::test_buffered_receiver_non_send().await;
             Self::test_mpsc_try_peek_preserves_order().await;
