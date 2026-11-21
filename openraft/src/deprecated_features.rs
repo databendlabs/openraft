@@ -25,7 +25,15 @@ compile_error!(
 #[cfg(feature = "single-term-leader")]
 compile_error!(
     r#"`single-term-leader` is removed since `0.10.0`.
-To enable standard Raft mode:
-- either add `LeaderId = openraft::impls::leader_id_std::LeaderId` to `declare_raft_types!(YourTypeConfig)` statement,
-- or add `type LeaderId: openraft::impls::leader_id_std::LeaderId` to the `RaftTypeConfig` implementation."#
+To enable standard Raft mode, remove the feature flag and configure the leader ID.
+With `declare_raft_types!` and the default `u64` term and node ID types:
+
+    openraft::declare_raft_types!(
+        YourTypeConfig:
+            LeaderId = openraft::impls::leader_id_std::LeaderId<u64, u64>,
+    );
+
+Or, in a manual `RaftTypeConfig` implementation, use:
+
+    type LeaderId = openraft::impls::leader_id_std::LeaderId<Self::Term, Self::NodeId>;"#
 );

@@ -1,18 +1,22 @@
 use openraft_macros::since;
 
-/// The proposed membership is not one of the transitions a direct membership append supports.
+/// The current membership does not support appending the proposed membership in one log entry.
 ///
-/// A direct append writes the caller's exact membership as one log entry, without an intermediate
-/// joint membership. It is accepted only when quorum intersection can be proved by a simple rule:
-/// a voter set of one membership and a voter set of the other have intersecting majorities, i.e.
-/// every majority of the first intersects every majority of the second.
+/// The configured [`RaftMembership::supports_direct_transition_to()`] decides whether the append
+/// can proceed without an intermediate joint membership. It may return `true` only if every read
+/// quorum of either membership intersects every write quorum of the other. A `false` result means
+/// the implementation does not support the direct append; it does not necessarily mean the
+/// transition is unsafe.
 ///
-/// For two uniform memberships the rule is exact, so a rejected transition between them is unsafe.
-/// When either membership has more than one voter set, the rule is conservative, so a rejected
-/// transition is **unsupported**, not necessarily unsafe. Some rejected transitions do have
-/// intersecting quorums; Openraft does not run a general quorum-intersection solver to find them.
+/// # Default majority membership
 ///
-/// # Rejected transitions
+/// The default [`Membership`](crate::Membership) supports the direct transition when a voter set of
+/// one membership and a voter set of the other have intersecting majorities: every majority of the
+/// first intersects every majority of the second. This rule is exact when both memberships are
+/// uniform (one voter set each), so a rejected transition between them is unsafe. With more than
+/// one voter set in either membership, the rule can reject transitions that are safe.
+///
+/// ## Rejected transitions
 ///
 /// Replacing one of three voters with another in one step:
 ///
@@ -55,6 +59,8 @@ use openraft_macros::since;
 /// majority `{a,b}` of `{a,b,c}` misses majority `{c,d,e}` of `{b,c,d,e}`, and majority `{a,d}`
 /// of `{a,d,e}` misses `{b,c,e}`. So this rule cannot see the intersection and rejects the
 /// transition.
+///
+/// [`RaftMembership::supports_direct_transition_to()`]: crate::membership::RaftMembership::supports_direct_transition_to
 #[since(
     version = "0.10.0",
     change = "removed `NID` generic parameter; `previous` and `proposed` from `Vec<BTreeSet<NID>>` to `String`"

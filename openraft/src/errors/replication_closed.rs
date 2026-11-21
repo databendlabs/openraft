@@ -1,6 +1,7 @@
-/// Replication is closed intentionally.
+/// The current replication task or snapshot transfer must stop.
 ///
-/// No further replication action should be taken.
+/// This can follow an explicit cancellation or happen without one, for example
+/// when the state machine worker can no longer answer a snapshot request.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[error("Replication is closed: {reason}")]
