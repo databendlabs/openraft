@@ -14,7 +14,11 @@
 //!
 //! ## Features
 //!
-//! - `single-threaded` - Disables `Send` + `Sync` bounds on [`OptionalSend`] and [`OptionalSync`]
+//! - `single-threaded` - Disables `Send` + `Sync` bounds on [`OptionalSend`] and [`OptionalSync`].
+//!   It also drops `Send` from the boxed futures, streams, iterators, callbacks and values, such as
+//!   [`BoxFuture`]. A box can then hold something that is not `Send`, such as a future that
+//!   captures an `Rc`, but it can no longer move to another thread: code that requires
+//!   `BoxFuture<'static>: Send` compiles only without this feature.
 
 mod async_runtime;
 #[macro_use]

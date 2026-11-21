@@ -13,6 +13,10 @@ use crate::OptionalSend;
 use crate::OptionalSync;
 
 /// A measurement of a monotonically non-decreasing clock.
+///
+/// Each runtime supplies its own clock, and reading it can require an active runtime context: the
+/// simulated clock of `openraft-rt-sim` exists only inside its `block_on`. Measure time only
+/// between instants of the same clock.
 pub trait Instant:
     Add<Duration, Output = Self>
     + AddAssign<Duration>
@@ -34,12 +38,17 @@ pub trait Instant:
     + 'static
 {
     /// Return the current instant.
+    ///
+    /// A runtime whose clock needs an active context, such as a simulated clock, panics when this
+    /// is called outside that context.
     #[track_caller]
     fn now() -> Self;
 
-    /// Return the amount of time since the instant.
+    /// Return the amount of time since the instant, or zero if the instant is in the future.
     ///
-    /// The returned duration is guaranteed to be non-negative.
+    /// This reads the current clock, so it has the same context requirement as [`Self::now`]. A
+    /// caller that already has two instants of the same clock can use
+    /// [`Self::saturating_duration_since`], which does not read the clock.
     #[track_caller]
     fn elapsed(&self) -> Duration {
         let now = Self::now();

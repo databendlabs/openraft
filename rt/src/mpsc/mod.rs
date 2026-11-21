@@ -79,7 +79,13 @@ pub trait MpscReceiver<T>: OptionalSend {
     /// Drain this receiver in a background task, buffering messages without a backlog limit.
     ///
     /// The producer can keep sending while the consumer is busy. Memory use grows with the
-    /// backlog. Dropping the returned receiver cancels the task and releases the source receiver.
+    /// backlog.
+    ///
+    /// [`try_recv`](Self::try_recv) on the returned receiver can return [`TryRecvError::Empty`]
+    /// while the task still holds messages, or before the task has forwarded the closure of this
+    /// receiver. Dropping the returned receiver cancels the task. This receiver is dropped later,
+    /// when the runtime runs the cancelled task to its end, so a send can still succeed after the
+    /// drop without being delivered. See [`BufferedReceiver`].
     #[since(version = "0.10.0")]
     fn with_unbounded_buffer<Rt>(self) -> BufferedReceiver<Rt, T>
     where

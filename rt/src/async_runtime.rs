@@ -66,7 +66,13 @@ pub trait AsyncRuntime: Debug + 'static {
     /// to await the outcome of a [`Future`].
     type Timeout<R, T: Future<Output = R> + OptionalSend>: Future<Output = Result<R, Self::TimeoutError>> + OptionalSend;
 
-    /// Type of thread-local random number generator.
+    /// Type of the random number generator that [`Self::thread_rng`] returns.
+    ///
+    /// Each runtime supplies its own. Tokio, Compio and Monoio return `rand`'s `ThreadRng`, which
+    /// is bound to the calling thread, while
+    /// [`DeterministicRng`](crate::deterministic_rng::DeterministicRng) and the simulator return
+    /// an owned, seeded `SmallRng`. Generic code that moves the generator to another thread needs
+    /// a bound such as `Self::ThreadLocalRng: Send`.
     type ThreadLocalRng: rand::Rng;
 
     /// Spawn a new task.
@@ -195,8 +201,8 @@ pub trait AsyncRuntime: Debug + 'static {
     ///
     /// # Note
     ///
-    /// This is a per-thread instance, which cannot be shared across threads or
-    /// sent to another thread.
+    /// Whether the generator can move to another thread depends on the runtime: see
+    /// [`Self::ThreadLocalRng`].
     #[track_caller]
     fn thread_rng() -> Self::ThreadLocalRng;
 
