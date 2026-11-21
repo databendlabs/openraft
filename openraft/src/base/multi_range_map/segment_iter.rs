@@ -43,14 +43,8 @@ where
 
         let right_value_iters = range_maps.iter().map(|rm| rm.entries_after(begin).peekable()).collect::<Vec<_>>();
 
-        let merged_boundaries: Box<dyn Iterator<Item = Bound> + 'a> = Box::new(
-            range_maps
-                .iter()
-                .map(move |rm| rm.entries_after(begin).map(|&(k, _)| k))
-                .kmerge()
-                .dedup()
-                .filter(move |&k| k <= min_end),
-        );
+        let sorted = range_maps.iter().map(move |rm| rm.entries_after(begin).map(|&(k, _)| k)).kmerge().dedup();
+        let merged_boundaries: Box<dyn Iterator<Item = Bound> + 'a> = Box::new(boundaries_through(sorted, min_end));
 
         Self {
             merged_boundaries,
@@ -86,5 +80,32 @@ where
 
         self.left = right;
         Some(segment)
+    }
+}
+
+/// Yields the boundaries of the sorted stream `sorted` up to and including `end`.
+///
+/// It stops at the first boundary beyond `end`: every later one is beyond it too, so the rest of
+/// the stream, such as the long tail of a stage that extends past the shortest one, is not read.
+fn boundaries_through<Bound>(sorted: impl Iterator<Item = Bound>, end: Bound) -> impl Iterator<Item = Bound>
+where Bound: RangeMapBound {
+    sorted.take_while(move |&k| k <= end)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::boundaries_through;
+
+    #[test]
+    fn test_boundaries_through_stops_at_the_first_boundary_beyond_the_end() {
+        let read = Cell::new(0);
+        let sorted = (1..=1000u64).inspect(|_| read.set(read.get() + 1));
+
+        let boundaries: Vec<_> = boundaries_through(sorted, 3).collect();
+
+        assert_eq!(vec![1, 2, 3], boundaries, "the end is included");
+        assert_eq!(4, read.get(), "only the first boundary beyond the end is read");
     }
 }
