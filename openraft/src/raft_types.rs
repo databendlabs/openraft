@@ -1,7 +1,15 @@
-/// Id of a snapshot stream.
+/// Id of one snapshot transfer of the chunked v1 network protocol.
 ///
-/// Every time a snapshot is created, it is assigned with a globally unique id.
-/// Such an id is used by followers to distinguish different install-snapshot streams.
+/// The v1 sender in `openraft-legacy` assigns a new id each time it starts to send a snapshot, and
+/// the receiver uses it to tell one install-snapshot stream from another. Sending the same snapshot
+/// again therefore uses a new id, so that the new transfer is not taken for the continuation of an
+/// aborted one.
+///
+/// A stored snapshot has no id: [`SnapshotMeta`] identifies it by its `last_log_id`, and a storage
+/// implementation does not need to generate one. See the
+/// [0.9 to 0.10 upgrade guide](crate::docs::upgrade_guide::upgrade_09_10).
+///
+/// [`SnapshotMeta`]: crate::storage::SnapshotMeta
 pub type SnapshotId = String;
 
 /// **REMOVED**: Use `openraft_legacy::network_v1::SnapshotSegmentId` instead.

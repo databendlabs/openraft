@@ -26,11 +26,13 @@ where C: RaftTypeConfig
     /// for a while and retries. The duration of the sleep is determined by the backoff
     /// instance.
     ///
-    /// The backoff is an infinite iterator that returns the ith sleep interval before the ith
-    /// retry. The returned instance will be dropped if a successful RPC is made.
+    /// The backoff returns the ith sleep interval before the ith retry. Make it infinite: after
+    /// it ends, Openraft keeps retrying with a fixed delay, as [`Backoff`] describes. The
+    /// returned instance will be dropped if a successful RPC is made.
     ///
     /// Return `None` to use the default backoff configured in
-    /// [`Config::backoff`](crate::Config::backoff).
+    /// [`Config::backoff`](crate::Config::backoff). Only this `None` selects that policy: a
+    /// returned backoff that runs out does not fall back to it.
     #[since(
         version = "0.10.0",
         change = "changed return type to Option<Backoff>; None delegates to Config::backoff"

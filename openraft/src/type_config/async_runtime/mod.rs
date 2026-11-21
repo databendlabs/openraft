@@ -3,9 +3,11 @@
 //! `async` runtime is an abstraction over different asynchronous runtimes, such as `tokio`,
 //! `async-std`, etc.
 //!
-//! This module re-exports types from the `openraft-async-runtime` crate.
+//! This module re-exports a selection of the traits and types of the `openraft-rt` crate. The
+//! complete runtime interface, which a runtime implementation needs, is the whole crate,
+//! available as [`openraft::rt`](crate::rt).
 
-// Re-export all public items from openraft-async-runtime
+// Re-export a selection of the public items of openraft-rt.
 pub use openraft_rt::AsyncRuntime;
 pub use openraft_rt::CancelHandle;
 pub use openraft_rt::Instant;
