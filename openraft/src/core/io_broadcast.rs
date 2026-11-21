@@ -37,4 +37,10 @@ where C: RaftTypeConfig
 
     /// Announces the committed log id to the replication tasks.
     pub(crate) committed: WatchSenderOf<C, Option<LogIdOf<C>>>,
+
+    /// Announces the last log id whose purge has been submitted to storage.
+    ///
+    /// Sent before the purge starts: a replication task that finds an entry missing then sees the
+    /// purge that removed it.
+    pub(crate) purged: WatchSenderOf<C, Option<LogIdOf<C>>>,
 }

@@ -1301,6 +1301,7 @@ where
             committed_rx: self.io_broadcast.committed.subscribe(),
             io_accepted_rx: self.io_broadcast.accepted.subscribe(),
             io_submitted_rx: self.io_broadcast.submitted.subscribe(),
+            purged_rx: self.io_broadcast.purged.subscribe(),
         }
     }
 
@@ -2662,6 +2663,7 @@ where
     /// Run [`Command::PurgeLog`].
     async fn run_purge_log(&mut self, upto: LogIdOf<C>) -> Result<(), StorageError<C>> {
         self.engine.state.purge_progress_mut().submit(upto.clone());
+        self.io_broadcast.purged.send_if_greater(Some(upto.clone()));
         self.log_store.purge(upto.clone()).await.sto_write_logs()?;
 
         self.discard_client_responders_upto(upto.index());

@@ -143,6 +143,7 @@ use crate::raft::raft_inner::RaftInner;
 pub use crate::raft::runtime_config_handle::RuntimeConfigHandle;
 use crate::raft::trigger::Trigger;
 use crate::raft_state::IOId;
+use crate::raft_state::LogStateReader;
 use crate::storage::RaftLogStorage;
 use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
@@ -600,6 +601,7 @@ where
         let (io_accepted_tx, _io_accepted_rx) = C::watch_channel(default_io_id.clone());
         let (io_submitted_tx, _io_submitted_rx) = C::watch_channel(default_io_id);
         let (committed_tx, _committed_rx) = C::watch_channel(None);
+        let (purged_tx, _purged_rx) = C::watch_channel(engine.state.last_purged_log_id().cloned());
         let (quorum_loss_probe_tx, _quorum_loss_probe_rx) = C::watch_channel(None);
 
         let shared_replicate_batch = SharedReplicateBatch::new();
@@ -671,6 +673,7 @@ where
                         accepted: io_accepted_tx,
                         submitted: io_submitted_tx,
                         committed: committed_tx,
+                        purged: purged_tx,
                     },
                     quorum_loss_probe_tx,
 
