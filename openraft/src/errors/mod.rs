@@ -122,9 +122,11 @@ where C: RaftTypeConfig
     #[error(transparent)]
     ChangeMembershipError(#[from] ChangeMembershipError<CommittedLeaderIdOf<C>, C::NodeId, C::ErrorSource>),
 
-    /// A [`Precondition`] attached to the request is not satisfied.
+    /// A [`Precondition`] attached to the request, or the last log id its [`WriteOption`]
+    /// expects, is not satisfied.
     ///
     /// [`Precondition`]: `crate::raft::Precondition`
+    /// [`WriteOption`]: `crate::raft::WriteOption`
     #[since(version = "0.10.0")]
     #[error(transparent)]
     PreconditionFailed(#[from] PreconditionFailed<C>),

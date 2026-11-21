@@ -534,6 +534,7 @@ where
         self.write_entries(
             Batch::of([payload]),
             Batch::of([Some(CoreResponder::Progress(tx))]),
+            None,
             #[cfg(feature = "runtime-stats")]
             C::now(),
         );
@@ -591,6 +592,7 @@ where
         self.write_entries(
             Batch::of([payload]),
             Batch::of([Some(CoreResponder::Progress(tx))]),
+            None,
             #[cfg(feature = "runtime-stats")]
             C::now(),
         );
@@ -704,6 +706,10 @@ where
     /// I.e.: append the log entries to local store, forward them to a quorum(including the
     /// leader), waiting for them to be committed and applied.
     ///
+    /// `precondition` is checked against the leader's state right before the entries are
+    /// appended, after this node is known to accept writes. If it does not hold, every responder
+    /// receives [`ClientWriteError::PreconditionFailed`] and nothing is appended.
+    ///
     /// Returns the log IDs assigned to the entries, or `None` if the entries could not be
     /// written (e.g., this node is not the leader).
     ///
@@ -719,6 +725,7 @@ where
         &mut self,
         payloads: BatchOf<C, PayloadOf<C>>,
         responders: BatchOf<C, Option<CoreResponder<C>>>,
+        precondition: Option<Precondition<C>>,
         #[cfg(feature = "runtime-stats")] proposed_at: InstantOf<C>,
     ) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
         debug_assert_eq!(
@@ -739,6 +746,16 @@ where
                 return None;
             }
         };
+
+        if let Some(precondition) = precondition
+            && let Err(e) = precondition.ensure_satisfied(lh.state)
+        {
+            let err = ClientWriteError::PreconditionFailed(e);
+            for tx in responders.into_iter().flatten() {
+                tx.on_complete(Err(err.clone()))
+            }
+            return None;
+        }
 
         let entry_count = payloads.len() as u64;
         let log_ids = lh.leader_append_entries(payloads)?;
@@ -1896,9 +1913,14 @@ where
                     }
                 }
                 self.runtime_stats.write_batch.record(payloads.len() as u64);
+
+                let precondition = write_option.expected_last_log_id.map(|last_log_id| Precondition::LastLogId {
+                    last_log_id: Some(last_log_id),
+                });
                 self.write_entries(
                     payloads,
                     responders,
+                    precondition,
                     #[cfg(feature = "runtime-stats")]
                     proposed_at,
                 );

@@ -53,7 +53,7 @@ use crate::errors::into_ok::into_ok;
 ///             Err(AppError::RetryLater)
 ///         }
 ///         Ok(Err(ClientWriteError::PreconditionFailed(_))) => {
-///             // Recoverable: only `change_membership_if()` fails this way, re-read and retry
+///             // Recoverable: a precondition did not hold; re-read the state and retry
 ///             Err(AppError::RetryLater)
 ///         }
 ///         Err(RaftError::Fatal(fatal)) => {

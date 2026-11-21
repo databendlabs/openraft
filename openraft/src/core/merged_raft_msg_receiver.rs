@@ -265,12 +265,18 @@ mod tests {
     }
 
     fn client_write(data: u64, leader: Option<CommittedLeaderIdOf<C>>) -> RaftMsg<C> {
+        let write_option = WriteOption {
+            expected_leader: leader,
+            expected_last_log_id: None,
+        };
+        client_write_with_option(data, write_option)
+    }
+
+    fn client_write_with_option(data: u64, write_option: WriteOption<C>) -> RaftMsg<C> {
         RaftMsg::ClientWrite {
             payloads: Batch::of([EntryPayload::Normal(data)]),
             responders: Batch::of([None]),
-            write_option: WriteOption {
-                expected_leader: leader,
-            },
+            write_option,
             #[cfg(feature = "runtime-stats")]
             proposed_at: C::now(),
         }
@@ -346,6 +352,51 @@ mod tests {
             };
             assert_eq!(extract_payload_data(&payloads), vec![2]);
             assert_eq!(responders.len(), payloads.len());
+        });
+    }
+
+    /// A write that expects a last log id is received alone, even next to a write that expects the
+    /// same last log id or the entry right after it, while the plain writes after it are still
+    /// merged with each other.
+    #[test]
+    fn test_no_merge_with_expected_last_log_id() {
+        C::run(async {
+            let (tx, rx) = C::mpsc(100);
+            let mut receiver: BatchRaftMsgReceiver<C> = default_msg_receiver(rx);
+
+            let expect2 = WriteOption::<C>::expect_last_log_id(log_id(1, 1, 2));
+            let expect3 = WriteOption::<C>::expect_last_log_id(log_id(1, 1, 3));
+            tx.send(client_write(1, None)).await.unwrap();
+            tx.send(client_write_with_option(2, expect2.clone())).await.unwrap();
+            tx.send(client_write_with_option(3, expect2.clone())).await.unwrap();
+            tx.send(client_write_with_option(4, expect3.clone())).await.unwrap();
+            tx.send(client_write(5, None)).await.unwrap();
+            tx.send(client_write(6, None)).await.unwrap();
+
+            receiver.ensure_buffered().await.unwrap();
+
+            let want = [
+                (vec![1], WriteOption::default()),
+                (vec![2], expect2.clone()),
+                (vec![3], expect2),
+                (vec![4], expect3),
+                (vec![5, 6], WriteOption::default()),
+            ];
+            for (want_data, want_option) in want {
+                let msg = receiver.try_recv().await.unwrap().unwrap();
+                let RaftMsg::ClientWrite {
+                    payloads,
+                    responders,
+                    write_option,
+                    ..
+                } = msg
+                else {
+                    panic!("expected ClientWrite");
+                };
+                assert_eq!(extract_payload_data(&payloads), want_data);
+                assert_eq!(responders.len(), payloads.len());
+                assert_eq!(write_option, want_option);
+            }
         });
     }
 
