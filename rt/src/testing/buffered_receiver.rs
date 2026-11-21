@@ -63,10 +63,14 @@ where Rt: AsyncRuntime
             sent.unwrap().unwrap();
         }
         drop(tx);
-        let mut received = Vec::new();
-        while let Some(value) = rx.recv().await {
-            received.push(value);
-        }
+        let drain = async {
+            let mut received = Vec::new();
+            while let Some(value) = rx.recv().await {
+                received.push(value);
+            }
+            received
+        };
+        let received = Rt::timeout(TIMEOUT, drain).await.unwrap();
         let expected: Vec<_> = (0..BACKLOG).collect();
         assert_eq!(expected, received);
         let closed = rx.try_recv();
@@ -120,12 +124,15 @@ where Rt: AsyncRuntime
     pub(super) async fn test_buffered_receiver_cancel_receive() {
         let (tx, rx) = Rt::Mpsc::channel(1);
         let mut rx = rx.with_unbounded_buffer::<Rt>();
-        let selected = Rt::select2(async {}, rx.recv()).await;
-        assert_eq!(crate::Select2::First(()), selected);
+        let pending = super::is_pending(rx.recv());
+        assert!(pending, "a receive on an empty live channel should be pending");
         let sent = tx.send(42).await;
         sent.unwrap();
+        drop(tx);
         let received = Rt::timeout(TIMEOUT, rx.recv()).await.unwrap();
         assert_eq!(Some(42), received);
+        let closed = Rt::timeout(TIMEOUT, rx.recv()).await.unwrap();
+        assert_eq!(None, closed);
     }
 
     #[cfg(feature = "single-threaded")]
