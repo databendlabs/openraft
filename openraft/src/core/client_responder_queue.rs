@@ -243,6 +243,6 @@ mod tests {
             }
         }
         assert_eq!(result, vec![(20, 200)]);
-        assert_eq!(queue.first_index(), Some(10));
+        assert_eq!(queue.drain_upto(u64::MAX), vec![(10, 100)]);
     }
 }
