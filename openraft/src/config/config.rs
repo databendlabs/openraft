@@ -1,6 +1,7 @@
 //! Raft runtime configuration.
 
 use std::ops::Deref;
+use std::ops::RangeInclusive;
 use std::time::Duration;
 
 use backoff_series::BackoffSeries;
@@ -311,6 +312,12 @@ pub struct Config {
     ///
     /// This controls backpressure for client requests. When the channel is full,
     /// new API calls will block until space becomes available.
+    ///
+    /// The runtime's channels must accept the size, as given by
+    /// [`Mpsc::buffer_size_range()`](crate::async_runtime::Mpsc::buffer_size_range): the
+    /// Tokio-backed runtimes accept 1 to `tokio::sync::Semaphore::MAX_PERMITS`. For a size outside
+    /// it, [`Raft::new`](crate::Raft::new) returns [`ConfigError::ChannelSizeOutOfRange`] instead
+    /// of starting.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub api_channel_size: Option<u64>,
@@ -334,6 +341,12 @@ pub struct Config {
     ///
     /// This channel carries internal notifications like IO completion, replication progress,
     /// and tick events. When full, internal components will block until space is available.
+    ///
+    /// The runtime's channels must accept the size, as given by
+    /// [`Mpsc::buffer_size_range()`](crate::async_runtime::Mpsc::buffer_size_range): the
+    /// Tokio-backed runtimes accept 1 to `tokio::sync::Semaphore::MAX_PERMITS`. For a size outside
+    /// it, [`Raft::new`](crate::Raft::new) returns [`ConfigError::ChannelSizeOutOfRange`] instead
+    /// of starting.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "65536"))]
     pub notification_channel_size: Option<u64>,
@@ -345,6 +358,12 @@ pub struct Config {
     /// notifications. With
     /// [`enable_unbounded_state_machine_buffer`](Self::enable_unbounded_state_machine_buffer),
     /// this setting bounds only the input channel, not the number of pending commands.
+    ///
+    /// The runtime's channels must accept the size, as given by
+    /// [`Mpsc::buffer_size_range()`](crate::async_runtime::Mpsc::buffer_size_range): the
+    /// Tokio-backed runtimes accept 1 to `tokio::sync::Semaphore::MAX_PERMITS`. For a size outside
+    /// it, [`Raft::new`](crate::Raft::new) returns [`ConfigError::ChannelSizeOutOfRange`] instead
+    /// of starting.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long, default_value = "1024"))]
     pub state_machine_channel_size: Option<u64>,
@@ -844,7 +863,7 @@ impl Config {
     ///
     /// Defaults to 65536 if not specified.
     pub(crate) fn api_channel_size(&self) -> usize {
-        self.api_channel_size.unwrap_or(65536) as usize
+        saturating_usize(self.api_channel_size.unwrap_or(65536))
     }
 
     /// Get the maximum number of client writes that RaftCore merges into one batch.
@@ -872,14 +891,14 @@ impl Config {
     ///
     /// Defaults to 65536 if not specified.
     pub(crate) fn notification_channel_size(&self) -> usize {
-        self.notification_channel_size.unwrap_or(65536) as usize
+        saturating_usize(self.notification_channel_size.unwrap_or(65536))
     }
 
     /// Get the state machine command channel size for bounded MPSC channel.
     ///
     /// Defaults to 1024 if not specified.
     pub(crate) fn state_machine_channel_size(&self) -> usize {
-        self.state_machine_channel_size.unwrap_or(1024) as usize
+        saturating_usize(self.state_machine_channel_size.unwrap_or(1024))
     }
 
     /// Whether to buffer state-machine commands without a backlog limit; defaults to `false`.
@@ -954,6 +973,20 @@ impl Config {
             return Err(ConfigError::LogStageCapacityIs0);
         }
 
+        // A channel size that does not fit `usize` would be truncated, possibly to 0. Whether the
+        // runtime's channels accept a size is checked by `validate_channel_sizes()`, which
+        // `Raft::new` runs before it builds any channel.
+        let max_usize = u64::try_from(usize::MAX).unwrap_or(u64::MAX);
+        for (field, size) in [
+            ("api_channel_size", self.api_channel_size),
+            ("notification_channel_size", self.notification_channel_size),
+            ("state_machine_channel_size", self.state_machine_channel_size),
+        ] {
+            if let Some(size) = size {
+                check_fits(field, size, max_usize)?;
+            }
+        }
+
         if let Some(probe_interval) = self.quorum_loss_probe_interval {
             // The Leader lease currently uses election_timeout_max. Leave time for that lease
             // to expire, then for one maximum election timeout before allowing heartbeats again.
@@ -974,6 +1007,25 @@ impl Config {
         Ok(self)
     }
 
+    /// Checks that the runtime's channels accept every channel size, given the sizes they
+    /// accept, [`Mpsc::buffer_size_range()`](crate::async_runtime::Mpsc::buffer_size_range).
+    ///
+    /// [`validate()`](Self::validate) cannot check this, because a `Config` does not know the
+    /// runtime. `Raft::new` runs it before it builds any channel, because `channel()` panics on a
+    /// size outside the range.
+    pub(crate) fn validate_channel_sizes(&self, accepted: RangeInclusive<usize>) -> Result<(), ConfigError> {
+        for (field, size) in [
+            ("api_channel_size", self.api_channel_size()),
+            ("notification_channel_size", self.notification_channel_size()),
+            ("state_machine_channel_size", self.state_machine_channel_size()),
+        ] {
+            if !accepted.contains(&size) {
+                return Err(ConfigError::ChannelSizeOutOfRange { field, size, accepted });
+            }
+        }
+        Ok(())
+    }
+
     /// Build a [`Backoff`] iterator from the [`backoff`](Self::backoff) policy string.
     ///
     /// Panics if the policy is invalid — callers should obtain `Config` through [`Config::build`]
@@ -984,4 +1036,22 @@ impl Config {
             BackoffSeries::parse(self.get_backoff()).expect("backoff policy must be validated by Config::validate");
         Backoff::new(series.build())
     }
+}
+
+/// Returns [`ConfigError::TooLarge`] when `value` is greater than `max`, the largest value that
+/// this target accepts for the setting `field`.
+pub(super) fn check_fits(field: &'static str, value: u64, max: u64) -> Result<(), ConfigError> {
+    if value > max {
+        return Err(ConfigError::TooLarge { field, value, max });
+    }
+    Ok(())
+}
+
+/// Converts a size setting to `usize`, saturating at `usize::MAX`.
+///
+/// Validation rejects a size that does not fit. An unvalidated one saturates rather than wraps,
+/// so that a runtime that cannot build a channel that large rejects it, instead of building a
+/// smaller one.
+fn saturating_usize(value: u64) -> usize {
+    usize::try_from(value).unwrap_or(usize::MAX)
 }
