@@ -12,8 +12,6 @@ use crate::fixtures::RaftRouter;
 use crate::fixtures::log_id;
 use crate::fixtures::ut_harness;
 
-const CHUNK_SIZE: usize = 10;
-
 /// Test transfer snapshot in small chunks
 ///
 /// What does this test do?
@@ -24,11 +22,23 @@ const CHUNK_SIZE: usize = 10;
 #[tracing::instrument]
 #[test_harness::test(harness = ut_harness)]
 async fn snapshot_chunk_size() -> Result<()> {
+    transfer_snapshot_in_chunks(10).await
+}
+
+/// Transfer a snapshot in chunks of 1 byte, the smallest size validation accepts: every offset
+/// advances, and the last chunk is the only one marked done.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn snapshot_chunk_size_one() -> Result<()> {
+    transfer_snapshot_in_chunks(1).await
+}
+
+async fn transfer_snapshot_in_chunks(chunk_size: usize) -> Result<()> {
     let snapshot_threshold: u64 = 10;
 
     let config = Config {
         snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-        snapshot_max_chunk_size: CHUNK_SIZE as u64,
+        snapshot_max_chunk_size: chunk_size as u64,
         enable_heartbeat: false,
         max_in_snapshot_log_to_keep: 0,
         ..Default::default()
@@ -114,8 +124,8 @@ async fn snapshot_chunk_size() -> Result<()> {
         let snapshot_id = requests[0].meta.snapshot_id.clone();
         let wire_meta = SnapshotMeta::new(meta.clone(), snapshot_id);
         let mut expected = Vec::new();
-        for (index, chunk) in bytes.chunks(CHUNK_SIZE).enumerate() {
-            let offset = index * CHUNK_SIZE;
+        for (index, chunk) in bytes.chunks(chunk_size).enumerate() {
+            let offset = index * chunk_size;
             let end = offset + chunk.len();
             let done = end == bytes.len();
             let request = InstallSnapshotRequest {

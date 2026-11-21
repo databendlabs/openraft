@@ -107,6 +107,11 @@ fn default_removed_leader_step_down() -> StepDownPolicy {
 pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
+    ///
+    /// The threshold must be at least 1, and validation rejects 0. `LogsSinceLast(1)` attempts a
+    /// snapshot once the committed log grows past the last snapshot or attempt; an attempt that
+    /// completes or is refused at a committed position is not repeated there. To turn automatic
+    /// snapshots off, use [`Never`](Self::Never).
     LogsSinceLast(u64),
 
     /// Openraft will never trigger a snapshot building.
@@ -216,7 +221,12 @@ pub struct Config {
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
     ///
     /// A leader's heartbeat timer fires this interval after the previous round of heartbeats, and
-    /// the next round goes out then.
+    /// the next round goes out then. Replication also uses it as the deadline of an RPC.
+    ///
+    /// It must be at least 1, and validation rejects 0, even with heartbeats turned off: a runtime
+    /// switch can turn them on later. To turn automatic heartbeats off, use
+    /// [`enable_heartbeat`](Self::enable_heartbeat) or
+    /// [`RuntimeConfigHandle::heartbeat()`](crate::raft::RuntimeConfigHandle::heartbeat).
     #[since(
         version = "0.10.1",
         change = "heartbeats go out at their deadline, not at the next tick"
@@ -295,6 +305,9 @@ pub struct Config {
     pub snapshot_policy: SnapshotPolicy,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
+    ///
+    /// It must be at least 1 and at most `isize::MAX`, the largest byte buffer this target can
+    /// allocate; validation rejects other values. The default is 3 MiB.
     #[cfg_attr(feature = "clap", clap(long, default_value = "3MiB", value_parser=parse_bytes_with_unit))]
     pub snapshot_max_chunk_size: u64,
 
@@ -402,7 +415,8 @@ pub struct Config {
     /// committed, applied) maintains a fixed-capacity ring buffer of this size.
     /// Only used when the `runtime-stats` feature is enabled.
     ///
-    /// Must be greater than 0. Defaults to 1024 if not specified.
+    /// Must be greater than 0, and fit in `usize` on this target; validation rejects other
+    /// values. Defaults to 1024 if not specified.
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long))]
     pub log_stage_capacity: Option<u64>,
@@ -910,7 +924,7 @@ impl Config {
     ///
     /// Defaults to 1024 if not specified.
     pub(crate) fn log_stage_capacity(&self) -> usize {
-        self.log_stage_capacity.unwrap_or(1024) as usize
+        saturating_usize(self.log_stage_capacity.unwrap_or(1024))
     }
 
     /// Whether to publish submitted logs after each append; defaults to `false`.
@@ -948,16 +962,24 @@ impl Config {
             });
         }
 
+        // An interval of 0 would make the heartbeat timer due at once after every round, and give
+        // replication RPCs a deadline of 0.
+        if self.heartbeat_interval == 0 {
+            return Err(ConfigError::HeartbeatIntervalIs0);
+        }
+
         // A round of heartbeats goes out every `heartbeat_interval`, so heartbeats to a suppressed
         // follower are up to `heartbeat_min_interval + heartbeat_interval` apart.
         //
         // A `heartbeat_min_interval` of 0 disables suppression and leaves the heartbeat cadence
         // unchanged, so the constraint does not apply to it.
+        //
+        // Widen both operands before addition so the sum cannot overflow.
         let heartbeat_min_interval = self.heartbeat_min_interval();
         let suppression_enabled = heartbeat_min_interval > 0;
-        let max_heartbeat_gap = heartbeat_min_interval + self.heartbeat_interval;
+        let max_heartbeat_gap = u128::from(heartbeat_min_interval) + u128::from(self.heartbeat_interval);
 
-        if suppression_enabled && self.election_timeout_min <= max_heartbeat_gap {
+        if suppression_enabled && u128::from(self.election_timeout_min) <= max_heartbeat_gap {
             return Err(ConfigError::HeartbeatMinIntervalTooLarge {
                 election_timeout_min: self.election_timeout_min,
                 heartbeat_interval: self.heartbeat_interval,
@@ -969,8 +991,29 @@ impl Config {
             return Err(ConfigError::MaxPayloadIs0);
         }
 
+        // A threshold of 0 would start another build at the same committed position each time the
+        // previous one completes or is refused.
+        if self.snapshot_policy == SnapshotPolicy::LogsSinceLast(0) {
+            return Err(ConfigError::SnapshotLogsSinceLastIs0);
+        }
+
+        // A transport reads each chunk into a byte buffer, whose capacity is at most `isize::MAX`.
+        // A chunk size of 0 would send empty chunks that never finish the snapshot.
+        if self.snapshot_max_chunk_size == 0 {
+            return Err(ConfigError::SnapshotMaxChunkSizeIs0);
+        }
+        let max_chunk_size = u64::try_from(isize::MAX).unwrap_or(u64::MAX);
+        check_fits("snapshot_max_chunk_size", self.snapshot_max_chunk_size, max_chunk_size)?;
+
         if self.log_stage_capacity == Some(0) {
             return Err(ConfigError::LogStageCapacityIs0);
+        }
+
+        // A capacity that does not fit `usize` would be truncated, on a 32-bit target possibly to
+        // 0, which the zero check above would then miss.
+        if let Some(capacity) = self.log_stage_capacity {
+            let max_usize = u64::try_from(usize::MAX).unwrap_or(u64::MAX);
+            check_fits("log_stage_capacity", capacity, max_usize)?;
         }
 
         // A channel size that does not fit `usize` would be truncated, possibly to 0. Whether the
