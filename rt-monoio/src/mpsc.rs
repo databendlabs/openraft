@@ -3,6 +3,7 @@
 //! Tokio MPSC channel are runtime independent.
 
 use std::future::Future;
+use std::ops::RangeInclusive;
 
 use futures_util::TryFutureExt;
 use openraft_rt::Mpsc;
@@ -49,6 +50,12 @@ impl Mpsc for MonoioMpsc {
 
         (tx_wrapper, rx_wrapper)
     }
+
+    /// Accepts 1 to `tokio::sync::Semaphore::MAX_PERMITS`: the Tokio channel that this adapter
+    /// uses panics on 0 and on a larger size.
+    fn buffer_size_range() -> RangeInclusive<usize> {
+        1..=tokio::sync::Semaphore::MAX_PERMITS
+    }
 }
 
 impl<T> MpscSender<MonoioMpsc, T> for MonoioMpscSender<T>
@@ -87,5 +94,26 @@ where T: OptionalSend
     #[inline]
     fn upgrade(&self) -> Option<<MonoioMpsc as Mpsc>::Sender<T>> {
         self.0.upgrade().map(MonoioMpscSender)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openraft_rt::Mpsc;
+
+    use super::MonoioMpsc;
+
+    #[test]
+    fn test_buffer_size_range_is_what_a_tokio_channel_accepts() {
+        let range = MonoioMpsc::buffer_size_range();
+        assert_eq!(1..=tokio::sync::Semaphore::MAX_PERMITS, range);
+
+        let _channel = MonoioMpsc::channel::<u32>(*range.start());
+        let _channel = MonoioMpsc::channel::<u32>(*range.end());
+
+        let below = std::panic::catch_unwind(|| MonoioMpsc::channel::<u32>(range.start() - 1));
+        assert!(below.is_err(), "a Tokio channel panics below the range");
+        let above = std::panic::catch_unwind(|| MonoioMpsc::channel::<u32>(range.end() + 1));
+        assert!(above.is_err(), "a Tokio channel panics above the range");
     }
 }

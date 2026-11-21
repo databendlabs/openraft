@@ -82,6 +82,7 @@ use crate::RaftState;
 pub use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::StorageHelper;
+use crate::async_runtime::Mpsc;
 use crate::async_runtime::MpscWeakSender;
 use crate::async_runtime::OneshotSender;
 use crate::async_runtime::Select2;
@@ -91,6 +92,7 @@ use crate::base::BoxFuture;
 use crate::base::BoxOnce;
 use crate::base::BoxStream;
 use crate::config::Config;
+use crate::config::ConfigError;
 use crate::config::RuntimeConfig;
 use crate::core::ClientResponderQueue;
 use crate::core::DeadlineNotifier;
@@ -148,6 +150,7 @@ use crate::storage::RaftStateMachine;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::JoinErrorOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::MpscOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::MpscWeakSenderOf;
 use crate::type_config::alias::NodeIdOf;
@@ -474,7 +477,10 @@ where
     /// state machine. This ensures that restarts of the node will yield the same ID every time.
     ///
     /// ### `config`
-    /// Raft's runtime config. See the docs on the `Config` object for more details.
+    /// Raft's runtime config. See the docs on the `Config` object for more details. A channel
+    /// size that the runtime's channels do not accept makes this return [`RaftError::APIError`]
+    /// with [`ConfigError::ChannelSizeOutOfRange`], naming the field, before any task starts. A
+    /// storage error while it recovers the initial state is a [`RaftError::Fatal`].
     ///
     /// ### `network`
     /// An implementation of the [`RaftNetworkFactory`] trait which will be used by Raft for
@@ -497,6 +503,10 @@ where
     /// // The state machine has recovered at least its pre-restart committed state.
     /// ```
     #[since(
+        version = "0.10.2",
+        change = "return `RaftError<C, ConfigError>`, with a `ConfigError` for a channel size the runtime does not accept"
+    )]
+    #[since(
         version = "0.10.0",
         change = "require N::Network: NetSnapshot<SnapshotData = SM::SnapshotData>"
     )]
@@ -507,7 +517,7 @@ where
         network: N,
         log_store: LS,
         state_machine: SM,
-    ) -> Result<Self, Fatal<C>>
+    ) -> Result<Self, RaftError<C, ConfigError>>
     where
         N: RaftNetworkFactory<C>,
         N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
@@ -525,7 +535,8 @@ where
     /// Call [`run`](Self::run) after those components are ready.
     ///
     /// Storage is inspected and the initial Raft state is recovered during this call, but
-    /// No Raft background task starts until [`run`](Self::run) is called.
+    /// No Raft background task starts until [`run`](Self::run) is called. It returns the same
+    /// errors as `new`.
     ///
     /// ```ignore
     /// let raft = Raft::build(id, config, network, log_store, sm).await?;
@@ -533,6 +544,10 @@ where
     /// raft.run();
     /// server.serve().await?;
     /// ```
+    #[since(
+        version = "0.10.2",
+        change = "return `RaftError<C, ConfigError>`, with a `ConfigError` for a channel size the runtime does not accept"
+    )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level="debug", skip_all, fields(cluster=%config.cluster_name))]
     pub async fn build<LS, N>(
@@ -541,12 +556,16 @@ where
         network: N,
         mut log_store: LS,
         mut state_machine: SM,
-    ) -> Result<Self, Fatal<C>>
+    ) -> Result<Self, RaftError<C, ConfigError>>
     where
         N: RaftNetworkFactory<C>,
         N::Network: NetSnapshot<C, SnapshotData = SM::SnapshotData>,
         LS: RaftLogStorage<C>,
     {
+        // Check the channel sizes before building any channel: a runtime panics on a size that
+        // its channels do not accept.
+        config.validate_channel_sizes(MpscOf::<C>::buffer_size_range()).map_err(RaftError::APIError)?;
+
         let api_channel_size = config.api_channel_size();
         let notification_channel_size = config.notification_channel_size();
 
@@ -585,7 +604,7 @@ where
 
         let state = {
             let mut helper = StorageHelper::new(&mut log_store, &mut state_machine).with_id(id.clone());
-            helper.get_initial_state().await?
+            helper.get_initial_state().await.map_err(Fatal::from)?
         };
 
         let engine = Engine::new(state, eng_config);
