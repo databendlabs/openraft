@@ -31,7 +31,7 @@ use crate::base::OptionalSend;
 /// Access is thread-safe via internal [`Mutex`].
 ///
 /// Values must implement [`Clone`] and [`Default`]. When retrieved via [`get()`](Self::get),
-/// a clone is returned. If no value exists, `T::default()` is inserted and returned.
+/// a clone is returned. If no value exists, `T::default()` is stored before cloning.
 pub struct Extensions {
     map: Mutex<HashMap<TypeId, BoxAny>>,
 }
@@ -43,15 +43,11 @@ impl Extensions {
     pub fn get<T>(&self) -> T
     where T: OptionalSend + Clone + Default + 'static {
         let mut map = self.map.lock().unwrap();
-        let type_id = TypeId::of::<T>();
-
-        if let Some(val) = map.get(&type_id).and_then(|b| b.downcast_ref::<T>()) {
-            return val.clone();
-        }
-
-        let val = T::default();
-        map.insert(type_id, Box::new(val.clone()));
-        val
+        map.entry(TypeId::of::<T>())
+            .or_insert_with(|| Box::new(T::default()))
+            .downcast_ref::<T>()
+            .expect("extension type must match its TypeId")
+            .clone()
     }
 
     /// Check if a value of type `T` exists.
@@ -109,6 +105,25 @@ mod tests {
         // Second call returns same value
         let val2 = ext.get::<MyData>();
         assert_eq!(val2, MyData(0));
+    }
+
+    #[test]
+    fn test_get_stores_original_default() {
+        #[derive(Clone)]
+        struct Buffer(Vec<u8>);
+
+        impl Default for Buffer {
+            fn default() -> Self {
+                Self(Vec::with_capacity(16))
+            }
+        }
+
+        tracing::info!(capacity = 16, "check that the stored buffer keeps its reservation");
+        {
+            let ext = Extensions::default();
+            assert_eq!(ext.get::<Buffer>().0.capacity(), 0);
+            assert!(ext.remove::<Buffer>().unwrap().0.capacity() >= 16);
+        }
     }
 
     #[test]
