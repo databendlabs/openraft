@@ -33,7 +33,9 @@ impl RPCOption {
     /// time out the RPC once `soft_ttl()` ends.
     ///
     /// `soft_ttl` is smaller than [`hard_ttl()`] so that the RPC implementation can return a
-    /// timeout error before Openraft may shut down the in-flight RPC at the hard limit.
+    /// timeout error before Openraft may shut down the in-flight RPC at the hard limit. A zero
+    /// `hard_ttl` is the exception: `soft_ttl` is then zero as well, and the RPC times out at
+    /// once.
     ///
     /// For a long-lived stream, [`hard_ttl()`] is not a limit on the stream lifetime. The transport
     /// should apply `soft_ttl()` to its setup, idle timeout, keepalive, read deadline, or reconnect
@@ -43,7 +45,13 @@ impl RPCOption {
     ///
     /// [`hard_ttl()`]: `Self::hard_ttl`
     pub fn soft_ttl(&self) -> Duration {
-        self.hard_ttl * 3 / 4
+        const NANOS_PER_SEC: u128 = 1_000_000_000;
+
+        // `hard_ttl * 3` overflows `Duration` once `hard_ttl` exceeds `Duration::MAX / 3`, so
+        // compute in `u128` nanoseconds. Both casts are lossless: 3/4 of a `Duration` has fewer
+        // seconds than `u64::MAX`, and the remainder is below one second.
+        let nanos = self.hard_ttl.as_nanos() * 3 / 4;
+        Duration::new((nanos / NANOS_PER_SEC) as u64, (nanos % NANOS_PER_SEC) as u32)
     }
 
     /// The hard upper bound Openraft may use to shut down an in-flight RPC.
@@ -56,5 +64,29 @@ impl RPCOption {
     /// Get the recommended size of the snapshot chunk for transport.
     pub fn snapshot_chunk_size(&self) -> Option<usize> {
         self.snapshot_chunk_size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::RPCOption;
+
+    #[test]
+    fn test_soft_ttl_is_three_quarters_rounded_down() {
+        let cases = [
+            (Duration::ZERO, Duration::ZERO),
+            (Duration::from_nanos(1), Duration::ZERO),
+            (Duration::from_nanos(2), Duration::from_nanos(1)),
+            (Duration::from_nanos(3), Duration::from_nanos(2)),
+            (Duration::new(1, 1), Duration::from_millis(750)),
+            (Duration::from_millis(200), Duration::from_millis(150)),
+            (Duration::MAX, Duration::new(13_835_058_055_282_163_711, 999_999_999)),
+        ];
+
+        for (hard_ttl, soft_ttl) in cases {
+            assert_eq!(RPCOption::new(hard_ttl).soft_ttl(), soft_ttl, "hard_ttl: {hard_ttl:?}");
+        }
     }
 }
