@@ -1,6 +1,9 @@
+use std::pin::pin;
 use std::time::Duration;
 
 use futures_util::FutureExt;
+use futures_util::future::Either;
+use futures_util::future::select;
 
 use super::*;
 use crate::async_runtime::MpscReceiver;
@@ -13,30 +16,53 @@ type C = UTConfig;
 fn deadline_notifier_uses_latest_deadline_and_rearms() {
     C::run(async {
         let (tx, mut rx) = C::mpsc(4);
-        let notifier = DeadlineNotifier::<C>::spawn(tx, |i| Notification::Tick { i });
 
-        let late = C::now() + Duration::from_secs(1);
-        notifier.set_deadline(Some(late));
+        tracing::info!("let the worker wait on a far deadline");
+        let far = C::now() + Duration::from_secs(60);
+        let (deadline_tx, deadline_rx) = C::watch_channel(Some(far));
+        let (_cancel, future) = DeadlineNotifier::<C>::run(deadline_rx, tx, |i| Notification::Tick { i });
+        let mut future = pin!(future);
+        let waiting = future.as_mut().now_or_never().is_none();
+        assert!(waiting, "the worker waits for the far deadline");
 
-        let early = C::now() + Duration::from_millis(10);
-        notifier.set_deadline(Some(early));
+        tracing::info!("a deadline that is already due interrupts the wait at once, and reports once");
+        {
+            let due = C::now();
+            deadline_tx.send(Some(due)).unwrap();
+            let waiting = future.as_mut().now_or_never().is_none();
+            assert!(
+                waiting,
+                "the worker reports the due deadline, then waits for the next change"
+            );
 
-        let received = C::timeout(Duration::from_secs(1), rx.recv()).await;
-        let notification = received.unwrap().unwrap();
-        assert!(
-            matches!(notification, Notification::Tick { i: 1 }),
-            "got: {notification}"
-        );
+            let notification = rx.try_recv().unwrap();
+            assert!(
+                matches!(notification, Notification::Tick { i: 1 }),
+                "got: {notification}"
+            );
 
-        let next = C::now() + Duration::from_millis(10);
-        notifier.set_deadline(Some(next));
+            let waiting = future.as_mut().now_or_never().is_none();
+            assert!(waiting, "the worker still waits for the next change");
+            let next = rx.try_recv();
+            assert!(matches!(next, Err(TryRecvError::Empty)), "reported more than once");
+        }
 
-        let received = C::timeout(Duration::from_secs(1), rx.recv()).await;
-        let notification = received.unwrap().unwrap();
-        assert!(
-            matches!(notification, Notification::Tick { i: 2 }),
-            "got: {notification}"
-        );
+        tracing::info!("a new deadline rearms the worker");
+        {
+            let next = C::now() + Duration::from_millis(10);
+            deadline_tx.send(Some(next)).unwrap();
+
+            let received = pin!(rx.recv());
+            let first = C::timeout(Duration::from_secs(1), select(future.as_mut(), received)).await;
+            let Either::Right((notification, _worker)) = first.unwrap() else {
+                panic!("the worker returned while its deadline watch is open");
+            };
+            let notification = notification.unwrap();
+            assert!(
+                matches!(notification, Notification::Tick { i: 2 }),
+                "got: {notification}"
+            );
+        }
     });
 }
 
