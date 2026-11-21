@@ -174,6 +174,7 @@ impl AsyncRuntime for TokioRuntime {
 
 #[cfg(test)]
 mod tests {
+    use futures_util::FutureExt;
     use openraft_rt::testing::Suite;
     use tokio::runtime::Handle;
     use tokio::runtime::RuntimeFlavor;
@@ -204,6 +205,73 @@ mod tests {
                 "spawn_blocking worker panicked: the panic payload is not a string",
                 err.to_string()
             );
+        });
+    }
+
+    /// Use up the cooperative budget of the current Tokio task. A Tokio receiver then reports a
+    /// closed channel only on a later poll.
+    fn use_up_task_budget() {
+        while tokio::task::coop::has_budget_remaining() {
+            let _ = tokio::task::coop::consume_budget().now_or_never();
+        }
+    }
+
+    fn poll_once<F>(future: std::pin::Pin<&mut F>) -> std::task::Poll<F::Output>
+    where F: Future {
+        future.poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
+    }
+
+    /// A cancellation that happened before a poll keeps that poll from polling the work, also when
+    /// the task has used up its budget: a handle built on a Tokio channel reported the
+    /// cancellation only on a later poll then.
+    #[test]
+    fn test_cancellable_without_task_budget() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+        use std::task::Poll;
+
+        fn counting<T>(polls: Arc<AtomicUsize>, output: Poll<T>) -> impl Future<Output = T>
+        where T: Clone {
+            std::future::poll_fn(move |_| {
+                polls.fetch_add(1, Ordering::Relaxed);
+                output.clone()
+            })
+        }
+
+        let mut rt = TokioRuntime::new(1);
+        rt.block_on(async {
+            for drop_handle in [false, true] {
+                let polls = Arc::new(AtomicUsize::new(0));
+                let task = TokioRuntime::spawn(async move {
+                    let (mut cancel, work) = TokioRuntime::cancellable(counting(polls.clone(), Poll::Ready(7)));
+                    if drop_handle {
+                        drop(cancel);
+                    } else {
+                        cancel.cancel();
+                    }
+                    use_up_task_budget();
+                    let polled = poll_once(std::pin::pin!(work));
+                    (polled, polls.load(Ordering::Relaxed))
+                });
+                assert_eq!(
+                    (Poll::Ready(None), 0),
+                    task.await.unwrap(),
+                    "drop_handle: {drop_handle}"
+                );
+            }
+
+            let polls = Arc::new(AtomicUsize::new(0));
+            let task = TokioRuntime::spawn(async move {
+                let (mut cancel, work) = TokioRuntime::cancellable(counting(polls.clone(), Poll::<u32>::Pending));
+                let mut work = std::pin::pin!(work);
+                assert_eq!(Poll::Pending, poll_once(work.as_mut()));
+                cancel.cancel();
+                use_up_task_budget();
+                let polled = poll_once(work.as_mut());
+                (polled, polls.load(Ordering::Relaxed))
+            });
+            assert_eq!((Poll::Ready(None), 1), task.await.unwrap(), "pending work");
         });
     }
 
