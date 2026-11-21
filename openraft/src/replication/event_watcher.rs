@@ -13,4 +13,7 @@ where C: RaftTypeConfig
 
     pub(crate) io_accepted_rx: WatchReceiverOf<C, IOId<C>>,
     pub(crate) io_submitted_rx: WatchReceiverOf<C, IOId<C>>,
+
+    /// The last log id whose purge the leader has submitted to storage.
+    pub(crate) purged_rx: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 }

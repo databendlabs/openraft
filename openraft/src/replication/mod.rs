@@ -159,6 +159,7 @@ where
                 log_reader,
                 payload: None,
                 inflight_id: None,
+                plan_obsolete: false,
                 backoff_consumer,
                 #[cfg(test)]
                 after_leader_check: None,
@@ -304,8 +305,9 @@ where
 
     /// Stream `payload` to the target and consume the responses.
     ///
-    /// Returns the payload left to send: `None` when `payload` completed, or when the session
-    /// was interrupted and RaftCore will reschedule. An `Err` is fatal and ends the task.
+    /// Returns the payload left to send: `None` when `payload` completed, when RaftCore no longer
+    /// counts it, or when the session was interrupted and RaftCore will reschedule. An `Err` is
+    /// fatal and ends the task.
     async fn run_stream_session(
         &mut self,
         network: &mut N::Network,
@@ -315,6 +317,7 @@ where
             let mut stream_state = self.stream_state.lock().await;
             stream_state.payload = Some(payload.clone());
             stream_state.inflight_id = self.inflight_id;
+            stream_state.plan_obsolete = false;
         }
 
         let inflight_queue = InflightAppendQueue::new();
@@ -355,6 +358,12 @@ where
         let (acked, continue_res) = self.handle_response_stream(resp_strm, inflight_queue.clone()).await;
         if let Some(err) = Self::take_stream_fatal_error(&fatal_error).await {
             return Err(err);
+        }
+
+        // RaftCore no longer counts this plan: wait for the next one instead of resuming it.
+        let plan_obsolete = self.stream_state.lock().await.plan_obsolete;
+        if plan_obsolete {
+            return Ok(None);
         }
 
         // If the stream stops with an un-handleable status, such as conflict,
