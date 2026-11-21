@@ -25,10 +25,16 @@ where C: RaftTypeConfig
     /// log id, avoiding false conflict responses that could be misinterpreted as log reversion.
     pub(crate) matching: Option<LogIdOf<C>>,
 
-    /// The last known committed log id of the Leader.
+    /// The log id that the Leader sends as `leader_commit` in the heartbeat AppendEntries: the
+    /// bound up to which followers may apply.
     ///
-    /// When there are no new logs to replicate, the Leader sends a heartbeat to replicate committed
-    /// log id to followers to update their committed log id.
+    /// It is the cluster-committed log id, or with relaxed reads the smaller of that and the
+    /// Leader's applied log id, so that no follower applies an entry before the Leader does. For
+    /// example, with the cluster committed through 22 and the Leader applied through 21, it is 22
+    /// without relaxed reads and 21 with them. See `RaftState::follower_apply_bound()`.
+    ///
+    /// When there are no new logs to replicate, the heartbeat carries this bound to followers, so
+    /// that they can update their committed log id.
     pub(crate) cluster_committed: Option<LogIdOf<C>>,
 }
 
