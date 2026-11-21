@@ -15,8 +15,14 @@ where C: RaftTypeConfig
     /// Identifies this replication session (leader vote + target node).
     pub(crate) stream_id: StreamId,
 
-    /// The channel used for communicating with the replication task.
-    pub(crate) replicate_tx: WatchSenderOf<C, Replicate<C>>,
+    /// The log plan for the replication task to run.
+    ///
+    /// `Some` holds the plan [`Command::Replicate`] sent last. `None` means the leader dropped that
+    /// plan and has published no other, see [`Command::ClearReplicate`].
+    ///
+    /// [`Command::Replicate`]: crate::engine::Command::Replicate
+    /// [`Command::ClearReplicate`]: crate::engine::Command::ClearReplicate
+    pub(crate) replicate_tx: WatchSenderOf<C, Option<Replicate<C>>>,
 
     /// Sender for the cancellation signal; dropping this stops replication.
     pub(crate) cancel_tx: WatchSenderOf<C, ()>,
@@ -36,7 +42,7 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(
         stream_id: StreamId,
-        replicate_tx: WatchSenderOf<C, Replicate<C>>,
+        replicate_tx: WatchSenderOf<C, Option<Replicate<C>>>,
         cancel_tx: WatchSenderOf<C, ()>,
         backoff_reset_tx: WatchSenderOf<C, ()>,
     ) -> Self {

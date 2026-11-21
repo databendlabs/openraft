@@ -15,6 +15,7 @@ use crate::engine::testing::log_id;
 use crate::progress::Inflight;
 use crate::progress::inflight_id::InflightId;
 use crate::raft_state::LogStateReader;
+use crate::replication::response::Progress;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -147,4 +148,37 @@ fn test_try_purge_log_excludes_inflight_previous_log() {
             eng.output.take_commands(),
         )
     );
+}
+
+/// An RPC error drops the plan of the target's log stream, and the purge the plan was holding back
+/// may run next. A transport that pulls requests on a task of its own may still read the log for
+/// the plan, so the leader clears the plan from the stream before it purges. A snapshot is not
+/// sent by that stream and needs no clear.
+#[test]
+fn test_try_purge_log_after_rpc_error_clears_the_dropped_log_plan_first() {
+    let logs_since = Inflight::logs_since(Some(log_id(1, 1, 4)), InflightId::new(1));
+    let probe = Inflight::probe(Some(log_id(1, 1, 4)), Some(log_id(2, 2, 6)), InflightId::new(1));
+    let snapshot = Inflight::snapshot(InflightId::new(1));
+
+    for (inflight, clears) in [(logs_since, true), (probe, true), (snapshot, false)] {
+        tracing::info!(%inflight, "--- an RPC error answers the request of node 3");
+        let mut eng = eng();
+        eng.state.purge_upto = Some(log_id(2, 2, 5));
+        eng.leader.as_mut().unwrap().progress.update_data_with(&3, |data| data.inflight = inflight);
+        let stream_id = eng.leader.as_ref().unwrap().progress.try_get(&3).unwrap().data.stream_id;
+
+        let progress = Progress {
+            target: 3,
+            result: Err("connection reset".to_string()),
+            hint: None,
+        };
+        eng.replication_handler().update_progress(stream_id, progress, Some(InflightId::new(1)));
+
+        let mut expected = vec![];
+        if clears {
+            expected.push(Command::ClearReplicate { target: 3 });
+        }
+        expected.push(Command::PurgeLog { upto: log_id(2, 2, 5) });
+        assert_eq!(expected, eng.output.take_commands());
+    }
 }

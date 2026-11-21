@@ -1230,7 +1230,7 @@ where
             factory.new_client(prog.target.clone(), &prog.target_node).await
         };
 
-        let (replicate_tx, replicate_rx) = C::watch_channel(Replicate::default());
+        let (replicate_tx, replicate_rx) = C::watch_channel(None);
         let (backoff_reset_tx, backoff_reset_rx) = C::watch_channel(());
 
         let event_watcher = self.new_event_watcher(replicate_rx);
@@ -1262,7 +1262,7 @@ where
         &self,
         leader_vote: CommittedVoteOf<C>,
         prog: &TargetProgress<C>,
-        replicate_tx: WatchSenderOf<C, Replicate<C>>,
+        replicate_tx: WatchSenderOf<C, Option<Replicate<C>>>,
         backoff_reset_tx: WatchSenderOf<C, ()>,
     ) -> (ReplicationHandle<C>, ReplicationContext<C>) {
         let (cancel_tx, cancel_rx) = C::watch_channel(());
@@ -1295,7 +1295,7 @@ where
         }
     }
 
-    fn new_event_watcher(&self, replicate_rx: WatchReceiverOf<C, Replicate<C>>) -> EventWatcher<C> {
+    fn new_event_watcher(&self, replicate_rx: WatchReceiverOf<C, Option<Replicate<C>>>) -> EventWatcher<C> {
         EventWatcher {
             replicate_rx,
             committed_rx: self.io_broadcast.committed.subscribe(),
@@ -2957,7 +2957,12 @@ where
                 let receives_logs = membership.membership().receives_logs(&target);
                 if receives_logs {
                     let node = self.replications.get(&target).expect("replication to target node exists");
-                    node.replicate_tx.send(req).ok();
+                    node.replicate_tx.send(Some(req)).ok();
+                }
+            }
+            Command::ClearReplicate { target } => {
+                if let Some(node) = self.replications.get(&target) {
+                    node.replicate_tx.send(None).ok();
                 }
             }
             Command::ReplicateSnapshot {

@@ -24,19 +24,6 @@ where C: RaftTypeConfig
     pub(crate) payload: Payload<C>,
 }
 
-impl<C> Default for Replicate<C>
-where C: RaftTypeConfig
-{
-    fn default() -> Self {
-        Replicate {
-            inflight_id: InflightId::new(0),
-            payload: Payload::Probe {
-                log_id_range: LogIdRange::new(None, None),
-            },
-        }
-    }
-}
-
 impl<C: RaftTypeConfig> fmt::Display for Replicate<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.payload {

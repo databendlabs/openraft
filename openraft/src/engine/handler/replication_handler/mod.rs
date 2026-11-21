@@ -259,6 +259,12 @@ where
     /// Returns `false` if the response is stale or `target` has no progress entry, so nothing was
     /// applied.
     ///
+    /// A conflict that drops the target's `LogsSince` plan also emits [`Command::ClearReplicate`],
+    /// because the stream that runs the plan may still read the log: a heartbeat's conflict, such
+    /// as one that finds the target's log reverted, never reaches the stream, and a transport that
+    /// pulls requests on a task of its own may read on after the conflict. The command comes
+    /// before the purge that [`Self::try_purge_log()`] may then submit.
+    ///
     /// This method intentionally bypasses `VecProgress::update_entry_with()`: when log
     /// reversion is explicitly allowed, [`Updater::update_conflicting()`] may reset
     /// `matching` to `None`. `VecProgress::reset_entry_with()` moves the entry down to
@@ -272,11 +278,18 @@ where
         inflight_id: Option<InflightId>,
     ) -> bool {
         let mut applied = false;
+        let mut plan_dropped = false;
 
         self.leader.progress.reset_entry_with(&target, |entry| {
+            let ran_logs_since = entry.data.inflight.is_logs_since();
             let mut updater = Updater::new(&*self.config, entry);
             applied = updater.update_conflicting(conflict.index(), inflight_id);
+            plan_dropped = ran_logs_since && entry.data.inflight.is_none();
         });
+
+        if plan_dropped {
+            self.output.push_command(Command::ClearReplicate { target });
+        }
 
         applied
     }
@@ -388,7 +401,17 @@ where
                 tracing::warn!("update progress error: {}", err_str);
 
                 // Reset inflight state and it will retry.
-                self.leader.progress.update_data_with(&target, |data| data.inflight = Inflight::None);
+                let mut plan_dropped = false;
+                self.leader.progress.update_data_with(&target, |data| {
+                    plan_dropped = matches!(data.inflight, Inflight::Probe { .. } | Inflight::LogsSince { .. });
+                    data.inflight = Inflight::None;
+                });
+
+                // A transport that pulls requests on a task of its own may still read the log for
+                // the dropped plan. Clear the plan before the purge below may remove the entries.
+                if plan_dropped {
+                    self.output.push_command(Command::ClearReplicate { target });
+                }
             }
         };
 
