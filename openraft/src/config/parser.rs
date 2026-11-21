@@ -3,6 +3,8 @@
 //! Gated behind `feature = "clap"` in [`super`]; functions and the
 //! [`Config::build`] method here are only compiled when that feature is on.
 
+mod byte_size;
+
 use clap::Parser;
 
 use crate::Config;
@@ -14,7 +16,7 @@ use crate::impls::BoxedErrorSource;
 
 /// Parse number with unit such as 5.3 KB
 pub(super) fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
-    parse_size::parse_size(src).map_err(|e| ConfigError::InvalidNumber {
+    byte_size::parse_size(src).map_err(|e| ConfigError::InvalidNumber {
         invalid: src.to_string(),
         reason: e.to_string(),
     })
