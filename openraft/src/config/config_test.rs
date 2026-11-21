@@ -143,6 +143,143 @@ fn test_log_stage_capacity_configuration() {
     };
     let config = config.validate().unwrap();
     assert_eq!(1, config.log_stage_capacity());
+
+    let config = Config::default().validate().unwrap();
+    assert_eq!(1024, config.log_stage_capacity());
+
+    // On a 32-bit target `usize::MAX` is `u32::MAX`: 2^32 would truncate to 0, so it is rejected.
+    let max_32 = u64::from(u32::MAX);
+    let truncated = check_fits("log_stage_capacity", 1 << 32, max_32);
+    let expected = ConfigError::TooLarge {
+        field: "log_stage_capacity",
+        value: 1 << 32,
+        max: max_32,
+    };
+    assert_eq!(Err(expected), truncated);
+}
+
+/// `log_stage_capacity` must fit `usize`: on a 32-bit target, 2^32 is rejected instead of being
+/// truncated to 0, which would reach `RangeMap::new(0)` when `RuntimeStats` is built.
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn test_log_stage_capacity_must_fit_usize() {
+    let config = Config {
+        log_stage_capacity: Some(1 << 32),
+        ..Default::default()
+    };
+    let error = config.validate().map(|_| ()).unwrap_err();
+    assert!(
+        matches!(error, ConfigError::TooLarge {
+            field: "log_stage_capacity",
+            ..
+        }),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn test_heartbeat_interval_must_be_positive() {
+    for enable_heartbeat in [true, false] {
+        let config = Config {
+            heartbeat_interval: 0,
+            enable_heartbeat,
+            ..Default::default()
+        };
+        let result = config.validate().map(|_| ());
+        assert_eq!(
+            Err(ConfigError::HeartbeatIntervalIs0),
+            result,
+            "enable_heartbeat={enable_heartbeat}"
+        );
+    }
+
+    let config = Config {
+        heartbeat_interval: 1,
+        election_timeout_min: 2,
+        election_timeout_max: 3,
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(1, config.heartbeat_interval);
+
+    // A `heartbeat_min_interval` of 0 still turns heartbeat suppression off.
+    let config = Config {
+        heartbeat_min_interval: Some(0),
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(0, config.heartbeat_min_interval());
+}
+
+#[test]
+fn test_snapshot_logs_since_last_must_be_positive() {
+    let config = Config {
+        snapshot_policy: SnapshotPolicy::LogsSinceLast(0),
+        ..Default::default()
+    };
+    assert_eq!(
+        Err(ConfigError::SnapshotLogsSinceLastIs0),
+        config.validate().map(|_| ())
+    );
+
+    for policy in [SnapshotPolicy::LogsSinceLast(1), SnapshotPolicy::Never] {
+        let config = Config {
+            snapshot_policy: policy.clone(),
+            ..Default::default()
+        };
+        let config = config.validate().unwrap();
+        assert_eq!(policy, config.snapshot_policy);
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_snapshot_logs_since_last_zero_from_serde_fails_validation() -> anyhow::Result<()> {
+    let mut value = serde_json::to_value(Config::default())?;
+    value["snapshot_policy"] = serde_json::json!({ "LogsSinceLast": 0 });
+    let config: Config = serde_json::from_value(value)?;
+    assert_eq!(SnapshotPolicy::LogsSinceLast(0), config.snapshot_policy);
+    assert_eq!(
+        Err(ConfigError::SnapshotLogsSinceLastIs0),
+        config.validate().map(|_| ())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_snapshot_max_chunk_size_must_form_a_byte_buffer() {
+    let config = Config {
+        snapshot_max_chunk_size: 0,
+        ..Default::default()
+    };
+    assert_eq!(Err(ConfigError::SnapshotMaxChunkSizeIs0), config.validate().map(|_| ()));
+
+    let max = u64::try_from(isize::MAX).unwrap();
+    let config = Config {
+        snapshot_max_chunk_size: max + 1,
+        ..Default::default()
+    };
+    let expected = ConfigError::TooLarge {
+        field: "snapshot_max_chunk_size",
+        value: max + 1,
+        max,
+    };
+    assert_eq!(Err(expected), config.validate().map(|_| ()));
+
+    for size in [1, max, Config::default().snapshot_max_chunk_size] {
+        let config = Config {
+            snapshot_max_chunk_size: size,
+            ..Default::default()
+        };
+        let config = config.validate().unwrap();
+        assert_eq!(size, config.snapshot_max_chunk_size);
+    }
+
+    // On a 32-bit target `isize::MAX` is `i32::MAX`: a chunk size that would truncate to 0 there,
+    // such as 2^32, is rejected.
+    let max_32 = u64::try_from(i32::MAX).unwrap();
+    let truncated = check_fits("snapshot_max_chunk_size", 1 << 32, max_32);
+    assert!(matches!(truncated, Err(ConfigError::TooLarge { .. })), "{truncated:?}");
 }
 
 #[test]
@@ -400,6 +537,27 @@ fn test_invalid_heartbeat_min_interval_produces_expected_error() {
     assert_eq!(1000, config.election_timeout_min);
     assert_eq!(2000, config.election_timeout_max);
     assert_eq!(500, config.heartbeat_interval);
+}
+
+/// The heartbeat gap is computed in `u128`, so a huge `heartbeat_min_interval` is rejected with the
+/// usual error instead of overflowing: a debug build panicked, and a release build wrapped the sum
+/// to 49 and accepted it.
+#[test]
+fn test_heartbeat_min_interval_overflow_returns_an_error() {
+    let config = Config {
+        election_timeout_min: 150,
+        election_timeout_max: 300,
+        heartbeat_interval: 50,
+        heartbeat_min_interval: Some(u64::MAX),
+        ..Default::default()
+    };
+
+    let err = config.validate().unwrap_err();
+    assert_eq!(err, ConfigError::HeartbeatMinIntervalTooLarge {
+        election_timeout_min: 150,
+        heartbeat_interval: 50,
+        heartbeat_min_interval: u64::MAX,
+    });
 }
 
 /// Suppression disabled leaves the heartbeat cadence unchanged, so `election_timeout_min` only has
