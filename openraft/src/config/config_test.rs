@@ -5,10 +5,10 @@ use crate::config::error::ConfigError;
 
 #[test]
 fn test_config_defaults() {
-    let cfg = Config::default();
+    let cfg = Config::default().validate().unwrap();
 
-    assert!(cfg.election_timeout_min >= 150);
-    assert!(cfg.election_timeout_max <= 300);
+    assert_eq!(150, cfg.election_timeout_min);
+    assert_eq!(300, cfg.election_timeout_max);
 
     assert_eq!(50, cfg.heartbeat_interval);
     assert_eq!(300, cfg.max_payload_entries);
@@ -164,8 +164,9 @@ fn test_quorum_loss_configuration() {
         quorum_loss_probe_interval: Some(600),
         ..Default::default()
     };
-    let result = config.validate();
-    assert!(result.is_ok());
+    let config = config.validate().unwrap();
+    assert_eq!(Some(600), config.quorum_loss_probe_interval);
+    assert_eq!(300, config.election_timeout_max);
 
     let config = Config {
         election_timeout_max: u64::MAX,
@@ -276,6 +277,43 @@ fn test_invalid_election_timeout_config_produces_expected_error() {
         election_timeout_min: 1000,
         heartbeat_interval: 1500
     });
+
+    // Equal bounds leave an empty range to sample an election timeout from.
+    let config = Config {
+        election_timeout_min: 1000,
+        election_timeout_max: 1000,
+        ..Default::default()
+    };
+    let err = config.validate().unwrap_err();
+    assert_eq!(err, ConfigError::ElectionTimeout { min: 1000, max: 1000 });
+
+    // A heartbeat interval equal to the election minimum. Suppression is off, so that its own
+    // check cannot reject the setting instead.
+    let config = Config {
+        election_timeout_min: 1000,
+        election_timeout_max: 2000,
+        heartbeat_interval: 1000,
+        heartbeat_min_interval: None,
+        ..Default::default()
+    };
+    let err = config.validate().unwrap_err();
+    assert_eq!(err, ConfigError::ElectionTimeoutLTHeartBeat {
+        election_timeout_min: 1000,
+        heartbeat_interval: 1000
+    });
+
+    // One millisecond inside both bounds is valid.
+    let config = Config {
+        election_timeout_min: 1000,
+        election_timeout_max: 1001,
+        heartbeat_interval: 999,
+        heartbeat_min_interval: None,
+        ..Default::default()
+    };
+    let config = config.validate().unwrap();
+    assert_eq!(1000, config.election_timeout_min);
+    assert_eq!(1001, config.election_timeout_max);
+    assert_eq!(999, config.heartbeat_interval);
 }
 
 #[test]
@@ -306,7 +344,12 @@ fn test_invalid_heartbeat_min_interval_produces_expected_error() {
         heartbeat_min_interval: Some(499),
         ..Default::default()
     };
-    assert!(config.validate().is_ok());
+    let config = config.validate().unwrap();
+    assert_eq!(Some(499), config.heartbeat_min_interval);
+    assert_eq!(499, config.heartbeat_min_interval());
+    assert_eq!(1000, config.election_timeout_min);
+    assert_eq!(2000, config.election_timeout_max);
+    assert_eq!(500, config.heartbeat_interval);
 }
 
 /// Suppression disabled leaves the heartbeat cadence unchanged, so `election_timeout_min` only has
@@ -320,5 +363,10 @@ fn test_disabled_heartbeat_min_interval_only_needs_a_greater_election_timeout() 
         heartbeat_min_interval: None,
         ..Default::default()
     };
-    assert!(config.validate().is_ok());
+    let config = config.validate().unwrap();
+    assert_eq!(None, config.heartbeat_min_interval);
+    assert_eq!(0, config.heartbeat_min_interval());
+    assert_eq!(101, config.election_timeout_min);
+    assert_eq!(200, config.election_timeout_max);
+    assert_eq!(100, config.heartbeat_interval);
 }

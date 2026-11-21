@@ -104,6 +104,34 @@ fn test_segments_after_eviction() {
 }
 
 #[test]
+fn test_segments_start_inside_a_lagging_stage_range() {
+    let mut m = M::new(2);
+    let mut begin = 0u64;
+
+    // Stages 0 and 2 record a third boundary, evicting their boundary at 10.
+    for i in [0, 2] {
+        let base = (i as u64 + 1) * 100;
+        m.get_mut(i).record(10, base + 1);
+        m.get_mut(i).record(20, base + 2);
+        let evicted = m.get_mut(i).record(30, base + 3);
+        assert_eq!(evicted, Some(10));
+        begin = begin.max(evicted.unwrap());
+    }
+
+    // Stage 1 lags: it still holds boundaries at 5 and 25, so its range [5, 25) spans the start.
+    m.get_mut(1).record(5, 201);
+    m.get_mut(1).record(25, 202);
+
+    // Stage 1 contributes the value of [5, 25) until its boundary at 25, never the value of the
+    // range that ends at 5.
+    assert_eq!(begin, 10);
+    assert_eq!(collect_segments(&m, begin), vec![
+        (10..20, [102, 202, 302]),
+        (20..25, [103, 202, 303]),
+    ]);
+}
+
+#[test]
 fn test_segments_one_map_empty() {
     // If any map is empty, min_end falls back to begin → no segments
     let mut m = M::new(10);
