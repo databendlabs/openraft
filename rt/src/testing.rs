@@ -24,6 +24,7 @@ use crate::OneshotSender;
 use crate::Select2;
 use crate::Select3;
 use crate::Select4;
+use crate::SendError;
 use crate::Watch;
 use crate::mpsc::Mpsc;
 use crate::mpsc::MpscReceiver;
@@ -536,6 +537,19 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
         let opt_tx = weak_tx.upgrade();
         assert!(opt_tx.is_none());
+
+        // A live strong sender is enough to upgrade, even after the receiver is dropped; the
+        // upgraded sender then returns the value it could not send.
+        let (tx, rx) = Rt::Mpsc::channel::<u32>(5);
+        let weak_tx = tx.downgrade();
+        drop(rx);
+        let upgraded = weak_tx.upgrade().expect("a strong sender is alive");
+        let sent = upgraded.send(19).await;
+        assert_eq!(Err(SendError(19)), sent);
+
+        drop(upgraded);
+        drop(tx);
+        assert!(weak_tx.upgrade().is_none(), "no strong sender is left");
     }
 
     pub async fn test_mpsc_send() {

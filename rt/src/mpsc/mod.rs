@@ -29,6 +29,11 @@ pub trait Mpsc: Sized {
 
     /// Creates a bounded mpsc channel for communicating between asynchronous tasks with
     /// backpressure.
+    ///
+    /// A `buffer` of at least 1, within the limit of the runtime, works on every runtime. The
+    /// Tokio-backed channels of Tokio, Monoio and the simulator panic when `buffer` is 0 or
+    /// greater than `tokio::sync::Semaphore::MAX_PERMITS`. Compio accepts 0 and creates a
+    /// rendezvous channel, whose send completes only when a receiver takes the value.
     #[track_caller]
     fn channel<T: OptionalSend>(buffer: usize) -> (Self::Sender<T>, Self::Receiver<T>);
 }
@@ -43,6 +48,13 @@ where
     ///
     /// If the receiving half of the channel is closed, this
     /// function returns an error. The error includes the value passed to `send`.
+    ///
+    /// Dropping the returned future after it has been polled can race with delivery: on Compio
+    /// the message can still reach the receiver, while Tokio, Monoio and the simulator drop it.
+    /// A caller that sends the message again after a timeout or a lost selection can therefore
+    /// deliver it twice. To finish the same send after another branch wins, keep the future and
+    /// poll it again. A [`SendError`] is different: the message was not sent, and the error
+    /// returns it.
     #[track_caller]
     fn send(&self, msg: T) -> impl Future<Output = Result<(), SendError<T>>> + OptionalSend;
 
@@ -118,8 +130,10 @@ where
 {
     /// Tries to convert a [`MpscWeakSender`] into an [`MpscSender`].
     ///
-    /// This will return `Some` if there are other `Sender` instances alive and
-    /// the channel wasn't previously dropped, otherwise `None` is returned.
+    /// This returns `Some` while another [`MpscSender`] of the channel is alive, and `None` once
+    /// the last one has been dropped. Getting a sender says nothing about the receiver: when it
+    /// has been dropped, [`send()`](MpscSender::send) on the upgraded sender returns
+    /// [`SendError`] with the value.
     #[track_caller]
     fn upgrade(&self) -> Option<MU::Sender<T>>;
 }
