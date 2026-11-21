@@ -20,49 +20,87 @@
 
 use std::any::TypeId;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::sync::PoisonError;
+
+use openraft_macros::since;
 
 use crate::base::BoxAny;
 use crate::base::OptionalSend;
 
+/// The value of one type, `None` until it has one.
+///
+/// Each type has its own lock, so that the callbacks of one type do not block access to the
+/// others.
+type Slot = Arc<Mutex<Option<BoxAny>>>;
+
 /// A type-map for storing user-defined extension data.
 ///
 /// Values are stored by their [`TypeId`], so each type can have at most one value.
-/// Access is thread-safe via internal [`Mutex`].
+/// Access is thread-safe.
 ///
 /// Values must implement [`Clone`] and [`Default`]. When retrieved via [`get()`](Self::get),
 /// a clone is returned. If no value exists, `T::default()` is stored before cloning.
+///
+/// `T::default()` and `T::clone()` run while only the value of `T` is locked. They can access
+/// the values of other types, but must not access `T` itself, directly or through the callbacks
+/// of other types: that would deadlock. A panic in them leaves the values of other types usable.
+#[since(version = "0.10.2", change = "`get()` callbacks run outside the map-wide lock")]
 pub struct Extensions {
-    map: Mutex<HashMap<TypeId, BoxAny>>,
+    map: Mutex<HashMap<TypeId, Slot>>,
 }
 
 impl Extensions {
     /// Get a clone of the value of type `T`.
     ///
-    /// If no value exists, `T::default()` is inserted and a clone is returned.
+    /// If no value exists, `T::default()` is inserted and a clone is returned. Concurrent first
+    /// lookups of `T` store a single default.
     pub fn get<T>(&self) -> T
     where T: OptionalSend + Clone + Default + 'static {
-        let mut map = self.map.lock().unwrap();
-        map.entry(TypeId::of::<T>())
-            .or_insert_with(|| Box::new(T::default()))
-            .downcast_ref::<T>()
-            .expect("extension type must match its TypeId")
-            .clone()
+        let type_id = TypeId::of::<T>();
+        loop {
+            let slot = lock(&self.map).entry(type_id).or_default().clone();
+            let mut stored = lock(&slot);
+
+            // A concurrent `remove()` may have detached this slot after the lookup above.
+            if !self.is_current(type_id, &slot) {
+                continue;
+            }
+
+            let value = stored.get_or_insert_with(|| Box::new(T::default()));
+            return value.downcast_ref::<T>().expect("extension type must match its TypeId").clone();
+        }
     }
 
     /// Check if a value of type `T` exists.
     pub fn contains<T>(&self) -> bool
     where T: 'static {
-        let map = self.map.lock().unwrap();
-        map.contains_key(&TypeId::of::<T>())
+        let slot = lock(&self.map).get(&TypeId::of::<T>()).cloned();
+        slot.is_some_and(|slot| lock(&slot).is_some())
     }
 
     /// Remove and return a value of type `T`.
     pub fn remove<T>(&self) -> Option<T>
     where T: 'static {
-        let mut map = self.map.lock().unwrap();
-        map.remove(&TypeId::of::<T>()).and_then(|boxed| boxed.downcast().ok().map(|b| *b))
+        let slot = lock(&self.map).remove(&TypeId::of::<T>())?;
+        let value = lock(&slot).take()?;
+        value.downcast().ok().map(|b| *b)
     }
+
+    /// Whether `slot` is still the slot of `type_id` in the map.
+    fn is_current(&self, type_id: TypeId, slot: &Slot) -> bool {
+        lock(&self.map).get(&type_id).is_some_and(|current| Arc::ptr_eq(current, slot))
+    }
+}
+
+/// Lock `mutex`, also after a panic in an extension callback poisoned it.
+///
+/// The data stays consistent: `T::default()` runs before its value is stored, and `T::clone()`
+/// only reads it.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Default for Extensions {
@@ -81,86 +119,4 @@ impl std::fmt::Debug for Extensions {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicU64;
-    use std::sync::atomic::Ordering;
-
-    use super::*;
-
-    #[test]
-    fn test_get_inserts_default() {
-        let ext = Extensions::default();
-
-        #[derive(Clone, Default, PartialEq, Debug)]
-        struct MyData(u32);
-
-        // First call creates default value
-        let val = ext.get::<MyData>();
-        assert_eq!(val, MyData(0));
-
-        // Value is now stored
-        assert!(ext.contains::<MyData>());
-
-        // Second call returns same value
-        let val2 = ext.get::<MyData>();
-        assert_eq!(val2, MyData(0));
-    }
-
-    #[test]
-    fn test_get_stores_original_default() {
-        #[derive(Clone)]
-        struct Buffer(Vec<u8>);
-
-        impl Default for Buffer {
-            fn default() -> Self {
-                Self(Vec::with_capacity(16))
-            }
-        }
-
-        tracing::info!(capacity = 16, "check that the stored buffer keeps its reservation");
-        {
-            let ext = Extensions::default();
-            assert_eq!(ext.get::<Buffer>().0.capacity(), 0);
-            assert!(ext.remove::<Buffer>().unwrap().0.capacity() >= 16);
-        }
-    }
-
-    #[test]
-    fn test_shared_state_with_arc() {
-        let ext = Extensions::default();
-
-        #[derive(Clone, Default)]
-        struct Counter(Arc<AtomicU64>);
-
-        // Get clone and mutate
-        let counter1 = ext.get::<Counter>();
-        counter1.0.fetch_add(1, Ordering::Relaxed);
-        counter1.0.fetch_add(1, Ordering::Relaxed);
-
-        // Get another clone - shares the same Arc
-        let counter2 = ext.get::<Counter>();
-        assert_eq!(counter2.0.load(Ordering::Relaxed), 2);
-
-        // More increments
-        counter2.0.fetch_add(1, Ordering::Relaxed);
-        assert_eq!(counter1.0.load(Ordering::Relaxed), 3);
-    }
-
-    #[test]
-    fn test_remove() {
-        let ext = Extensions::default();
-
-        #[derive(Clone, Default, PartialEq, Debug)]
-        struct MyData(u32);
-
-        // Insert via get
-        let _ = ext.get::<MyData>();
-        assert!(ext.contains::<MyData>());
-
-        // Remove
-        assert_eq!(ext.remove::<MyData>(), Some(MyData(0)));
-        assert!(!ext.contains::<MyData>());
-        assert!(ext.remove::<MyData>().is_none());
-    }
-}
+mod extensions_test;
