@@ -8,6 +8,7 @@ use tests::fixtures;
 mod t10_client_write_many;
 mod t10_client_write_quorum_lease;
 mod t10_client_writes;
+mod t10_write_expect_last_log_id;
 mod t10_write_many;
 mod t11_client_reads;
 mod t11_local_lease_read;

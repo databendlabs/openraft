@@ -29,7 +29,7 @@ detailed guide.
 ## Reads and writes
 
 - **Batch writes**: [`client_write_many()`][] batches requests and returns results in submission order.
-- **Conditional writes**: check the expected leader before appending a write with [`write().with_leader()`][].
+- **Conditional writes**: append a write only while the expected leader leads, with [`write().with_leader()`][], or only on top of an expected log entry, with [`WriteOption::with_last_log_id()`][].
 - **Write notifications**: [`ProgressResponder`][] reports commit and state-machine application separately.
 - **[Linearizable reads][read protocol]**: confirm leadership with a quorum and wait for local apply before reading, using [`ensure_linearizable()`][] with `ReadPolicy::ReadIndex`.
 - **Lease reads**: avoid per-read quorum round trips with `ReadPolicy::LeaseRead` under the [lease assumptions](crate::docs::protocol::read#ensuring-linearizability); optional [local checks](crate::docs::protocol::read#caller-side-lease-reads) bypass RaftCore's queue.
@@ -83,6 +83,7 @@ detailed guide.
 [`testing::log::Suite`]: crate::testing::log::Suite
 [`on_leader_change()`]: crate::Raft::on_leader_change
 [`write().with_leader()`]: crate::raft::WriteRequest::with_leader
+[`WriteOption::with_last_log_id()`]: crate::raft::WriteOption::with_last_log_id
 [`ProgressResponder`]: crate::impls::ProgressResponder
 [`Raft`]: crate::Raft
 [`Raft::initialize()`]: crate::Raft::initialize

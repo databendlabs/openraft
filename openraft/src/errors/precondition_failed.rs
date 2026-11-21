@@ -28,9 +28,11 @@ where C: RaftTypeConfig
         actual: Option<CommittedLeaderIdOf<C>>,
     },
 
-    /// The last log id is not the one [`Precondition::LastLogId`] required.
+    /// The last log id is not the one [`Precondition::LastLogId`] or
+    /// [`WriteOption::with_last_log_id()`] required.
     ///
     /// [`Precondition::LastLogId`]: `crate::raft::Precondition::LastLogId`
+    /// [`WriteOption::with_last_log_id()`]: `crate::raft::WriteOption::with_last_log_id`
     #[error("last log id mismatch: expected: {}, actual: {}", expected.display(), actual.display())]
     LastLogIdMismatch {
         /// The last log id that the precondition requires; `None` means an empty log.

@@ -1445,9 +1445,10 @@ where
     /// multiple times as it sends all payloads in a single message to the Raft core.
     ///
     /// `write_option` controls how RaftCore admits the batch: pass `WriteOption::default()` for an
-    /// unconditional write, or [`WriteOption::expect_leader()`] to admit the batch only while a
-    /// given leader is established. To attach your own responders instead of reading a stream,
-    /// use [`Self::write_many()`].
+    /// unconditional write, [`WriteOption::expect_leader()`] to admit the batch only while a
+    /// given leader is established, or [`WriteOption::expect_last_log_id()`] to admit it only on
+    /// top of a given log entry. To attach your own responders instead of reading a stream, use
+    /// [`Self::write_many()`].
     ///
     /// `Err(Fatal)` from this method means the batch was not submitted. If RaftCore stops later,
     /// the stream yields `Err(Fatal::Stopped)` and ends.
@@ -1461,6 +1462,8 @@ where
     /// - If this node may not accept writes, for example because it is not the leader, its leader
     ///   lease has expired, or it is transferring leadership, every entry yields
     ///   [`ClientWriteError::ForwardToLeader`] and nothing is appended.
+    /// - If the expected last log id is not the leader's last log id, every entry yields
+    ///   [`ClientWriteError::PreconditionFailed`] and nothing is appended.
     /// - Otherwise every entry is appended to the leader's log in order, at consecutive log
     ///   indexes.
     ///
@@ -1493,6 +1496,7 @@ where
     ///
     /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
     /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
+    /// [`ClientWriteError::PreconditionFailed`]: crate::errors::ClientWriteError::PreconditionFailed
     #[since(version = "0.10.1", change = "add write_option argument")]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
@@ -1562,12 +1566,16 @@ where
     /// - If this node may not accept writes, for example because it is not the leader, its leader
     ///   lease has expired, or it is transferring leadership, every write fails with
     ///   [`ClientWriteError::ForwardToLeader`] and nothing is appended.
+    /// - If the last log id expected by [`WriteOption::with_last_log_id()`] is not the leader's
+    ///   last log id, every write fails with [`ClientWriteError::PreconditionFailed`] and nothing
+    ///   is appended.
     /// - Otherwise every write is appended to the leader's log in order, at consecutive log
     ///   indexes.
     ///
     /// RaftCore may append the batch together with other queued writes, but it never splits the
-    /// batch. Since admission is all or nothing, a responder on any one write tells whether the
-    /// whole batch was admitted. An empty batch appends nothing.
+    /// batch. A batch that expects a last log id is appended alone. Since admission is all or
+    /// nothing, a responder on any one write tells whether the whole batch was admitted. An empty
+    /// batch appends nothing.
     ///
     /// # Commit
     ///
@@ -1603,6 +1611,7 @@ where
     /// [`.with_option()`]: WriteManyRequest::with_option
     /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
     /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
+    /// [`ClientWriteError::PreconditionFailed`]: crate::errors::ClientWriteError::PreconditionFailed
     #[since(version = "0.10.1")]
     pub fn write_many(
         &self,

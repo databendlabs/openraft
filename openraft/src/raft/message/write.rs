@@ -9,10 +9,13 @@ use crate::type_config::alias::LogIdOf;
 /// The result of a write operation, returned by [`Raft::client_write_many()`].
 ///
 /// This uses [`ClientWriteError`] so callers can distinguish a request rejected before append
-/// from one whose outcome became unknown after append. Batch writes only produce
-/// [`ClientWriteError::ForwardToLeader`] and [`ClientWriteError::LogEntryDiscarded`].
+/// from one whose outcome became unknown after append. Batch writes produce
+/// [`ClientWriteError::ForwardToLeader`] and [`ClientWriteError::LogEntryDiscarded`], and
+/// [`ClientWriteError::PreconditionFailed`] only when the batch's [`WriteOption`] expects a last
+/// log id.
 ///
 /// [`Raft::client_write_many()`]: crate::Raft::client_write_many
+/// [`WriteOption`]: crate::raft::WriteOption
 #[since(version = "0.10.0", change = "changed the error type to `ClientWriteError<C>`")]
 pub type WriteResult<C> = Result<WriteResponse<C>, ClientWriteError<C>>;
 
@@ -51,11 +54,9 @@ pub(crate) fn into_write_result<C: RaftTypeConfig>(result: ClientWriteResult<C>)
         Ok(resp) => Ok(resp.into()),
         Err(e @ ClientWriteError::ForwardToLeader(_)) => Err(e),
         Err(e @ ClientWriteError::LogEntryDiscarded(_)) => Err(e),
+        Err(e @ ClientWriteError::PreconditionFailed(_)) => Err(e),
         Err(ClientWriteError::ChangeMembershipError(_)) => {
             unreachable!("ChangeMembershipError should not occur for normal writes")
-        }
-        Err(ClientWriteError::PreconditionFailed(_)) => {
-            unreachable!("PreconditionFailed should not occur for normal writes")
         }
     }
 }
