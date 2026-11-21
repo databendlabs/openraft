@@ -7,7 +7,9 @@ use validit::less_equal;
 
 /// Tracks the progress of I/O operations through three stages: accepted, submitted, and flushed.
 ///
-/// `T`: A totally ordered type representing the I/O operation identifier (e.g., [`LogIOId`]).
+/// `T` identifies an I/O operation, such as [`LogIOId`]. It is only [`PartialOrd`]: two IDs whose
+/// votes are not committed can be incomparable. Each cursor expects a nondecreasing sequence of
+/// values that are comparable with each other.
 ///
 /// Invariant: `flushed <= submitted <= accepted`
 ///
@@ -92,7 +94,8 @@ where
 
     /// Update the `accept` cursor of the I/O progress.
     ///
-    /// Enforces strict monotonicity - panics in debug mode if updates arrive out of order.
+    /// The new value must not be smaller than the current one. An equal value is accepted; a
+    /// smaller or incomparable one panics in debug builds.
     pub(crate) fn accept(&mut self, new_accepted: T) {
         tracing::debug!("RAFT_io    {}; new_accepted: {}", self, new_accepted);
         Self::advance(&mut self.accepted, "accepted", new_accepted);
@@ -101,7 +104,8 @@ where
 
     /// Update the `submit` cursor of the I/O progress.
     ///
-    /// Enforces strict monotonicity - panics in debug mode if updates arrive out of order.
+    /// The new value must not be smaller than the current one. An equal value is accepted; a
+    /// smaller or incomparable one panics in debug builds.
     pub(crate) fn submit(&mut self, new_submitted: T) {
         tracing::debug!("RAFT_io    {}; new_submitted: {}", self, new_submitted);
         Self::advance(&mut self.submitted, "submitted", new_submitted);
@@ -110,7 +114,8 @@ where
 
     /// Update the `flush` cursor of the I/O progress.
     ///
-    /// Enforces strict monotonicity - panics in debug mode if updates arrive out of order.
+    /// The new value must not be smaller than the current one. An equal value is accepted; a
+    /// smaller or incomparable one panics in debug builds.
     /// Use [`Self::try_flush`] to tolerate out-of-order I/O completion notifications.
     pub(crate) fn flush(&mut self, new_flushed: T) {
         tracing::debug!("RAFT_io    {}; new_flushed: {}", self, new_flushed);
@@ -125,7 +130,7 @@ where
         if cfg!(debug_assertions) {
             assert!(
                 cursor.as_ref().is_none_or(|current| current <= &new_value),
-                "expect {}:{} < new_{}:{}",
+                "expect {}:{} <= new_{}:{}",
                 stage,
                 cursor.display(),
                 stage,
@@ -213,21 +218,43 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "expect accepted:11 < new_accepted:10")]
+    fn test_direct_updates_accept_an_equal_value() {
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test");
+
+        progress.accept(10);
+        progress.submit(10);
+        progress.flush(10);
+
+        assert_eq!(Some(&10), progress.accepted());
+        assert_eq!(Some(&10), progress.submitted());
+        assert_eq!(Some(&10), progress.flushed());
+    }
+
+    #[test]
+    #[should_panic(expected = "expect accepted:11 <= new_accepted:10")]
     #[cfg(debug_assertions)]
-    fn test_accept_enforces_strict_monotonicity() {
+    fn test_accept_rejects_a_smaller_value() {
         let mut progress = IOProgress::new_synchronized(Some(10), 1, "test");
         progress.accept(11);
         progress.accept(10); // Should panic - out of order
     }
 
     #[test]
-    #[should_panic(expected = "expect submitted:11 < new_submitted:10")]
+    #[should_panic(expected = "expect submitted:11 <= new_submitted:10")]
     #[cfg(debug_assertions)]
-    fn test_submit_enforces_strict_monotonicity() {
+    fn test_submit_rejects_a_smaller_value() {
         let mut progress = IOProgress::new_synchronized(Some(10), 1, "test");
         progress.submit(11);
         progress.submit(10); // Should panic - out of order
+    }
+
+    #[test]
+    #[should_panic(expected = "expect flushed:11 <= new_flushed:10")]
+    #[cfg(debug_assertions)]
+    fn test_flush_rejects_a_smaller_value() {
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test");
+        progress.flush(11);
+        progress.flush(10); // Should panic - out of order
     }
 
     #[test]
@@ -256,6 +283,15 @@ mod tests {
         assert_eq!(Some(&15), progress.accepted());
         assert_eq!(Some(&15), progress.submitted());
         assert_eq!(Some(&15), progress.flushed());
+
+        // A value between the cursors moves only the cursors behind it
+        let mut progress = IOProgress::new_synchronized(Some(10), 1, "test");
+        progress.accept(20);
+        progress.submit(15);
+        progress.try_update_all(17);
+        assert_eq!(Some(&20), progress.accepted());
+        assert_eq!(Some(&17), progress.submitted());
+        assert_eq!(Some(&17), progress.flushed());
     }
 
     #[test]
