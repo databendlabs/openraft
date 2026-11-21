@@ -34,10 +34,12 @@ where
     /// Stops when:
     /// - A non-AppendEntries command is encountered
     /// - A different leader's command is encountered
-    /// - The total entry count reaches `config.max_append_entries`
+    /// - Merging the next command would bring the total entry count above
+    ///   `config.max_append_entries`
     ///
     /// The entry limit prevents creating excessively large batches that could cause
-    /// high latency in storage operations.
+    /// high latency in storage operations. It limits only what merging adds: the first command is
+    /// kept whole, even when it already holds more entries than the limit.
     pub(crate) fn merge_front_append_entries(&mut self) {
         let max_entries = self.config.max_append_entries();
         let commands = &mut self.output.commands;

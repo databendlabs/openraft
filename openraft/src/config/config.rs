@@ -93,8 +93,11 @@ fn default_removed_leader_step_down() -> StepDownPolicy {
 
 /// Log compaction and snapshot policy.
 ///
-/// This governs when periodic snapshots will be taken, as well as the conditions which
-/// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
+/// This governs when periodic snapshots will be taken. It does not decide when a leader sends a
+/// follower a snapshot instead of log entries: the leader does that when the entries the follower
+/// needs are already purged. See [snapshot replication].
+///
+/// [snapshot replication]: crate::docs::protocol::replication::snapshot_replication
 ///
 /// Additional policies may become available in the future.
 #[derive(Clone, Debug)]
@@ -251,11 +254,16 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.max_payload_entries))]
     pub max_payload_entries: u64,
 
-    /// The maximum number of log entries per append I/O operation.
+    /// The maximum number of log entries that merging puts into one append I/O operation.
     ///
-    /// When multiple `AppendEntries` commands are queued, Openraft can merge them into
-    /// a single storage write to improve throughput. This setting limits the batch size
-    /// to prevent excessively large writes that could cause high storage latency.
+    /// When multiple `AppendEntries` commands are queued, Openraft can merge adjacent ones into a
+    /// single storage write to improve throughput. It merges the next command only while the total
+    /// stays within this limit, to prevent excessively large writes that could cause high storage
+    /// latency.
+    ///
+    /// It limits merging, not each storage write: a command that already holds more entries, such
+    /// as a multi-entry client write, is appended whole. With a limit of 1, a two-entry command is
+    /// still one two-entry append.
     ///
     /// This is separate from `max_payload_entries` which controls network replication payload size.
     /// Storage typically has higher throughput than network, so this value can be larger.
@@ -265,13 +273,15 @@ pub struct Config {
     #[cfg_attr(feature = "clap", clap(long, default_value = "4096"))]
     pub max_append_entries: Option<u64>,
 
-    /// The distance behind in log replication a follower must fall before it is considered lagging
+    /// How far behind the leader's last log a new learner may be when a blocking
+    /// [`Raft::add_learner`](crate::Raft::add_learner) returns.
     ///
-    /// - Followers that fall behind this index are replicated with a snapshot.
-    /// - Followers that fall within this index are replicated with log entries.
+    /// With `blocking` set, `add_learner` waits until the learner has replicated the membership log
+    /// that adds it, and is at most this many log entries behind the leader's last log.
     ///
-    /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise
-    /// transmitting a snapshot may not fix the lagging.
+    /// It does not decide whether a follower gets log entries or a snapshot. The leader sends a
+    /// snapshot when the entries a follower needs are already purged; see
+    /// [snapshot replication](crate::docs::protocol::replication::snapshot_replication).
     #[cfg_attr(feature = "clap", clap(long, default_value_t = DEFAULTS.replication_lag_threshold))]
     pub replication_lag_threshold: u64,
 
@@ -680,12 +690,15 @@ pub struct Config {
     /// unless you know what you are doing.
     ///
     /// Although log state reversion is typically seen as a bug, enabling it can be
-    /// useful for testing or other special scenarios.
-    /// For instance, in an even number nodes cluster, erasing a node's data and then
-    /// rebooting it(log reverts to empty) will not result in data loss.
+    /// useful for testing or other special scenarios. It only lets the replication progress reset:
+    /// it adds no quorum-safety check and no recovery, so it does not make erasing a node's data
+    /// safe. For the narrow case where erasing one voter cannot lose committed data, see the
+    /// [FAQ][wipe-one-node].
     ///
     /// For one-shot log reversion, use
     /// [`Raft::trigger().allow_next_revert()`](crate::raft::trigger::Trigger::allow_next_revert).
+    ///
+    /// [wipe-one-node]: crate::docs::faq#can-i-wipe-out-the-data-of-one-node-and-wait-for-the-leader-to-replicate-all-data-to-it-again
     #[since(version = "0.10.0")]
     #[cfg_attr(feature = "clap", clap(long,
            action = clap::ArgAction::Set,
@@ -886,7 +899,7 @@ impl Config {
         self.broadcast_submitted_on_append.unwrap_or(false)
     }
 
-    /// Get the maximum number of log entries per append I/O operation.
+    /// Get the maximum number of log entries that merging puts into one append I/O operation.
     ///
     /// Defaults to 4096 if not specified.
     pub(crate) fn max_append_entries(&self) -> u64 {

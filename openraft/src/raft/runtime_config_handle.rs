@@ -92,11 +92,16 @@ where C: RaftTypeConfig
         self.raft_inner.runtime_config.enable_heartbeat.load(Ordering::Relaxed)
     }
 
-    /// Return whether this node starts elections on its own, as set by [`Self::elect`].
+    /// Return whether this node starts an election when its election timer expires, as set by
+    /// [`Self::elect`].
     ///
     /// It starts as [`Config::enable_elect`](crate::Config::enable_elect). With it disabled, a
     /// voter still grants votes and still takes over when a leader transfers leadership to it;
     /// [`Trigger::elect`](crate::raft::trigger::Trigger::elect) starts an election regardless.
+    ///
+    /// A node that was the leader before a restart still campaigns at startup, unless
+    /// [`Config::enable_leader_restore`](field@crate::Config::enable_leader_restore) is
+    /// `Some(false)`.
     #[since(version = "0.10.2")]
     pub fn is_elect_enabled(&self) -> bool {
         self.raft_inner.runtime_config.enable_elect.load(Ordering::Relaxed)
