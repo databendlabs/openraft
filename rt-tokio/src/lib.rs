@@ -185,6 +185,28 @@ mod tests {
         Suite::<TokioRuntime>::test_all();
     }
 
+    /// `TokioRuntime` uses the default `AsyncRuntime::spawn_blocking()`, which reports a panic.
+    #[test]
+    fn test_spawn_blocking_reports_a_panic() {
+        let mut rt = TokioRuntime::new(2);
+        rt.block_on(async {
+            assert_eq!(7, TokioRuntime::spawn_blocking(|| 7).await.unwrap());
+
+            let err = TokioRuntime::spawn_blocking(|| -> u32 { panic!("blocking probe") }).await.unwrap_err();
+            assert_eq!(std::io::ErrorKind::Other, err.kind());
+            assert_eq!("spawn_blocking worker panicked: blocking probe", err.to_string());
+
+            let err = TokioRuntime::spawn_blocking(|| -> u32 { panic!("blocking probe {}", 2) }).await.unwrap_err();
+            assert_eq!("spawn_blocking worker panicked: blocking probe 2", err.to_string());
+
+            let err = TokioRuntime::spawn_blocking(|| -> u32 { std::panic::panic_any(5_u8) }).await.unwrap_err();
+            assert_eq!(
+                "spawn_blocking worker panicked: the panic payload is not a string",
+                err.to_string()
+            );
+        });
+    }
+
     #[test]
     fn test_new_runtime_flavor() {
         let mut rt = TokioRuntime::new(2);
