@@ -396,7 +396,12 @@ compares them and explains when to pick each one.
    raft.change_membership(change, false).await?;
    ```
 
-[`Raft::add_learner()`][] works unchanged with every provided membership.
+[`Raft::add_learner()`][] works unchanged with every provided membership:
+its change type implements [`RaftMembershipEditOps`][], the optional
+constructors for standard membership operations.
+Custom edits implement this trait to reuse learner submission and catch-up
+waiting, without implementing a conversion from the full `ChangeMembers`
+operation set. Edits without it still support `change_membership()`.
 
 The [`raft-kv-memstore-weighted-membership`][] example runs these steps over
 HTTP with a `WeightedMembership`. Its `/init` and `/change-membership` routes
@@ -427,6 +432,7 @@ through how its types implement them.
 [`ChangeMembers`]: `crate::impls::ChangeMembers`
 [`RaftMembership`]: `crate::membership::RaftMembership`
 [`RaftMembershipEdit`]: `crate::membership::RaftMembershipEdit`
+[`RaftMembershipEditOps`]: `crate::membership::RaftMembershipEditOps`
 [`Raft::initialize()`]: `crate::Raft::initialize`
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`Raft::add_learner()`]: `crate::Raft::add_learner`
@@ -456,15 +462,21 @@ Openraft calls [`RaftStateMachine::get_snapshot_builder`][] to create snapshots.
 concurrently with [`RaftStateMachine::apply`][], so your implementation must handle concurrent access
 to the state machine data.
 
-When a follower is more than [`Config::replication_lag_threshold`][] entries behind, the leader
-sends a snapshot instead of individual log entries.
+The leader sends a follower a snapshot instead of log entries when the entries it needs are
+already purged from the leader's log; see [snapshot replication][]. When snapshots are built
+depends only on [`Config::snapshot_policy`][]. [`Config::replication_lag_threshold`][] does not
+affect either: it sets how far behind a learner may be when a blocking [`Raft::add_learner`][]
+returns.
 
 For large snapshots that timeout during transfer, increase [`Config::install_snapshot_timeout`][].
 The snapshot is sent in chunks of [`Config::snapshot_max_chunk_size`][] bytes.
 
 [`RaftStateMachine::get_snapshot_builder`]: `crate::storage::RaftStateMachine::get_snapshot_builder`
 [`RaftStateMachine::apply`]: `crate::storage::RaftStateMachine::apply`
+[snapshot replication]: `crate::docs::protocol::replication::snapshot_replication`
+[`Config::snapshot_policy`]: `crate::config::Config::snapshot_policy`
 [`Config::replication_lag_threshold`]: `crate::config::Config::replication_lag_threshold`
+[`Raft::add_learner`]: `crate::Raft::add_learner`
 [`Config::install_snapshot_timeout`]: `crate::config::Config::install_snapshot_timeout`
 [`Config::snapshot_max_chunk_size`]: `crate::config::Config::snapshot_max_chunk_size`
 
@@ -1200,9 +1212,22 @@ N5 |                 elect  L2
                             Data loss: N5 does not have log `a`
 ```
 
-But for even number nodes cluster, Erasing **exactly one** node won't cause data loss.
-Thus, in a special scenario like this, or for testing purpose, you can use
-[`Config::allow_log_reversion`] to permit erasing a node.
+Erasing one node is safe only in a narrow case: the membership is stable, it
+uses a uniform simple-majority quorum over an even number of **voters**,
+exactly one voter is erased, and no earlier erasure is still unrepaired. With
+`2k` voters, a committed entry is on at least `k + 1` of them, so `k` still
+hold it after one is erased, and every election quorum of `k + 1` voters
+includes one of them, which refuses to vote for a candidate without the entry.
+
+Counting learners, which do not vote, does not give this guarantee, and neither
+does a custom quorum rule: three voters and one learner are four nodes, yet
+erasing one voter can lose a committed entry. With voters `A, B, C`, an entry
+committed on `A` and `B` is lost if `A` is erased and `B` is unavailable: `A`
+and `C` can elect `C` without it.
+
+[`Config::allow_log_reversion`] only lets the leader reset the erased node's
+replication progress; it adds no safety check. Enable it for testing, or for
+the narrow case above.
 
 Removing the node from the membership before wiping it does not make the
 sequence safe either, as long as the wiped node rejoins under its old ID. See:

@@ -6,9 +6,16 @@ how to tell whether an operation took effect.
 ## A voter that does not campaign
 
 With [`Config::enable_elect`] set to `false`, or after
-`raft.runtime_config().elect(false)`, a node never starts an election on its
-own. It is still a voter, not a learner: it grants votes, counts toward every
-quorum, and takes over when a leader transfers leadership to it.
+`raft.runtime_config().elect(false)`, a node starts no election when its
+election timer expires. It is still a voter, not a learner: it grants votes,
+counts toward every quorum, and takes over when a leader transfers leadership
+to it.
+
+This switch does not stop one startup campaign. A node that was the leader
+before it restarted campaigns for a higher term as soon as it starts, because
+[`Config::enable_leader_restore`] is enabled by default. To keep a voter
+passive across restarts, also set `enable_leader_restore` to `Some(false)`;
+the node then starts as a follower.
 
 A deployment can use this for a voter in a remote region. The remote voter
 holds a copy of the log and counts toward commits, but leads only when an
@@ -98,6 +105,7 @@ step safe to repeat, and check every group's membership before reporting the
 operation complete.
 
 [`Config::enable_elect`]: `crate::Config::enable_elect`
+[`Config::enable_leader_restore`]: `field@crate::Config::enable_leader_restore`
 [`Config::removed_leader_step_down`]: `crate::Config::removed_leader_step_down`
 [`RuntimeConfigHandle::is_elect_enabled()`]: `crate::raft::RuntimeConfigHandle::is_elect_enabled`
 [`Trigger::elect()`]: `crate::raft::trigger::Trigger::elect`
