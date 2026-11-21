@@ -10,8 +10,12 @@ use std::pin::Pin;
 use std::pin::pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Wake;
+use std::task::Waker;
 use std::time::Duration;
 
 use openraft_macros::since;
@@ -1377,9 +1381,23 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
     }
 
     pub async fn test_oneshot_drop_tx() {
+        // A receiver first polled after the sender is dropped resolves to an error.
         let (tx, rx) = Rt::Oneshot::channel::<()>();
         drop(tx);
         assert!(rx.await.is_err());
+
+        // A waiting receiver is woken by the drop, and then resolves to an error, possibly only
+        // after its task yields.
+        let (tx, mut rx) = Rt::Oneshot::channel::<()>();
+        let woken = Arc::new(WakeFlag::default());
+        let waker = Waker::from(Arc::clone(&woken));
+        let mut cx = Context::from_waker(&waker);
+        let polled = Pin::new(&mut rx).poll(&mut cx);
+        assert!(polled.is_pending(), "a receiver with a live sender should be pending");
+        drop(tx);
+        assert!(woken.is_set(), "dropping the sender should wake the waiting receiver");
+        let received = Rt::timeout(Duration::from_secs(1), rx).await.unwrap();
+        assert!(received.is_err());
     }
 
     pub async fn test_oneshot() {
@@ -1626,6 +1644,26 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let future = Rt::cancellable_by(async { 7 }, async { "cancel" });
         let actual = future.await;
         assert_eq!(None, actual);
+    }
+}
+
+/// A waker that records whether it was woken.
+#[derive(Default)]
+struct WakeFlag(AtomicBool);
+
+impl WakeFlag {
+    fn is_set(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl Wake for WakeFlag {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.0.store(true, Ordering::SeqCst);
     }
 }
 

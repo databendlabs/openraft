@@ -11,6 +11,13 @@ pub trait Oneshot {
     /// Type of a `oneshot` sender.
     type Sender<T: OptionalSend>: OneshotSender<T>;
     /// Type of a `oneshot` receiver.
+    ///
+    /// The receiver is a future with two outcomes:
+    ///
+    /// - Once [`OneshotSender::send`] succeeds, it resolves to `Ok` with the value.
+    /// - Once the sender is dropped without sending, it resolves to `Err`. A receiver that is
+    ///   already waiting is woken by the drop, but it may return the error only on a later poll,
+    ///   such as after the runtime makes its task yield.
     #[since(version = "0.10.0", change = "remove the `OptionalSync` requirement")]
     type Receiver<T: OptionalSend>: OptionalSend + Future<Output = Result<T, Self::ReceiverError>> + Unpin;
     /// Type of a `oneshot` receiver error.
@@ -41,6 +48,9 @@ where T: OptionalSend
     /// channel never requires any form of waiting.  Because of this, the `send`
     /// method can be used in both synchronous and asynchronous code without
     /// problems.
+    ///
+    /// `Ok(())` means that the value is now available to the receiver, not that it was received:
+    /// a receiver that is dropped before it reads the value drops the value with it.
     #[track_caller]
     fn send(self, t: T) -> Result<(), T>;
 }

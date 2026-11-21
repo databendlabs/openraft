@@ -24,6 +24,14 @@ where T: OptionalSend + 'static
     fn new(value: T) -> Self;
 
     /// Locks this Mutex.
+    ///
+    /// The returned future resolves to a guard once the lock is acquired. The lock is exclusive:
+    /// at most one guard of a mutex exists at a time, and other callers wait until it is dropped.
+    ///
+    /// The order in which waiting callers acquire the lock depends on the implementation. A mutex
+    /// built on `tokio::sync::Mutex` serves them first-in-first-out, while one built on
+    /// `futures::lock::Mutex` can give the lock to a caller that started waiting later. Code that
+    /// is generic over the runtime must not rely on first-in-first-out order.
     #[track_caller]
     fn lock(&self) -> impl Future<Output = Self::Guard<'_>> + OptionalSend;
 
@@ -31,6 +39,10 @@ where T: OptionalSend + 'static
     ///
     /// The guard can be moved, returned from functions, or stored in structs.
     /// This is provided as a default implementation for convenience.
+    ///
+    /// The lock is exclusive in the same way as with [`lock()`](Self::lock), and the order of
+    /// waiting callers again depends on the implementation. The default implementation acquires
+    /// the lock through `lock()`.
     #[must_use]
     fn lock_owned(self: Arc<Self>) -> impl Future<Output = OwnedGuard<Self, T>> + OptionalSend
     where Self: Sized {
