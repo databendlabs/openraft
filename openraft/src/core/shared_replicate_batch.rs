@@ -1,6 +1,9 @@
+#[cfg(feature = "runtime-stats")]
 use std::sync::Arc;
+#[cfg(feature = "runtime-stats")]
 use std::sync::Mutex;
 
+#[cfg(feature = "runtime-stats")]
 use base2histogram::Histogram;
 
 /// A shared histogram for tracking replication batch sizes.
@@ -8,8 +11,10 @@ use base2histogram::Histogram;
 /// This is shared between `RaftCore` and replication tasks.
 /// Only `replicate_batch` needs to be shared across tasks;
 /// other runtime stats are owned directly by `RaftCore`.
+/// Without `runtime-stats`, the handle stores no histogram.
 #[derive(Debug, Clone)]
 pub struct SharedReplicateBatch {
+    #[cfg(feature = "runtime-stats")]
     inner: Arc<Mutex<Histogram>>,
 }
 
@@ -22,14 +27,20 @@ impl Default for SharedReplicateBatch {
 impl SharedReplicateBatch {
     pub(crate) fn new() -> Self {
         Self {
+            #[cfg(feature = "runtime-stats")]
             inner: Arc::new(Mutex::new(Histogram::<()>::new())),
         }
     }
 
-    /// Record a replication batch size.
+    /// Record a replication batch size if `runtime-stats` is enabled.
     pub fn record(&self, value: u64) {
-        let mut guard = self.inner.lock().unwrap();
-        guard.record(value);
+        #[cfg(feature = "runtime-stats")]
+        {
+            let mut guard = self.inner.lock().unwrap();
+            guard.record(value);
+        }
+        #[cfg(not(feature = "runtime-stats"))]
+        let _ = value;
     }
 
     /// Get a clone of the histogram for reporting.
@@ -40,10 +51,17 @@ impl SharedReplicateBatch {
     }
 }
 
-#[cfg(all(test, feature = "runtime-stats"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(not(feature = "runtime-stats"))]
+    #[test]
+    fn test_disabled_handle_is_zero_sized() {
+        assert_eq!(size_of::<SharedReplicateBatch>(), 0);
+    }
+
+    #[cfg(feature = "runtime-stats")]
     #[test]
     fn test_new_and_default() {
         let s1 = SharedReplicateBatch::new();
@@ -53,17 +71,20 @@ mod tests {
         s2.record(1);
     }
 
+    #[cfg(feature = "runtime-stats")]
     #[test]
     fn test_clone_shares_state() {
         let s1 = SharedReplicateBatch::new();
         let s2 = s1.clone();
 
         s1.record(100);
+        s2.record(200);
         let snapshot = s2.snapshot();
 
-        assert_eq!(snapshot.total(), 1);
+        assert_eq!(snapshot.total(), 2);
     }
 
+    #[cfg(feature = "runtime-stats")]
     #[test]
     fn test_record_and_snapshot() {
         let state = SharedReplicateBatch::new();
