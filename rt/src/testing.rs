@@ -1656,6 +1656,9 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
         Self::test_spawn_seed_differs_from_parent();
         Self::test_two_spawned_tasks_differ();
         Self::test_scope();
+        Self::test_block_on_seed_is_only_for_the_root();
+        Self::test_nested_wrapper_uses_its_own_seed();
+        Self::test_seed_continues_across_block_on();
     }
 
     /// Same seed produces the same RNG sequence; different seed differs.
@@ -1747,5 +1750,61 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
             let v3: u64 = Det::<Rt>::scope(100, async { Det::<Rt>::thread_rng().random() }).await;
             assert_ne!(v1, v3, "scope with different seed should produce different value");
         });
+    }
+
+    /// A task spawned through the inner runtime cannot draw from the seed of `block_on`, so the
+    /// root keeps its sequence.
+    fn test_block_on_seed_is_only_for_the_root() {
+        use rand::RngExt;
+
+        let control: u64 = Self::new_runtime(17).block_on(async { Det::<Rt>::thread_rng().random() });
+
+        let (unscoped_drew, root_first) = Self::new_runtime(17).block_on(async {
+            let unscoped = Rt::spawn(async { std::panic::catch_unwind(Det::<Rt>::thread_rng).is_ok() });
+            let unscoped_drew = unscoped.await.unwrap();
+            let root_first: u64 = Det::<Rt>::thread_rng().random();
+            (unscoped_drew, root_first)
+        });
+
+        assert!(
+            !unscoped_drew,
+            "a task spawned through the inner runtime should have no seed"
+        );
+        assert_eq!(control, root_first, "the root should get its first draw");
+    }
+
+    /// A wrapper around another `DeterministicRng` draws from its own seed, not the inner one.
+    fn test_nested_wrapper_uses_its_own_seed() {
+        use rand::RngExt;
+
+        for seed in [17, 87] {
+            let control: u64 = Self::new_runtime(seed).block_on(async { Det::<Rt>::thread_rng().random() });
+
+            let mut nested = Det::<Det<Rt>>::new(1);
+            nested.set_seed(seed);
+            let got: u64 = nested.block_on(async { Det::<Det<Rt>>::thread_rng().random() });
+
+            assert_eq!(control, got, "the nested wrapper should use seed {seed}");
+        }
+    }
+
+    /// The sequence continues across `block_on` calls, with a root future that is not `Send`.
+    fn test_seed_continues_across_block_on() {
+        use rand::RngExt;
+
+        let draw = || async {
+            let not_send = Rc::new(());
+            ready(()).await;
+            let value: u64 = Det::<Rt>::thread_rng().random();
+            drop(not_send);
+            value
+        };
+
+        let uninterrupted: [u64; 2] = Self::new_runtime(17).block_on(async { [draw().await, draw().await] });
+
+        let mut rt = Self::new_runtime(17);
+        let split = [rt.block_on(draw()), rt.block_on(draw())];
+
+        assert_eq!(uninterrupted, split, "a second block_on should continue the sequence");
     }
 }
