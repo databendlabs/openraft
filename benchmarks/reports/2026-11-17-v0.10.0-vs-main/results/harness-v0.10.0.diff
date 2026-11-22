@@ -1,0 +1,639 @@
+diff --git benchmarks/minimal/src/bin/bench.rs benchmarks/minimal/src/bin/bench.rs
+index d7ac4abb..0b608300 100644
+--- benchmarks/minimal/src/bin/bench.rs
++++ benchmarks/minimal/src/bin/bench.rs
+@@ -101,20 +101,28 @@ struct Args {
+     append_delay_us: u64,
+ 
+     /// Delay from append return to the asynchronous flush callback, in microseconds.
+     #[arg(long, default_value_t = 0)]
+     flush_delay_us: u64,
+ 
+     /// One-way AppendEntries network delay, in microseconds.
+     #[arg(long, default_value_t = 0)]
+     network_delay_us: u64,
+ 
++    /// Delay of the log read that loads each apply batch, in microseconds.
++    #[arg(long, default_value_t = 0)]
++    apply_read_delay_us: u64,
++
++    /// State-machine I/O delay of each apply batch, in microseconds; responses wait for it.
++    #[arg(long, default_value_t = 0)]
++    apply_io_delay_us: u64,
++
+     /// Successful writes before measurement starts.
+     #[arg(long, default_value_t = WARMUP_WRITES)]
+     warmup_writes: usize,
+ }
+ 
+ #[derive(Clone, serde::Serialize)]
+ struct BenchConfig {
+     pub client_workers: usize,
+     pub server_workers: usize,
+     pub n_operations: u64,
+@@ -126,20 +134,22 @@ struct BenchConfig {
+     pub write_rate: u64,
+     pub read_clients: u64,
+     pub read_operations: u64,
+     pub read_rate: u64,
+     pub read_await_ready: bool,
+     pub allow_read_errors: bool,
+     pub read_delay_ms: u64,
+     pub append_delay_us: u64,
+     pub flush_delay_us: u64,
+     pub network_delay_us: u64,
++    pub apply_read_delay_us: u64,
++    pub apply_io_delay_us: u64,
+     pub warmup_writes: usize,
+ }
+ 
+ impl BenchConfig {
+     fn operations_per_client(&self) -> u64 {
+         if self.n_client == 0 {
+             return 0;
+         }
+         let per_client = self.n_operations / self.n_client;
+         let batches = per_client / self.batch_size;
+@@ -240,20 +250,22 @@ fn main() -> anyhow::Result<()> {
+         write_rate: args.write_rate,
+         read_clients: args.read_clients,
+         read_operations: args.read_operations,
+         read_rate: args.read_rate,
+         read_await_ready: args.read_await_ready,
+         allow_read_errors: args.allow_read_errors,
+         read_delay_ms: args.read_delay_ms,
+         append_delay_us: args.append_delay_us,
+         flush_delay_us: args.flush_delay_us,
+         network_delay_us: args.network_delay_us,
++        apply_read_delay_us: args.apply_read_delay_us,
++        apply_io_delay_us: args.apply_io_delay_us,
+         warmup_writes: args.warmup_writes,
+     };
+ 
+     eprintln!("Benchmark config: {}", bench_config);
+ 
+     bench_with_config(&bench_config)
+ }
+ 
+ fn validate(args: &Args) -> anyhow::Result<()> {
+     let has_clients = args.clients > 0 || args.read_clients > 0;
+@@ -265,21 +277,27 @@ fn validate(args: &Args) -> anyhow::Result<()> {
+     validate_reads(args)?;
+     ensure!(args.batch > 0, "batch must be positive");
+     ensure!(args.client_workers > 0, "client-workers must be positive");
+     ensure!(args.server_workers > 0, "server-workers must be positive");
+     let valid_members = [1, 3, 5].contains(&args.members);
+     ensure!(valid_members, "members must be 1, 3, or 5");
+     let group = args.clients.checked_mul(args.batch);
+     let group = group.context("clients * batch overflows")?;
+     ensure!(args.operations >= group, "operations must cover every client");
+     validate_schedule(args)?;
+-    let delays = [args.append_delay_us, args.flush_delay_us, args.network_delay_us];
++    let delays = [
++        args.append_delay_us,
++        args.flush_delay_us,
++        args.network_delay_us,
++        args.apply_read_delay_us,
++        args.apply_io_delay_us,
++    ];
+     let max_delay = delays.into_iter().max().unwrap();
+     let within_timeout = u128::from(max_delay) < WAIT_TIMEOUT.as_micros();
+     ensure!(within_timeout, "simulated delay exceeds the benchmark timeout");
+     Ok(())
+ }
+ 
+ fn validate_reads(args: &Args) -> anyhow::Result<()> {
+     if args.read_clients == 0 {
+         ensure!(args.read_operations == 0, "read-operations requires read-clients");
+         ensure!(args.read_rate == 0, "read-rate requires read-clients");
+@@ -378,21 +396,24 @@ fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Re
+             purge_batch_size: 1024,
+             max_payload_entries: 1024,
+             ..Default::default()
+         };
+         let config = configure(config, &bench_config.raft_config)?;
+         let config = Arc::new(config);
+ 
+         let append_delay = Duration::from_micros(bench_config.append_delay_us);
+         let flush_delay = Duration::from_micros(bench_config.flush_delay_us);
+         let network_delay = Duration::from_micros(bench_config.network_delay_us);
+-        let mut router = Router::with_delays(append_delay, flush_delay, network_delay);
++        let router = Router::with_delays(append_delay, flush_delay, network_delay);
++        let apply_read_delay = Duration::from_micros(bench_config.apply_read_delay_us);
++        let apply_io_delay = Duration::from_micros(bench_config.apply_io_delay_us);
++        let mut router = router.with_apply_delays(apply_read_delay, apply_io_delay);
+         router.new_cluster(config, bench_config.members.clone()).await?;
+         let leader = router.get_raft(0);
+         Ok((router, leader))
+     })
+ }
+ 
+ /// Benchmark client_write.
+ ///
+ /// Cluster config:
+ /// - Log: in-memory BTree
+@@ -584,20 +605,22 @@ async fn do_bench(bench_config: &BenchConfig, leader: BenchRaft) -> anyhow::Resu
+             "client_workers": bench_config.client_workers,
+             "server_workers": bench_config.server_workers,
+             "runtime_stats": runtime_stats,
+             "latency_origin": latency_origin,
+             "warmup_writes": bench_config.warmup_writes,
+             "raft_config": bench_config.raft_config,
+             "write_rate": write_rate,
+             "append_delay_us": bench_config.append_delay_us,
+             "flush_delay_us": bench_config.flush_delay_us,
+             "network_delay_us": bench_config.network_delay_us,
++            "apply_read_delay_us": bench_config.apply_read_delay_us,
++            "apply_io_delay_us": bench_config.apply_io_delay_us,
+         });
+         println!("{report}");
+         return Ok(());
+     }
+ 
+     let millis = elapsed.as_millis().max(1);
+     println!(
+         "{}: time: {:?}, ns/op: {}, op/ms: {}",
+         bench_config,
+         elapsed,
+diff --git benchmarks/minimal/src/network.rs benchmarks/minimal/src/network.rs
+index a61e9336..32ca0a28 100644
+--- benchmarks/minimal/src/network.rs
++++ benchmarks/minimal/src/network.rs
+@@ -16,70 +16,87 @@ use openraft::alias::VoteOf;
+ use openraft::error::RPCError;
+ use openraft::error::ReplicationClosed;
+ use openraft::error::StreamingError;
+ use openraft::error::Unreachable;
+ use openraft::network::RPCOption;
+ use openraft::network::RaftNetworkFactory;
+ use openraft::network::v2::RaftNetworkV2;
+ use openraft::raft::AppendEntriesRequest;
+ use openraft::raft::AppendResult;
+ use openraft::raft::SnapshotResponse;
++use openraft::raft::TransferLeaderRequest;
++use openraft::raft::TransferLeaderResponse;
+ use openraft::raft::VoteRequest;
+ use openraft::raft::VoteResponse;
+ 
+ use crate::store::LogStore;
++use crate::store::blocking_delay;
+ use crate::store::NodeId;
+ use crate::store::SnapshotData;
+ use crate::store::StateMachineStore;
+ use crate::store::TypeConfig;
+ 
+ pub type BenchRaft = Raft<TypeConfig, Arc<StateMachineStore>>;
+ 
+ #[derive(Clone)]
+ pub struct Router {
+     pub table: Arc<Mutex<BTreeMap<NodeId, BenchRaft>>>,
+     append_delay: Duration,
+     flush_delay: Duration,
+     network_delay: Duration,
++    apply_read_delay: Duration,
++    apply_io_delay: Duration,
+ }
+ 
+ impl Router {
+     pub fn new() -> Self {
+         Router {
+             table: Default::default(),
+             append_delay: Duration::ZERO,
+             flush_delay: Duration::ZERO,
+             network_delay: Duration::ZERO,
++            apply_read_delay: Duration::ZERO,
++            apply_io_delay: Duration::ZERO,
+         }
+     }
+ 
+     /// Create a router with simulated log submission, flush, and one-way network delays.
+     pub fn with_delays(append_delay: Duration, flush_delay: Duration, network_delay: Duration) -> Self {
+         let mut router = Self::new();
+         router.append_delay = append_delay;
+         router.flush_delay = flush_delay;
+         router.network_delay = network_delay;
+         router
+     }
+ 
++    /// Set the simulated delays of the state-machine apply path: the log read that loads each
++    /// apply batch, and the state-machine I/O of each `apply()` call.
++    pub fn with_apply_delays(mut self, read_delay: Duration, io_delay: Duration) -> Self {
++        self.apply_read_delay = read_delay;
++        self.apply_io_delay = io_delay;
++        self
++    }
++
+     pub fn get_raft(&self, id: NodeId) -> BenchRaft {
+         self.table.lock().unwrap().get(&id).unwrap().clone()
+     }
+ 
+     #[tracing::instrument(level = "debug", skip_all)]
+     pub async fn new_cluster(&mut self, config: Arc<Config>, voter_ids: BTreeSet<NodeId>) -> anyhow::Result<()> {
+         let mut rafts = BTreeMap::new();
+ 
+         for id in voter_ids.iter() {
+             let log_store = LogStore::with_delays(self.append_delay, self.flush_delay);
++            let log_store = log_store.with_apply_read_delay(self.apply_read_delay);
+             let log_store = Arc::new(log_store);
+-            let sm = Arc::new(StateMachineStore::new());
++            let sm = StateMachineStore::new().with_apply_io_delay(self.apply_io_delay);
++            let sm = Arc::new(sm);
+ 
+             let raft = Raft::new(*id, config.clone(), self.clone(), log_store, sm).await?;
+ 
+             rafts.insert(*id, raft);
+         }
+ 
+         {
+             let mut t = self.table.lock().unwrap();
+             *t = rafts.clone();
+         }
+@@ -124,27 +141,23 @@ pub struct Network {
+ }
+ 
+ impl RaftNetworkV2<TypeConfig> for Network {
+     type SnapshotData = SnapshotData;
+ 
+     async fn append_entries(
+         &mut self,
+         rpc: AppendEntriesRequest<TypeConfig>,
+         _option: RPCOption,
+     ) -> Result<AppendResult<TypeConfig>, RPCError<TypeConfig>> {
+-        if !self.delay.is_zero() {
+-            tokio::time::sleep(self.delay).await;
+-        }
++        blocking_delay(self.delay).await.expect("simulated network delay");
+         let result = self.target_raft.append_entries(rpc).await;
+-        if !self.delay.is_zero() {
+-            tokio::time::sleep(self.delay).await;
+-        }
++        blocking_delay(self.delay).await.expect("simulated network delay");
+         result.map_err(|e| RPCError::Unreachable(self.unreachable(e)))
+     }
+ 
+     async fn full_snapshot(
+         &mut self,
+         vote: VoteOf<TypeConfig>,
+         snapshot: SnapshotOf<TypeConfig, SnapshotData>,
+         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
+         _option: RPCOption,
+     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
+@@ -153,20 +166,29 @@ impl RaftNetworkV2<TypeConfig> for Network {
+     }
+ 
+     async fn vote(
+         &mut self,
+         rpc: VoteRequest<TypeConfig>,
+         _option: RPCOption,
+     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
+         let resp = self.target_raft.vote(rpc).await.map_err(|e| self.unreachable(e))?;
+         Ok(resp)
+     }
++
++    async fn transfer_leader(
++        &mut self,
++        req: TransferLeaderRequest<TypeConfig>,
++        _option: RPCOption,
++    ) -> Result<TransferLeaderResponse<TypeConfig>, RPCError<TypeConfig>> {
++        let resp = self.target_raft.handle_transfer_leader(req).await.map_err(|e| self.unreachable(e))?;
++        Ok(resp)
++    }
+ }
+ 
+ impl Network {
+     /// The target returns an error only after a fatal error stopped it: report it as unreachable.
+     fn unreachable<E>(&self, error: E) -> Unreachable<TypeConfig>
+     where E: fmt::Display {
+         Unreachable::from_string(format!("target={}: {}", self.target, error))
+     }
+ }
+ 
+diff --git benchmarks/minimal/src/store.rs benchmarks/minimal/src/store.rs
+index 7ad4d1de..2f9fed09 100644
+--- benchmarks/minimal/src/store.rs
++++ benchmarks/minimal/src/store.rs
+@@ -3,20 +3,23 @@
+ use std::collections::BTreeMap;
+ use std::fmt;
+ use std::fmt::Debug;
+ use std::io;
+ use std::io::Cursor;
+ use std::ops::RangeBounds;
+ use std::sync::Arc;
+ use std::time::Duration;
+ 
+ use futures::Stream;
++use futures::StreamExt;
++use futures::future::Either;
++use futures::stream;
+ use openraft::OptionalSend;
+ use openraft::RaftTypeConfig;
+ use openraft::alias::DefaultEntryOf;
+ use openraft::alias::EntryOf;
+ use openraft::alias::LogIdOf;
+ use openraft::alias::SnapshotMetaOf;
+ use openraft::alias::SnapshotOf;
+ use openraft::alias::StoredMembershipOf;
+ use openraft::entry::RaftEntry;
+ use openraft::impls::EntryPayload;
+@@ -85,74 +88,103 @@ impl RaftTypeConfig for TypeConfig {
+ #[derive(Debug)]
+ pub struct StoredSnapshot {
+     pub meta: SnapshotMetaOf<TypeConfig>,
+     pub data: Vec<u8>,
+ }
+ 
+ #[derive(Serialize, Deserialize, Debug, Default, Clone)]
+ pub struct StateMachine {
+     pub last_applied_log: Option<LogIdOf<TypeConfig>>,
+     pub last_membership: StoredMembershipOf<TypeConfig>,
++    #[serde(default)]
++    pub applied_writes: u64,
+ }
+ 
+ pub struct LogStore {
+     vote: RwLock<Option<Vote<LeaderId>>>,
+     log: RwLock<BTreeMap<u64, EntryOf<TypeConfig>>>,
+     last_purged_log_id: RwLock<Option<LogIdOf<TypeConfig>>>,
+     append_delay: Duration,
+     flush_delay: Duration,
++    /// Delay before each log read issued by the state-machine apply path.
++    apply_read_delay: Duration,
+ }
+ 
+ impl LogStore {
+     pub fn new() -> Self {
+         let log = RwLock::new(BTreeMap::new());
+ 
+         Self {
+             vote: RwLock::new(None),
+             log,
+             last_purged_log_id: RwLock::new(None),
+             append_delay: Duration::ZERO,
+             flush_delay: Duration::ZERO,
++            apply_read_delay: Duration::ZERO,
+         }
+     }
+ 
+     /// Create a store that delays append submission and completes flushing asynchronously.
+     pub fn with_delays(append_delay: Duration, flush_delay: Duration) -> Self {
+         let mut store = Self::new();
+         store.append_delay = append_delay;
+         store.flush_delay = flush_delay;
+         store
+     }
+ 
++    /// Delay every `entries_stream()` call, which only the state-machine apply path issues.
++    ///
++    /// Replication reads go through `leader_bounded_stream()` and are not delayed.
++    pub fn with_apply_read_delay(mut self, delay: Duration) -> Self {
++        self.apply_read_delay = delay;
++        self
++    }
++
+     pub async fn new_async() -> Arc<Self> {
+         Arc::new(Self::new())
+     }
+ }
+ 
+ impl Default for LogStore {
+     fn default() -> Self {
+         Self::new()
+     }
+ }
+ 
+ pub struct StateMachineStore {
+     sm: RwLock<StateMachine>,
+     current_snapshot: RwLock<Option<StoredSnapshot>>,
++    /// Simulated I/O time of each `apply()` call; responses are sent after it elapses.
++    apply_io_delay: Duration,
+ }
+ 
+ impl StateMachineStore {
+     pub fn new() -> Self {
+         Self {
+             sm: RwLock::new(StateMachine::default()),
+             current_snapshot: RwLock::new(None),
++            apply_io_delay: Duration::ZERO,
+         }
+     }
++
++    /// Sample a write counter and its applied log ID under the same state-machine read lock.
++    pub async fn read(&self) -> (Option<LogIdOf<TypeConfig>>, u64) {
++        let sm = self.sm.read().await;
++        (sm.last_applied_log, sm.applied_writes)
++    }
++
++    /// Delay the end of every `apply()` call, after its entries are consumed, and send the
++    /// client responses only after the delay.
++    pub fn with_apply_io_delay(mut self, delay: Duration) -> Self {
++        self.apply_io_delay = delay;
++        self
++    }
+ }
+ 
+ impl Default for StateMachineStore {
+     fn default() -> Self {
+         Self::new()
+     }
+ }
+ 
+ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
+     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + OptionalSend>(
+@@ -163,20 +195,36 @@ impl RaftLogReader<TypeConfig> for Arc<LogStore> {
+         {
+             let log = self.log.read().await;
+             for (_, ent) in log.range(range.clone()) {
+                 entries.push(ent.clone());
+             }
+         };
+ 
+         Ok(entries)
+     }
+ 
++    async fn entries_stream<RB>(
++        &mut self,
++        range: RB,
++    ) -> impl Stream<Item = Result<EntryOf<TypeConfig>, io::Error>> + OptionalSend
++    where
++        RB: RangeBounds<u64> + Clone + Debug + OptionalSend,
++    {
++        if let Err(error) = blocking_delay(self.apply_read_delay).await {
++            return Either::Right(stream::iter([Err(error)]));
++        }
++        match self.try_get_log_entries(range).await {
++            Ok(entries) => Either::Left(stream::iter(entries).map(Ok)),
++            Err(error) => Either::Right(stream::iter([Err(error)])),
++        }
++    }
++
+     async fn read_vote(&mut self) -> Result<Option<Vote<LeaderId>>, io::Error> {
+         Ok(*self.vote.read().await)
+     }
+ }
+ 
+ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachineStore> {
+     type SnapshotData = SnapshotData;
+ 
+     #[tracing::instrument(level = "trace", skip(self))]
+     async fn build_snapshot(&mut self) -> Result<SnapshotOf<TypeConfig, SnapshotData>, io::Error> {
+@@ -267,30 +315,28 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
+         Ok(())
+     }
+ 
+     #[tracing::instrument(level = "trace", skip_all)]
+     async fn append<I>(&mut self, entries: I, callback: IOFlushed<TypeConfig>) -> Result<(), io::Error>
+     where I: IntoIterator<Item = EntryOf<TypeConfig>> + Send {
+         {
+             let mut log = self.log.write().await;
+             log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
+         }
+-        if !self.append_delay.is_zero() {
+-            tokio::time::sleep(self.append_delay).await;
+-        }
++        blocking_delay(self.append_delay).await?;
+         if self.flush_delay.is_zero() {
+             callback.io_completed(Ok(()));
+         } else {
+-            let deadline = tokio::time::Instant::now() + self.flush_delay;
++            let flush_delay = self.flush_delay;
+             tokio::spawn(async move {
+-                tokio::time::sleep_until(deadline).await;
+-                callback.io_completed(Ok(()));
++                let flushed = blocking_delay(flush_delay).await;
++                callback.io_completed(flushed);
+             });
+         }
+         Ok(())
+     }
+ 
+     type LogReader = Self;
+ 
+     async fn get_log_reader(&mut self) -> Self::LogReader {
+         self.clone()
+     }
+@@ -303,33 +349,47 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
+         &mut self,
+     ) -> Result<(Option<LogIdOf<TypeConfig>>, StoredMembershipOf<TypeConfig>), io::Error> {
+         let sm = self.sm.read().await;
+         Ok((sm.last_applied_log, sm.last_membership.clone()))
+     }
+ 
+     async fn apply<Strm>(&mut self, mut entries: Strm) -> Result<(), io::Error>
+     where Strm: Stream<Item = Result<EntryResponder<TypeConfig>, io::Error>> + Unpin + OptionalSend {
+         use futures::TryStreamExt;
+ 
++        let delayed = !self.apply_io_delay.is_zero();
++        let mut delayed_responders = Vec::new();
+         let mut sm = self.sm.write().await;
+ 
+         while let Some((entry, responder)) = entries.try_next().await? {
+             sm.last_applied_log = Some(entry.log_id);
+ 
+             match entry.payload {
+-                EntryPayload::Blank | EntryPayload::Normal(_) => {}
++                EntryPayload::Blank => {}
++                EntryPayload::Normal(_) => sm.applied_writes += 1,
+                 EntryPayload::Membership(ref mem) => {
+                     sm.last_membership = StoredMembershipOf::<TypeConfig>::new(Some(entry.log_id), mem.clone());
+                 }
+             };
+ 
+             if let Some(responder) = responder {
++                if delayed {
++                    delayed_responders.push(responder);
++                } else {
++                    responder.send(ClientResponse {});
++                }
++            }
++        }
++
++        if delayed {
++            blocking_delay(self.apply_io_delay).await?;
++            for responder in delayed_responders {
+                 responder.send(ClientResponse {});
+             }
+         }
+         Ok(())
+     }
+ 
+     #[tracing::instrument(level = "trace", skip(self, snapshot))]
+     async fn install_snapshot(
+         &mut self,
+         meta: &SnapshotMetaOf<TypeConfig>,
+@@ -367,20 +427,32 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
+         }
+     }
+ 
+     type SnapshotBuilder = Self;
+ 
+     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+         self.clone()
+     }
+ }
+ 
++/// Occupy a blocking-pool thread for `delay`, like synchronous storage I/O.
++///
++/// Unlike `tokio::time::sleep()`, which rounds up to the 1 ms timer tick, this keeps
++/// sub-millisecond delays accurate.
++pub(crate) async fn blocking_delay(delay: Duration) -> Result<(), io::Error> {
++    if delay.is_zero() {
++        return Ok(());
++    }
++    let sleep = tokio::task::spawn_blocking(move || std::thread::sleep(delay));
++    sleep.await.map_err(io::Error::other)
++}
++
+ #[cfg(test)]
+ mod tests {
+     use openraft::type_config::TypeConfigExt;
+     use openraft::vote::RaftLeaderIdExt;
+ 
+     use super::*;
+ 
+     #[tokio::test]
+     async fn entries_are_readable_before_delayed_flush() -> anyhow::Result<()> {
+         let store = LogStore::with_delays(Duration::ZERO, Duration::from_millis(2));
+@@ -395,11 +467,42 @@ mod tests {
+         let pending = rx.try_recv();
+         let error = pending.unwrap_err();
+         assert_eq!(tokio::sync::oneshot::error::TryRecvError::Empty, error);
+         let entries = store.try_get_log_entries(0..1).await?;
+         assert_eq!(expected, entries);
+         let timeout = Duration::from_secs(5);
+         let flushed = tokio::time::timeout(timeout, rx).await?;
+         flushed??;
+         Ok(())
+     }
++
++    #[tokio::test]
++    async fn apply_read_delay_delays_only_entries_stream() -> anyhow::Result<()> {
++        use futures::TryStreamExt;
++
++        let delay = Duration::from_millis(20);
++        let store = LogStore::new().with_apply_read_delay(delay);
++        let mut store = Arc::new(store);
++        let leader_id = LeaderId::new_committed(1, 0);
++        let log_id = LogIdOf::<TypeConfig>::new(leader_id, 0);
++        let entry = EntryOf::<TypeConfig>::new_blank(log_id);
++        let expected = vec![entry];
++        let (tx, rx) = TypeConfig::oneshot();
++        let callback = IOFlushed::signal(tx);
++        store.append(expected.clone(), callback).await?;
++        rx.await??;
++
++        let started = tokio::time::Instant::now();
++        let entries = store.try_get_log_entries(0..1).await?;
++        let undelayed = started.elapsed();
++        assert_eq!(expected, entries);
++        assert!(undelayed < delay, "try_get_log_entries() took {undelayed:?}");
++
++        let started = tokio::time::Instant::now();
++        let stream = store.entries_stream(0..1).await;
++        let entries: Vec<_> = stream.try_collect().await?;
++        let delayed = started.elapsed();
++        assert_eq!(expected, entries);
++        assert!(delayed >= delay, "entries_stream() took {delayed:?}");
++        Ok(())
++    }
+ }
