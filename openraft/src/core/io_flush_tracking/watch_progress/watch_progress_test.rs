@@ -68,22 +68,30 @@ fn test_wait_until_ge_immediate() {
     });
 }
 
+/// `wait_until()` stays pending while the value does not satisfy the predicate, and returns the
+/// first value that does.
 #[test]
 fn test_wait_until_custom_condition() {
     TestConfig::run(async {
         let (tx, rx) = TestConfig::watch_channel(1u64);
         let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
+        let mut wait = std::pin::pin!(progress.wait_until(|v| v % 2 == 0));
 
-        TestConfig::spawn(async move {
-            for i in 2..=10 {
-                TestConfig::sleep(std::time::Duration::from_millis(100)).await;
-                tx.send(i).unwrap();
-            }
-        });
+        tracing::info!("--- neither the initial 1 nor a later 3 is even, so the wait stays pending");
+        {
+            let pending = wait.as_mut().now_or_never();
+            assert!(pending.is_none(), "1 does not satisfy the predicate");
+            tx.send(3).unwrap();
+            let pending = wait.as_mut().now_or_never();
+            assert!(pending.is_none(), "3 does not satisfy the predicate");
+        }
 
-        let result = progress.wait_until(|v| v % 2 == 0).await.unwrap();
-        assert_eq!(result % 2, 0);
-        assert_eq!(result, 2);
+        tracing::info!("--- 4 is even, and the wait returns it");
+        {
+            tx.send(4).unwrap();
+            let result = wait.await.unwrap();
+            assert_eq!(4, result);
+        }
     });
 }
 
@@ -153,27 +161,46 @@ fn test_changed_returns_error_when_sender_dropped() {
     });
 }
 
+/// Each `next()` waits for a value sent after it started, and returns it.
 #[test]
 fn test_next_returns_changed_value() {
     TestConfig::run(async {
         let (tx, rx) = TestConfig::watch_channel(0u64);
         let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Spawn a task that sends values
-        TestConfig::spawn(async move {
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+        tracing::info!("--- the first next() waits, and returns 5 once it is sent");
+        {
+            let mut next = std::pin::pin!(progress.next());
+            let pending = next.as_mut().now_or_never();
+            assert!(pending.is_none(), "next() waits while no value is sent");
             tx.send(5).unwrap();
-            TestConfig::sleep(std::time::Duration::from_millis(10)).await;
+            let value = next.await.unwrap();
+            assert_eq!(5, value);
+        }
+
+        tracing::info!("--- 10 is sent only after 5 was received, and the second next() returns it");
+        {
+            let mut next = std::pin::pin!(progress.next());
+            let pending = next.as_mut().now_or_never();
+            assert!(pending.is_none(), "next() waits after it returned 5");
             tx.send(10).unwrap();
-        });
+            let value = next.await.unwrap();
+            assert_eq!(10, value);
+        }
+    });
+}
 
-        // First next() should return 5
-        let value = progress.next().await.unwrap();
-        assert_eq!(value, 5);
+/// Two values sent before `next()` reads coalesce: it returns the latest one.
+#[test]
+fn test_next_returns_the_latest_of_two_values() {
+    TestConfig::run(async {
+        let (tx, rx) = TestConfig::watch_channel(0u64);
+        let mut progress = WatchProgress::<TestConfig, u64>::new(rx);
 
-        // Second next() should return 10
+        tx.send(5).unwrap();
+        tx.send(10).unwrap();
         let value = progress.next().await.unwrap();
-        assert_eq!(value, 10);
+        assert_eq!(10, value);
     });
 }
 
