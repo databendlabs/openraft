@@ -1,5 +1,7 @@
 //! A replication task confirms a clear only once it reads nothing more for the plan RaftCore
-//! dropped. RaftCore purges the logs the plan held back only after the confirmation.
+//! dropped. RaftCore purges the logs the plan held back only after the confirmation. Likewise, a
+//! task whose stream RaftCore closed returns only once it reads nothing more, and RaftCore purges
+//! no log until it has returned.
 
 use std::fmt::Debug;
 use std::future::Future;
@@ -50,6 +52,7 @@ use crate::storage::LogState;
 use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
+use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::SnapshotOf;
@@ -215,6 +218,10 @@ struct Harness {
     poll: WatchSenderOf<C, bool>,
     pulled: WatchReceiverOf<C, u64>,
     ended: WatchReceiverOf<C, bool>,
+    /// Resolves once the replication task returns.
+    join: JoinHandleOf<C, Result<(), ReplicationClosed>>,
+    /// Dropping it closes the stream, as RaftCore does.
+    cancel_tx: WatchSenderOf<C, ()>,
 }
 
 /// Spawn a replication task to node 2, whose log is submitted through index 20 and matches it
@@ -269,8 +276,7 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
         open: open_reads_rx,
     };
 
-    #[allow(clippy::let_underscore_future)]
-    let _ = ReplicationCore::<C, PullingNetwork, GatedLog>::spawn(
+    let join = ReplicationCore::<C, PullingNetwork, GatedLog>::spawn(
         context,
         progress,
         network,
@@ -289,8 +295,10 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
         poll: poll_tx,
         pulled,
         ended,
+        join,
+        cancel_tx,
     };
-    (harness, (io_tx, cancel_tx, backoff_reset_tx, probe_tx))
+    (harness, (io_tx, backoff_reset_tx, probe_tx))
 }
 
 /// Wait for the next notification, which must be the confirmation of the clear `inflight_id`.
@@ -478,6 +486,48 @@ fn unfinished_commit_probe_is_resumed() {
             if let Ok(notification) = h.notifications.try_recv() {
                 panic!("expect no notification, got: {}", notification);
             }
+        }
+    });
+}
+
+/// When RaftCore closes the stream, a read that the transport started on a task of its own may
+/// still be running. The replication task returns only once that read has returned, and the stream
+/// reads nothing more, because RaftCore purges the logs the task might read once it has returned.
+#[test]
+fn closed_task_returns_once_a_running_read_returns() {
+    C::run(async {
+        let (mut h, _channels) = spawn_replication(false, false, true);
+        let plan = InflightId::new(1);
+
+        tracing::info!("--- a plan's session fails, then the transport polls the stream, whose read the log holds");
+        {
+            h.replicate_tx.send(Some(Replicate::new_logs_since(Some(log_id(1, 1, 5)), plan))).unwrap();
+            expect_failed(&mut h.notifications, plan).await;
+
+            // Let the task go back to waiting for RaftCore after the error, so that the read starts
+            // while it waits.
+            C::sleep(Duration::from_millis(50)).await;
+            h.poll.send(true).unwrap();
+            C::timeout(TEST_TIMEOUT, h.reads.wait_until_ge(&1)).await.unwrap().unwrap();
+        }
+
+        tracing::info!("--- RaftCore closes the stream: the task does not return while the read runs");
+        {
+            drop(h.replicate_tx);
+            drop(h.cancel_tx);
+
+            let res = C::timeout(Duration::from_millis(100), &mut h.join).await;
+            assert!(res.is_err(), "expect the task to wait for the read, got: {:?}", res);
+        }
+
+        tracing::info!("--- the read returns: the task returns, and the stream reads nothing more");
+        {
+            h.open_reads.send(true).unwrap();
+            let res = C::timeout(TEST_TIMEOUT, h.join).await.unwrap();
+            assert!(res.is_ok(), "the task returned without panicking: {:?}", res);
+
+            C::timeout(TEST_TIMEOUT, h.ended.wait_until_ge(&true)).await.unwrap().unwrap();
+            assert_eq!(1, *h.reads.borrow_watched());
         }
     });
 }

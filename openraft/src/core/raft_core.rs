@@ -252,6 +252,17 @@ where
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
+    /// The lingering replications: the replication streams that this node closed and whose tasks
+    /// have not stopped yet, so they may still read the log.
+    ///
+    /// A closed task finishes the read it is running before it stops, and its join reports the
+    /// stop with [`Notification::ReplicationStopped`]. Until the list is empty, a
+    /// [`Command::PurgeLog`] waits at the front of the command queue, as it waits for the snapshot
+    /// that covers the logs to purge, so that a task never reads a log that the purge removed.
+    /// The list does not belong to the leader's state: a node that stops leading drops that state
+    /// before it closes its streams, and their tasks may still read when it purges as a follower.
+    pub(crate) lingering_replications: Vec<StreamId>,
+
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
     #[allow(dead_code)]
@@ -2278,6 +2289,11 @@ where
                 }
             }
 
+            Notification::ReplicationStopped { stream_id, target } => {
+                tracing::debug!("the closed replication stream {} to {} stopped", stream_id, target);
+                self.lingering_replications.retain(|id| *id != stream_id);
+            }
+
             Notification::HeartbeatProgress {
                 stream_id,
                 sending_time,
@@ -2616,7 +2632,12 @@ where
         (ctx, cancel_tx)
     }
 
-    fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
+    /// Close the replication stream `s` to `target`.
+    ///
+    /// The task stops at its next cancellation check, after the log read it may be running. No log
+    /// is purged until the task has stopped, which the task's join reports with
+    /// [`Notification::ReplicationStopped`]; see [`Self::lingering_replications`].
+    fn close_replication(&mut self, target: &C::NodeId, mut s: ReplicationHandle<C>) {
         let Some(handle) = s.join_handle.take() else {
             return;
         };
@@ -2626,12 +2647,18 @@ where
         drop(s.cancel_tx);
         drop(s.backoff_reset_tx);
 
+        let stream_id = s.stream_id;
+        self.lingering_replications.push(stream_id);
+
         let target = target.clone();
+        let tx_notify = self.notifications.sender();
         #[allow(clippy::let_underscore_future)]
         let _ = C::spawn(async move {
             tracing::debug!("joining removed replication: {}", target);
             let _x = handle.await;
             tracing::info!("done joining removed replication: {}", target);
+            let stopped = Notification::ReplicationStopped { stream_id, target };
+            tx_notify.send(stopped).await.ok();
         });
     }
 
@@ -2830,7 +2857,7 @@ where
 
         let left = std::mem::take(&mut self.replications);
         for (target, s) in left {
-            Self::close_replication(&target, s);
+            self.close_replication(&target, s);
         }
     }
 
@@ -2881,7 +2908,7 @@ where
                         "the node of target {} changed without a new stream id",
                         prog.target
                     );
-                    Self::close_replication(&prog.target, removed);
+                    self.close_replication(&prog.target, removed);
                     None
                 }
                 None => None,
@@ -2901,7 +2928,7 @@ where
         let left = std::mem::replace(&mut self.replications, new_replications);
 
         for (target, s) in left {
-            Self::close_replication(&target, s);
+            self.close_replication(&target, s);
         }
     }
 
@@ -2996,6 +3023,15 @@ where
                 tracing::debug!("{} is not yet met, postpone cmd: {}", condition, cmd);
                 return Ok(Some(cmd));
             }
+        }
+
+        if matches!(cmd, Command::PurgeLog { .. }) && !self.lingering_replications.is_empty() {
+            tracing::debug!(
+                "the lingering replications {} may still read the log, postpone cmd: {}",
+                self.lingering_replications.display(),
+                cmd
+            );
+            return Ok(Some(cmd));
         }
 
         tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);

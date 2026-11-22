@@ -78,3 +78,51 @@ fn test_calc_purge_upto() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// A purge needs at least one eligible log and a full batch, also with a batch size of 0 or one too
+/// large to add to an index.
+#[test]
+fn test_calc_purge_upto_batch_size() -> anyhow::Result<()> {
+    // last_purged_log_id, last_snapshot_log_id, max_keep, batch_size, want
+    let cases = vec![
+        // No snapshot.
+        (None, None, 0, 0, None),
+        (None, None, 0, 1, None),
+        // The kept logs cover the whole snapshot.
+        (None, Some(log_id(1, 1)), 2, 0, None),
+        (None, Some(log_id(1, 1)), 3, 0, None),
+        // The policy end is at or behind the first unpurged index, 3.
+        (Some(log_id(1, 2)), Some(log_id(3, 4)), 2, 0, None),
+        (Some(log_id(1, 2)), Some(log_id(3, 4)), 3, 0, None),
+        // 5 logs are eligible: a batch of up to 5 purges them.
+        (None, Some(log_id(3, 4)), 0, 0, Some(log_id(3, 4))),
+        (None, Some(log_id(3, 4)), 0, 4, Some(log_id(3, 4))),
+        (None, Some(log_id(3, 4)), 0, 5, Some(log_id(3, 4))),
+        (None, Some(log_id(3, 4)), 0, 6, None),
+        (None, Some(log_id(3, 4)), 0, u64::MAX, None),
+        // After a purge up to 2, 2 logs are eligible.
+        (Some(log_id(1, 2)), Some(log_id(3, 4)), 0, 2, Some(log_id(3, 4))),
+        (Some(log_id(1, 2)), Some(log_id(3, 4)), 0, 3, None),
+        (Some(log_id(1, 2)), Some(log_id(3, 4)), 0, u64::MAX, None),
+    ];
+
+    for (last_purged, snapshot_last_log_id, max_keep, batch_size, want) in cases {
+        let mut eng = eng();
+        eng.config.max_in_snapshot_log_to_keep = max_keep;
+        eng.config.purge_batch_size = batch_size;
+
+        if let Some(last_purged) = last_purged {
+            eng.state.log_ids.purge(&last_purged);
+        }
+        eng.state.snapshot_meta.last_log_id = snapshot_last_log_id;
+        let got = eng.log_handler().calc_purge_upto();
+
+        assert_eq!(
+            want, got,
+            "case: last_purged: {:?}, snapshot_last_log_id: {:?}, max_keep: {}, batch_size: {}",
+            last_purged, snapshot_last_log_id, max_keep, batch_size
+        );
+    }
+
+    Ok(())
+}

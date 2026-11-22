@@ -223,8 +223,24 @@ where
         Some((req, stream_context))
     }
 
-    /// Main replication loop that sends AppendEntries requests and processes responses.
+    /// Run the replication loop until it ends, then stop reading the log.
+    ///
+    /// `RaftCore` purges the logs that this task could read once the task has returned, see
+    /// [`Notification::ReplicationStopped`]. A transport that polls the request stream on a task
+    /// of its own may still poll it after the loop has ended. Dropping the payload under the stream
+    /// state's lock waits for a read that the stream has started and leaves it nothing more to
+    /// read, as [`Self::confirm_clear()`] does.
     async fn main(mut self) -> Result<(), ReplicationClosed> {
+        let res = self.replicate().await;
+
+        let mut stream_state = self.stream_state.lock().await;
+        stream_state.payload = None;
+
+        res
+    }
+
+    /// Main replication loop that sends AppendEntries requests and processes responses.
+    async fn replicate(&mut self) -> Result<(), ReplicationClosed> {
         // Avoid holding a mut ref to self during streaming.
         let mut network = self.network.take().unwrap();
 

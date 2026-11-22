@@ -10,9 +10,11 @@ use crate::Vote;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::engine::TargetProgress;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::progress::Inflight;
+use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::raft_state::LogStateReader;
@@ -20,6 +22,7 @@ use crate::replication::response::Progress;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
+use crate::vote::raft_vote::RaftVoteExt;
 
 fn m23() -> Membership<u64, ()> {
     Membership::new_with_defaults(vec![btreeset! {2, 3}], [])
@@ -231,5 +234,87 @@ fn test_try_purge_log_after_rpc_error_waits_for_the_clear() {
             eng.output.take_commands()
         );
         assert_eq!(Inflight::None, inflight_of_3(&eng));
+    }
+}
+
+/// Leader 2 of voters 2 and 3, with learner 4, whose logs up to (2, 2, 5) wait to be purged.
+fn eng_with_learner_4() -> Engine<UTConfig> {
+    let mut eng = Engine::testing_default(2);
+    eng.state.enable_validation(false); // The fixture starts with a purge that waits.
+    eng.config.id = 2;
+    eng.state.vote = Leased::new(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(3, 2),
+    );
+    let m23_4 = Membership::new_with_defaults(vec![btreeset! {2, 3}], btreeset! {4});
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 2)), m23())),
+        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 2, 3)), m23_4)),
+    );
+    eng.state.log_ids = LogIdList::new(Some(log_id(1, 1, 2)), [log_id(1, 1, 4), log_id(2, 2, 6)]);
+    eng.state.server_state = eng.calc_server_state();
+    eng.testing_new_leader();
+    eng.output.clear_commands();
+    eng.state.purge_upto = Some(log_id(2, 2, 5));
+    eng
+}
+
+/// Removing learner 4, whose stream reads the logs that wait to be purged, lets the purge run
+/// right after the streams are rebuilt, with no answer from a stream. A stream of a retained
+/// target that reads those logs still holds it back.
+#[test]
+fn test_append_membership_retries_the_pending_purge() {
+    let streaming = Inflight::logs_since(Some(log_id(1, 1, 4)), InflightId::new(1));
+    let entry_of =
+        |eng: &Engine<UTConfig>, target: u64| eng.leader.as_ref().unwrap().progress.try_get(&target).unwrap().clone();
+    let rebuild = |progress: ProgressEntry<UTConfig>| Command::RebuildReplicationStreams {
+        leader_vote: Vote::new_committed(3, 2).to_committed(),
+        targets: vec![TargetProgress {
+            target: 3,
+            target_node: (),
+            progress,
+        }],
+        close_old_streams: false,
+    };
+
+    tracing::info!("--- learner 4 alone holds the purge back: removing it purges at once");
+    {
+        let mut eng = eng_with_learner_4();
+        eng.leader.as_mut().unwrap().progress.update_data_with(&4, |data| data.inflight = streaming);
+        eng.replication_handler().try_purge_log();
+        assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+
+        eng.replication_handler().append_membership(&log_id(3, 2, 7), &m23());
+
+        let expected = vec![rebuild(entry_of(&eng, 3)), Command::PurgeLog { upto: log_id(2, 2, 5) }];
+        assert_eq!(expected, eng.output.take_commands());
+        assert_eq!(Some(&log_id(2, 2, 5)), eng.state.last_purged_log_id());
+    }
+
+    tracing::info!("--- node 3 also reads the logs: removing learner 4 does not purge");
+    {
+        let mut eng = eng_with_learner_4();
+        for target in [3, 4] {
+            eng.leader.as_mut().unwrap().progress.update_data_with(&target, |data| data.inflight = streaming);
+        }
+
+        eng.replication_handler().append_membership(&log_id(3, 2, 7), &m23());
+
+        assert_eq!(vec![rebuild(entry_of(&eng, 3))], eng.output.take_commands());
+        assert_eq!(Some(&log_id(1, 1, 2)), eng.state.last_purged_log_id());
+    }
+
+    tracing::info!("--- no purge is pending, or it is already accepted: nothing more is emitted");
+    {
+        for purge_upto in [None, Some(log_id(1, 1, 2))] {
+            let mut eng = eng_with_learner_4();
+            eng.state.purge_upto = purge_upto;
+
+            eng.replication_handler().append_membership(&log_id(3, 2, 7), &m23());
+
+            assert_eq!(vec![rebuild(entry_of(&eng, 3))], eng.output.take_commands());
+            assert_eq!(Some(&log_id(1, 1, 2)), eng.state.last_purged_log_id());
+        }
     }
 }

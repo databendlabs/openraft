@@ -211,3 +211,68 @@ fn test_purge_log_to_higher_leader_lgo() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_schedule_policy_based_purge_nothing_eligible() -> anyhow::Result<()> {
+    // Setup: purged at 2, leader 2 at 3-4, leader 4 at 5-6
+    // The snapshot ends at 4 and keeps 2 logs, so the policy ends at 3, the first unpurged index.
+    let mut eng = eng();
+    eng.config.purge_batch_size = 0;
+    eng.config.max_in_snapshot_log_to_keep = 2;
+    eng.state.snapshot_meta.last_log_id = Some(log_id(2, 1, 4));
+    let before = (*eng.state).clone();
+
+    let mut lh = eng.log_handler();
+    lh.schedule_policy_based_purge();
+
+    assert_eq!(before, *lh.state);
+    assert_eq!(0, lh.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
+fn test_schedule_policy_based_purge_keeps_a_higher_boundary() -> anyhow::Result<()> {
+    // Setup: purged at 2, leader 2 at 3-4, leader 4 at 5-6
+    // A manual purge waits to purge up to 6; the policy allows up to 5.
+    let mut eng = eng();
+    eng.config.purge_batch_size = 0;
+    eng.config.max_in_snapshot_log_to_keep = 0;
+    eng.state.snapshot_meta.last_log_id = Some(log_id(4, 1, 5));
+    eng.state.purge_upto = Some(log_id(4, 1, 6));
+    let before = (*eng.state).clone();
+
+    let mut lh = eng.log_handler();
+    assert_eq!(Some(log_id(4, 1, 5)), lh.calc_purge_upto());
+    lh.schedule_policy_based_purge();
+
+    assert_eq!(before, *lh.state);
+    assert_eq!(0, lh.output.take_commands().len());
+
+    Ok(())
+}
+
+#[test]
+fn test_schedule_policy_based_purge() -> anyhow::Result<()> {
+    // Setup: purged at 2, leader 2 at 3-4, leader 4 at 5-6
+    // The snapshot ends at 5 and keeps 1 log, so logs 3 and 4 make a full batch of 2.
+    let mut eng = eng();
+    eng.config.purge_batch_size = 2;
+    eng.config.max_in_snapshot_log_to_keep = 1;
+    eng.state.snapshot_meta.last_log_id = Some(log_id(4, 1, 5));
+
+    let mut lh = eng.log_handler();
+    lh.schedule_policy_based_purge();
+
+    assert_eq!(Some(&log_id(2, 1, 4)), lh.state.purge_upto());
+    assert_eq!(0, lh.output.take_commands().len());
+
+    lh.purge_log();
+
+    assert_eq!(
+        vec![Command::PurgeLog { upto: log_id(2, 1, 4) }],
+        lh.output.take_commands()
+    );
+
+    Ok(())
+}

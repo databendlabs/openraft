@@ -28,6 +28,7 @@ use crate::membership::RaftMembershipEdit;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
+use crate::raft_state::LogStateReader;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
 use crate::replication::response::Progress;
@@ -259,5 +260,36 @@ fn test_stop_and_restart_receiving_logs() {
             assert_eq!(entry_of_2, entry_of(&eng, 2));
             assert_eq!(Vec::<Command<RoleConfig>>::new(), eng.output.take_commands());
         }
+    }
+}
+
+/// When node 2 stops receiving logs, the work it drops no longer holds back a pending purge, which
+/// then runs right after the streams are rebuilt.
+#[test]
+fn test_stop_receiving_logs_releases_a_pending_purge() {
+    let mut eng = eng(Inflight::logs_since(Some(log_id(1, 1, 1)), InflightId::new(5)));
+    eng.state.enable_validation(false); // The test sets a purge that waits.
+    eng.leader.as_mut().unwrap().progress.update_data_with(&3, |data| data.inflight = Inflight::None);
+    eng.state.purge_upto = Some(log_id(2, 1, 3));
+
+    tracing::info!("--- only node 2 reads the logs that wait to be purged");
+    {
+        eng.replication_handler().try_purge_log();
+        assert_eq!(Vec::<Command<RoleConfig>>::new(), eng.output.take_commands());
+    }
+
+    tracing::info!("--- node 2 stops receiving logs: its work is dropped, and the purge runs");
+    {
+        let mut dropped = entry_of(&eng, 2);
+        dropped.data.inflight = Inflight::None;
+        let entry_of_3 = entry_of(&eng, 3);
+
+        eng.replication_handler().append_membership(&log_id(3, 1, 4), &roles(NodeRole::Empty));
+
+        let expected = vec![rebuild([dropped, entry_of_3]), Command::PurgeLog {
+            upto: log_id(2, 1, 3),
+        }];
+        assert_eq!(expected, eng.output.take_commands());
+        assert_eq!(Some(&log_id(2, 1, 3)), eng.state.last_purged_log_id());
     }
 }

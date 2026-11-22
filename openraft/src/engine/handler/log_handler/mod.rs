@@ -98,7 +98,11 @@ where
         let max_keep = self.config.max_in_snapshot_log_to_keep;
         let batch_size = self.config.purge_batch_size;
 
+        // The logs at `[purge_start, purge_end)` may be purged: those before are purged already, and
+        // the last `max_keep` logs in the snapshot are kept.
+        let purge_start = st.last_purged_log_id().next_index();
         let purge_end = self.state.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
+        let eligible = purge_end.saturating_sub(purge_start);
 
         tracing::debug!(
             "calculate purge range: up to index {}, snapshot_last_log_id: {:?}, max_keep: {}",
@@ -107,7 +111,7 @@ where
             max_keep
         );
 
-        if st.last_purged_log_id().next_index() + batch_size > purge_end {
+        if eligible == 0 || eligible < batch_size {
             tracing::debug!(
                 "skip purge: batch not full, snapshot_last_log_id: {:?}, max_keep: {}, last_purged: {}, batch_size: {}, purge_end: {}",
                 self.state.snapshot_meta.last_log_id,
@@ -119,6 +123,7 @@ where
             return None;
         }
 
+        // `eligible > 0`, so `purge_end > 0`.
         let log_id = self.state.log_ids.ref_at(purge_end - 1);
         debug_assert!(
             log_id.is_some(),

@@ -448,10 +448,10 @@ fn one_shot_probe_sends_without_a_current_plan() {
 
 /// A read can overlap the end of the plan it reads for, and its entries are then not sent.
 ///
-/// RaftCore may purge right after it closes the stream: here the read finds its first entry at
-/// index 9, as after a purge through 8, and a request with `prev_log_id` 5 must not carry it. A
-/// plan that RaftCore clears or replaces keeps its entries until the replication task confirms the
-/// clear, so the read finds them, but they belong to a plan RaftCore no longer runs.
+/// Here the read finds its first entry at index 9, as if logs through 8 had been purged, and a
+/// request with `prev_log_id` 5 must not carry it. RaftCore keeps the entries of a plan that it
+/// clears, replaces or closes until the replication task no longer reads for it, so the read finds
+/// them, but they belong to a plan RaftCore no longer runs.
 #[test]
 fn read_that_outlives_its_plan_is_not_sent() {
     #[derive(Clone, Copy, Debug)]

@@ -112,6 +112,15 @@ where C: RaftTypeConfig
         target: C::NodeId,
     },
 
+    /// The replication task of the stream `stream_id` to `target`, which `RaftCore` closed, has
+    /// stopped, so it reads the log no more.
+    ///
+    /// Until then the task may still be reading, and no log is purged, see
+    /// [`RaftCore::lingering_replications`].
+    ///
+    /// [`RaftCore::lingering_replications`]: crate::core::RaftCore::lingering_replications
+    ReplicationStopped { stream_id: StreamId, target: C::NodeId },
+
     /// Result of executing a command sent from a state machine worker.
     StateMachine { command_result: sm::CommandResult<C> },
 
@@ -146,6 +155,7 @@ where C: RaftTypeConfig
             Self::LogPurged { .. } => NotificationName::LogPurged,
             Self::ReplicationProgress { .. } => NotificationName::ReplicationProgress,
             Self::ReplicateCleared { .. } => NotificationName::ReplicateCleared,
+            Self::ReplicationStopped { .. } => NotificationName::ReplicationStopped,
             Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
             Self::StateMachine { .. } => NotificationName::StateMachine,
             Self::Tick { .. } => NotificationName::Tick,
@@ -230,6 +240,9 @@ where C: RaftTypeConfig
                     "ReplicateCleared: target={}, stream_id: {}, inflight_id: {}",
                     target, stream_id, inflight_id
                 )
+            }
+            Self::ReplicationStopped { stream_id, target } => {
+                write!(f, "ReplicationStopped: target={}, stream_id: {}", target, stream_id)
             }
             Self::StateMachine { command_result } => {
                 write!(f, "{}", command_result)

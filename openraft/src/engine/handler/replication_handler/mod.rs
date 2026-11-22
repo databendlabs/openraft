@@ -97,7 +97,8 @@ where
     ///
     /// It is called by the leader when a new membership log is appended to the log store. It does
     /// not initiate replication: the caller that appended the log does, see
-    /// `LeaderHandler::leader_append_entries()`.
+    /// `LeaderHandler::leader_append_entries()`. It retries a pending purge after the streams are
+    /// rebuilt, because a target that it removes may have been the last to hold the purge back.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &C::Membership) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
@@ -116,6 +117,10 @@ where
         self.rebuild_progresses();
         self.renew_streams_of_changed_nodes(&old_membership);
         self.rebuild_replication_streams(false);
+
+        // A removed target, or one that no longer receives logs, may have been the last to hold
+        // back a pending purge, and no answer of its closed stream will retry it.
+        self.try_purge_log();
     }
 
     /// Give a new replication stream to each target whose node metadata differs from `old`.
