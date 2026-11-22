@@ -11,7 +11,9 @@ tasks, memory and CPU. It follows the setup of
   `--followers local` the followers are real members in the same process, and the router
   delivers each request to its target member, so the numbers cover whole groups.
 - Once every group has elected its leader, the benchmark switches the timers that `--mode`
-  names, waits `--settle-secs`, and measures for `--measure-secs`. Nothing is written.
+  names, waits `--settle-secs`, and measures for `--measure-secs`. Nothing is written, unless
+  `--burst-writes` asks for a burst of writes before the settle period; see
+  [Write burst](#write-burst).
 
 ## Running
 
@@ -25,6 +27,8 @@ cargo run --release --manifest-path benchmarks/idle-groups/Cargo.toml -- --group
 | `--followers`    | `stub`    | What stands in for the followers: `stub` or `local`.      |
 | `--mode`         | `default` | Which timers stay on: see the modes below.                |
 | `--count-allocs` | off       | Count heap allocations, for `heap_mib` and `allocs/s`.    |
+| `--burst-writes` | 0         | Writes to each group in a burst before the settle period. |
+| `--burst-depth`  | 16        | The writes of a burst in flight at once per group.        |
 | `--settle-secs`  | 10        | Seconds to wait after switching the timers.               |
 | `--measure-secs` | 30        | Seconds to measure for.                                   |
 | `--workers`      | 4         | The worker threads of the tokio runtime.                  |
@@ -90,6 +94,35 @@ count or both do not. Without `--count-allocs` the wrapper reads one flag per al
 
 To measure a release, point the three openraft dependencies in `Cargo.toml` at it, for example
 `openraft = "=0.10.0"`, `openraft-memstore = "=0.10.0"` and `openraft-multi = "=0.10.0"`.
+
+## Write burst
+
+With `--burst-writes N`, the benchmark writes `N` entries to the leader of every group right after
+switching the timers, at most `--burst-depth` of them in flight per group. It starts once a quorum
+has acknowledged every leader, since a leader rejects writes until then, and the settle period
+starts when the last write responds. The measurement window then shows the memory that the burst
+left behind, against an idle run with `--burst-writes 0`. That memory includes the entries the
+burst wrote: `openraft-memstore` keeps every log entry until a snapshot purges it, and the default
+`Config` builds no snapshot below 5,000 entries.
+
+A leader that no quorum has acknowledged recently rejects a write with
+`ForwardReason::LeaseExpired`, and the burst writes it again after 10 ms. Any other rejected write
+stops the run, as when another member of a group takes over its leadership: to keep the leaders
+of whole groups, run `--mode no-elect`.
+
+It adds these fields, `n/a` without a burst:
+
+- `burst_writes`: the writes, summed over the groups.
+- `burst_retries`: the writes that a leader rejected for an expired lease and the burst retried.
+- `burst_writes/s`: the writes per second, from the first write to the last response.
+- `burst_p50_us`, `burst_p99_us` and `burst_max_us`: the latency of a write, from its first
+  attempt to its response, in microseconds. The percentiles come from a log-scale histogram,
+  within 1.6% of the true value; the largest is exact.
+
+```sh
+cargo run --release --manifest-path benchmarks/idle-groups/Cargo.toml -- \
+    --groups 1000 --followers local --burst-writes 1000 --burst-depth 16 --count-allocs
+```
 
 ## Measuring a change
 

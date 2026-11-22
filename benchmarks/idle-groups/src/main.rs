@@ -10,9 +10,11 @@ mod mode;
 mod process_usage;
 mod report;
 mod stub_followers;
+mod write_burst;
 
 use std::collections::BTreeSet;
 use std::io::Cursor;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -36,6 +38,7 @@ use crate::local_members::LocalMembers;
 use crate::mode::Mode;
 use crate::report::Report;
 use crate::stub_followers::StubFollowers;
+use crate::write_burst::WriteBurst;
 
 pub(crate) type C = openraft_memstore::TypeConfig;
 pub(crate) type Raft = openraft::Raft<C, Arc<MemStateMachine>>;
@@ -64,6 +67,15 @@ struct Args {
     /// Count heap allocations, for the `heap_mib` and `allocs/s` fields. Counting adds CPU.
     #[arg(long)]
     count_allocs: bool,
+
+    /// The writes to the leader of each group in a burst after switching the timers, before the
+    /// settle period. 0 writes nothing.
+    #[arg(long, default_value_t = 0)]
+    burst_writes: u64,
+
+    /// The writes of a burst in flight at once per group.
+    #[arg(long, default_value = "16")]
+    burst_depth: NonZeroUsize,
 
     /// Seconds to wait after switching the timers, before measuring.
     #[arg(long, default_value_t = 10)]
@@ -128,6 +140,14 @@ async fn measure(args: &Args) -> Report {
         args.mode.apply(raft);
     }
 
+    // The settle period follows the burst, so that the measurement window sees the memory the burst
+    // left behind.
+    let burst = if args.burst_writes > 0 {
+        Some(WriteBurst::run(&groups, args.burst_writes, args.burst_depth).await)
+    } else {
+        None
+    };
+
     tokio::time::sleep(Duration::from_secs(args.settle_secs)).await;
 
     // Read the counters outside the CPU window, so that reading them adds no CPU to it.
@@ -164,6 +184,7 @@ async fn measure(args: &Args) -> Report {
         metrics_per_sec: counts.map(|c| per_sec(c.metrics)),
         data_metrics_per_sec: counts.map(|c| per_sec(c.data_metrics)),
         server_metrics_per_sec: counts.map(|c| per_sec(c.server_metrics)),
+        burst,
     }
 }
 
@@ -195,18 +216,22 @@ fn highest_terms(groups: &[Vec<Raft>]) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
+
     use super::Args;
     use super::measure;
     use crate::followers::Followers;
     use crate::mode::Mode;
     use crate::report::Report;
 
-    fn measure_briefly(followers: Followers, mode: Mode) -> Report {
+    fn measure_briefly(followers: Followers, mode: Mode, burst_writes: u64) -> Report {
         let args = Args {
             groups: 3,
             followers,
             mode,
             count_allocs: true,
+            burst_writes,
+            burst_depth: NonZeroUsize::new(4).unwrap(),
             settle_secs: 0,
             measure_secs: 1,
             workers: 2,
@@ -222,12 +247,13 @@ mod tests {
 
     #[test]
     fn test_leaders_send_heartbeats_to_the_stub_followers() {
-        let report = measure_briefly(Followers::Stub, Mode::Default);
+        let report = measure_briefly(Followers::Stub, Mode::Default, 0);
 
         assert!(report.appends_per_sec > 0.0, "got: {report}");
         assert!(report.tasks >= 3, "got: {report}");
         assert!(report.heap_kib > Some(0), "got: {report}");
         assert!(report.allocs_per_sec > Some(0.0), "got: {report}");
+        assert!(report.burst.is_none(), "got: {report}");
 
         // Each heartbeat fires the heartbeat timer, re-arms it for the next one, and changes the
         // quorum-acknowledged time of the data metrics.
@@ -245,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_heartbeats_keep_the_leaders_of_local_followers() {
-        let report = measure_briefly(Followers::Local, Mode::Default);
+        let report = measure_briefly(Followers::Local, Mode::Default, 0);
 
         assert!(report.appends_per_sec > 0.0, "got: {report}");
         assert_eq!(0, report.elections, "got: {report}");
@@ -258,8 +284,26 @@ mod tests {
 
     #[test]
     fn test_local_followers_campaign_without_heartbeats() {
-        let report = measure_briefly(Followers::Local, Mode::NoHeartbeat);
+        let report = measure_briefly(Followers::Local, Mode::NoHeartbeat, 0);
 
         assert!(report.elections > 0, "got: {report}");
+    }
+
+    #[test]
+    fn test_a_burst_writes_every_entry_through_each_kind_of_follower() {
+        for followers in [Followers::Stub, Followers::Local] {
+            let report = measure_briefly(followers, Mode::Default, 20);
+
+            let burst = report.burst.as_ref().expect("a burst ran");
+            assert_eq!(3 * 20, burst.writes, "got: {report}");
+            assert!(burst.writes_per_sec() > 0.0, "got: {report}");
+            assert!(burst.percentile_micros(0.5) > 0, "got: {report}");
+            assert!(
+                burst.percentile_micros(0.5) <= burst.percentile_micros(0.99),
+                "got: {report}"
+            );
+            assert!(burst.max_micros > 0, "got: {report}");
+            assert!(report.to_string().contains("\tburst_writes=60\t"), "got: {report}");
+        }
     }
 }
