@@ -1296,7 +1296,13 @@ where
 
         let context = self.new_replication_context(leader_vote, prog, cancel_rx);
 
-        let handle = ReplicationHandle::new(prog.progress.data.stream_id, replicate_tx, cancel_tx, backoff_reset_tx);
+        let handle = ReplicationHandle::new(
+            prog.progress.data.stream_id,
+            prog.target_node.clone(),
+            replicate_tx,
+            cancel_tx,
+            backoff_reset_tx,
+        );
 
         (handle, context)
     }
@@ -2860,15 +2866,27 @@ where
             }
             let removed = self.replications.remove(&prog.target);
 
-            let handle = if let Some(removed) = removed {
-                if close_old_streams {
-                    Self::close_replication(&prog.target, removed);
-                    None
-                } else {
+            // A stream serves one stream id and the node metadata its client was created from. The
+            // engine gives a target a new stream id when its metadata changes, such as a new
+            // address from `SetNodes`, and drops the request the old stream had in flight.
+            let handle = match removed {
+                Some(removed)
+                    if !close_old_streams
+                        && removed.stream_id == prog.progress.data.stream_id
+                        && removed.node == prog.target_node =>
+                {
                     Some(removed)
                 }
-            } else {
-                None
+                Some(removed) => {
+                    debug_assert!(
+                        close_old_streams || removed.stream_id != prog.progress.data.stream_id,
+                        "the node of target {} changed without a new stream id",
+                        prog.target
+                    );
+                    Self::close_replication(&prog.target, removed);
+                    None
+                }
+                None => None,
             };
 
             let handle = if let Some(handle) = handle {

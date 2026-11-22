@@ -208,6 +208,7 @@ impl RaftNetworkV2<C> for PullingNetwork {
 /// The channels a test drives and watches a replication task to node 2 through.
 struct Harness {
     replicate_tx: WatchSenderOf<C, Option<Replicate<C>>>,
+    committed_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
     notifications: MpscReceiverOf<C, Notification<C>>,
     reads: WatchReceiverOf<C, u64>,
     open_reads: WatchSenderOf<C, bool>,
@@ -281,6 +282,7 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
 
     let harness = Harness {
         replicate_tx,
+        committed_tx,
         notifications,
         reads,
         open_reads: open_reads_tx,
@@ -288,7 +290,7 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
         pulled,
         ended,
     };
-    (harness, (committed_tx, io_tx, cancel_tx, backoff_reset_tx, probe_tx))
+    (harness, (io_tx, cancel_tx, backoff_reset_tx, probe_tx))
 }
 
 /// Wait for the next notification, which must be the confirmation of the clear `inflight_id`.
@@ -441,6 +443,41 @@ fn stream_reads_nothing_once_the_clear_is_confirmed() {
             C::timeout(TEST_TIMEOUT, h.ended.wait_until_ge(&true)).await.unwrap().unwrap();
             assert_eq!(0, *h.pulled.borrow_watched(), "the stream ends without a request");
             assert_eq!(0, *h.reads.borrow_watched());
+        }
+    });
+}
+
+/// A commit probe whose session ends without an answer is resumed. The task does not replace it
+/// with the plan it ran before, which RaftCore did not publish again and may have finished since:
+/// here a clear that the task already confirmed.
+#[test]
+fn unfinished_commit_probe_is_resumed() {
+    C::run(async {
+        let (mut h, _channels) = spawn_replication(true, true, false);
+        let clear = InflightId::new(1);
+
+        tracing::info!("--- RaftCore clears the plan for node 2, and the task confirms it");
+        {
+            h.replicate_tx.send(Some(Replicate::new_clear(clear))).unwrap();
+            expect_cleared(&mut h.notifications, clear).await;
+        }
+
+        tracing::info!("--- index 5 commits: the task sends a commit probe, which gets no answer");
+        {
+            h.committed_tx.send(Some(log_id(1, 1, 5))).unwrap();
+            C::timeout(TEST_TIMEOUT, h.pulled.wait_until_ge(&1)).await.unwrap().unwrap();
+        }
+
+        tracing::info!(
+            "--- the task resends the probe, and does not confirm clear {} again",
+            clear
+        );
+        {
+            C::timeout(TEST_TIMEOUT, h.pulled.wait_until_ge(&2)).await.unwrap().unwrap();
+
+            if let Ok(notification) = h.notifications.try_recv() {
+                panic!("expect no notification, got: {}", notification);
+            }
         }
     });
 }

@@ -17,14 +17,17 @@ use crate::base::OptionalSerde;
 /// - In-place error storage (no heap allocation)
 /// - Robustness against out-of-memory conditions
 ///
-/// The default implementation uses [`anyerror::AnyError`].
+/// A type config that names none gets [`BoxedErrorSource`] from [`declare_raft_types!`];
+/// [`anyerror::AnyError`] implements this trait too. With the `serde` feature, an implementation
+/// must also be serializable, as the example derives.
 ///
 /// # Example
 ///
-/// ```ignore
-/// use openraft::error::ErrorSource;
+/// ```
+/// use openraft::errors::ErrorSource;
 ///
 /// #[derive(Debug, Clone, PartialEq, Eq)]
+/// #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// struct MyError {
 ///     message: String,
 /// }
@@ -46,7 +49,14 @@ use crate::base::OptionalSerde;
 ///         Self { message: msg.to_string() }
 ///     }
 /// }
+///
+/// let error = MyError::from_string("disk full");
+/// assert_eq!("disk full", error.to_string());
+/// assert!(!error.has_backtrace());
 /// ```
+///
+/// [`BoxedErrorSource`]: crate::impls::BoxedErrorSource
+/// [`declare_raft_types!`]: crate::declare_raft_types
 pub trait ErrorSource: Error + Clone + PartialEq + Eq + OptionalSend + OptionalSync + OptionalSerde + 'static {
     /// Create an error from any error type implementing [`Error`].
     fn from_error<E: Error + 'static>(error: &E) -> Self;

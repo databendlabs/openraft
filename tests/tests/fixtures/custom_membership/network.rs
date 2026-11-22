@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 
 use openraft::OptionalSend;
 use openraft::RaftNetworkFactory;
+use openraft::RaftTypeConfig;
 use openraft::alias::SnapshotOf;
 use openraft::alias::VoteOf;
 use openraft::errors::RPCError;
@@ -28,13 +29,26 @@ use crate::fixtures::custom_membership::test_cluster::TestConfig;
 use crate::fixtures::custom_membership::test_cluster::TestRaft;
 use crate::fixtures::network_delay::apply_send_delay;
 
-/// Delivers RPCs among the nodes of one test, except between the two nodes of a cut link.
+/// One network client that a node created: `(source, target, factory method, target node)`.
+///
+/// The factory method is `"new_client"` or `"new_heartbeat_client"`.
+pub type ClientRecord<C> = (u64, u64, &'static str, <C as RaftTypeConfig>::Node);
+
+/// Delivers RPCs among the nodes of one test, except between the two nodes of a cut link, and
+/// through a closed endpoint.
 pub struct Router<C>
 where C: TestConfig
 {
     pub(super) nodes: BTreeMap<u64, TestRaft<C>>,
     pub(super) cut_links: BTreeSet<(u64, u64)>,
     pub(super) send_delay: Arc<AtomicU64>,
+
+    /// Every client that a node created, in creation order.
+    pub(super) clients: Vec<ClientRecord<C>>,
+
+    /// `(target, node)` pairs whose clients fail every RPC, as an address that no longer accepts
+    /// connections.
+    pub(super) closed_endpoints: Vec<(u64, C::Node)>,
 }
 
 /// The network that node `source` sends its RPCs through.
@@ -45,17 +59,33 @@ where C: TestConfig
     pub(super) router: Arc<Mutex<Router<C>>>,
 }
 
+impl<C> Network<C>
+where C: TestConfig
+{
+    /// Creates a connection to `target` at `node`, and records it as created by `method`.
+    fn connect(&self, target: u64, node: &C::Node, method: &'static str) -> Connection<C> {
+        let mut router = self.router.lock().unwrap();
+        router.clients.push((self.source, target, method, node.clone()));
+        Connection {
+            source: self.source,
+            target,
+            node: node.clone(),
+            router: self.router.clone(),
+        }
+    }
+}
+
 impl<C> RaftNetworkFactory<C> for Network<C>
 where C: TestConfig
 {
     type Network = Connection<C>;
 
-    async fn new_client(&mut self, target: u64, _node: &()) -> Self::Network {
-        Connection {
-            source: self.source,
-            target,
-            router: self.router.clone(),
-        }
+    async fn new_client(&mut self, target: u64, node: &C::Node) -> Self::Network {
+        self.connect(target, node, "new_client")
+    }
+
+    async fn new_heartbeat_client(&mut self, target: u64, node: &C::Node) -> Self::Network {
+        self.connect(target, node, "new_heartbeat_client")
     }
 }
 
@@ -64,15 +94,25 @@ where C: TestConfig
 {
     source: u64,
     target: u64,
+    /// The node metadata that this connection was created from, such as an address.
+    node: C::Node,
     router: Arc<Mutex<Router<C>>>,
 }
 
 impl<C> Connection<C>
 where C: TestConfig
 {
-    /// Returns the target node, or `Unreachable` if the link to it is cut.
+    /// Returns the target node, or `Unreachable` if the link to it is cut or this connection's
+    /// endpoint is closed.
     fn target(&self) -> Result<TestRaft<C>, RPCError<C>> {
         let router = self.router.lock().unwrap();
+        let is_closed =
+            router.closed_endpoints.iter().any(|(target, node)| *target == self.target && *node == self.node);
+        if is_closed {
+            let message = format!("endpoint {:?} of node {} is closed", self.node, self.target);
+            return Err(RPCError::Unreachable(Unreachable::from_string(message)));
+        }
+
         let link = (self.source, self.target);
         let reversed = (self.target, self.source);
         let is_cut = router.cut_links.contains(&link) || router.cut_links.contains(&reversed);

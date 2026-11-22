@@ -106,7 +106,15 @@ where
     next_action: Option<Payload<C>>,
 
     /// Identifies the current in-flight replication batch for progress tracking.
+    ///
+    /// The responses of a session carry it to RaftCore. A commit probe resets it to `None`.
     inflight_id: Option<InflightId>,
+
+    /// The inflight id of the plan this task adopted last, written only by [`Self::adopt()`].
+    ///
+    /// Unlike `inflight_id`, a commit probe does not reset it, so it tells whether the plan in
+    /// `replicate_rx` is one this task has already run.
+    adopted: Option<InflightId>,
 
     /// The network interface for replicating logs and heartbeat.
     network: Option<N::Network>,
@@ -168,6 +176,7 @@ where
                 after_leader_check: None,
             })),
             inflight_id: None,
+            adopted: None,
             event_watcher,
             network: Some(network),
             replication_progress: progress,
@@ -273,28 +282,21 @@ where
 
     /// Decide what the next stream should carry.
     ///
-    /// A payload still unfinished is resumed only while its plan is [`RaftCore`]'s current one.
-    /// Otherwise adopt the plan published since, as when a reverted log makes a `LogsSince` payload
-    /// obsolete: resuming the payload would send entries that may no longer exist. With nothing to
-    /// run, block until [`RaftCore`] hands over work.
+    /// A payload still unfinished is resumed unless [`RaftCore`] has published a plan since this
+    /// task last adopted one. Then adopt that plan, as when a reverted log makes a `LogsSince`
+    /// payload obsolete: resuming the payload would send entries that may no longer exist. With
+    /// nothing to run, block until [`RaftCore`] hands over work.
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn select_next_payload(&mut self) -> Result<Payload<C>, ReplicationClosed> {
         if self.next_action.is_some() {
-            // `borrow_and_update()` marks the value as seen; a plain `borrow_watched()`
-            // would leave the change notification pending, and `drain_events()` would
-            // later observe it and replay the same command, re-running an
-            // already-acknowledged payload.
-            let current = self.event_watcher.replicate_rx.borrow_and_update().clone();
-            if let Some(current) = current
-                && self.inflight_id != Some(current.inflight_id)
-            {
+            let unfinished = self.inflight_id;
+            if self.adopt_published().await {
                 tracing::info!(
-                    "ReplicationCore replaced current data with inflight id {} with {}",
-                    self.inflight_id.display(),
-                    current
+                    "ReplicationCore replaced the unfinished payload of inflight id {} with the plan {}",
+                    unfinished.display(),
+                    self.inflight_id.display()
                 );
-                self.adopt(current).await;
             }
         }
 
@@ -303,6 +305,29 @@ where
         }
 
         Ok(self.next_action.take().unwrap())
+    }
+
+    /// Adopt the plan in `replicate_rx` if this task has not adopted it yet, and return whether it
+    /// did.
+    ///
+    /// Every plan RaftCore publishes carries a new inflight id, so a plan other than the one
+    /// adopted last is a new one. `inflight_id` cannot tell: a commit probe resets it, while the
+    /// channel may still hold a plan this task already ran and RaftCore has finished since. The
+    /// decision reads only the value, so it does not depend on which reader of the channel has
+    /// marked a change as seen. RaftCore publishes `None` only as the initial value, before any
+    /// plan.
+    async fn adopt_published(&mut self) -> bool {
+        let current = self.event_watcher.replicate_rx.borrow_watched().clone();
+        let Some(current) = current else {
+            return false;
+        };
+        if self.adopted == Some(current.inflight_id) {
+            return false;
+        }
+
+        tracing::debug!("ReplicationCore adopts {}", current);
+        self.adopt(current).await;
+        true
     }
 
     /// Run `replicate` from now on, in place of the plan this task ran before.
@@ -317,6 +342,7 @@ where
     ///
     /// [`RaftCore`]: crate::core::RaftCore
     async fn adopt(&mut self, replicate: Replicate<C>) {
+        self.adopted = Some(replicate.inflight_id);
         self.inflight_id = Some(replicate.inflight_id);
         self.next_action = replicate.payload;
 
@@ -584,10 +610,16 @@ where
     /// - For committed update: sets `inflight_id = None` and `next_action =
     ///   Some(empty_range_payload)`
     ///
-    /// It blocks until at least one event is received.
+    /// A plan this task has not adopted is taken without waiting, so a change notification that
+    /// was consumed elsewhere costs no plan. Otherwise it blocks until at least one event is
+    /// received.
     #[tracing::instrument(level = "trace", skip_all)]
     pub async fn drain_events(&mut self) -> Result<(), ReplicationClosed> {
         tracing::debug!("drain_events");
+
+        if self.adopt_published().await {
+            return Ok(());
+        }
 
         let entries = self.event_watcher.replicate_rx.changed();
         let committed = self.event_watcher.committed_rx.changed();
@@ -596,13 +628,8 @@ where
         match selected {
             Select2::First(entries_res) => {
                 entries_res.map_err(|_e| ReplicationClosed::new("replicate_rx closed"))?;
-                // This read delivers the command: `borrow_and_update()` marks it as seen so a
-                // value arriving after `changed()` resolved is not delivered a second time.
-                let data = self.event_watcher.replicate_rx.borrow_and_update().clone();
-                // RaftCore publishes `None` only as the initial value, before any plan.
-                if let Some(data) = data {
-                    self.adopt(data).await;
-                }
+                // The value decides, not the notification: a plan already adopted is skipped.
+                self.adopt_published().await;
             }
             Select2::Second(committed_res) => {
                 committed_res.map_err(|_e| ReplicationClosed::new("committed_rx closed"))?;

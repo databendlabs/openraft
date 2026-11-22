@@ -51,6 +51,26 @@ fn test_inflight_create() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_inflight_id() -> anyhow::Result<()> {
+    let id = InflightId::new(3);
+
+    assert_eq!(None, Inflight::<UTConfig>::None.inflight_id());
+    let probe = Inflight::<UTConfig>::probe(Some(log_id(5)), Some(log_id(10)), id);
+    assert_eq!(Some(id), probe.inflight_id());
+    assert_eq!(
+        Some(id),
+        Inflight::<UTConfig>::logs_since(Some(log_id(5)), id).inflight_id()
+    );
+    assert_eq!(Some(id), Inflight::<UTConfig>::snapshot(id).inflight_id());
+
+    // A clear has the ID of its own request.
+    let clear = probe.into_clear(InflightId::new(4)).unwrap();
+    assert_eq!(Some(InflightId::new(4)), clear.inflight_id());
+
+    Ok(())
+}
+
+#[test]
 fn test_inflight_is_xxx() -> anyhow::Result<()> {
     let l = Inflight::<UTConfig>::None;
     assert!(l.is_none());

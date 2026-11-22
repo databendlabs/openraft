@@ -151,6 +151,68 @@ async fn replication_respects_receive_logs() -> Result<()> {
     Ok(())
 }
 
+/// A node that loses `ReceiveLogs` and gets it back catches up: the leader drops the work in
+/// flight of the stream it closed, and replicates through the new stream.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn regained_receive_logs_resumes_replication() -> Result<()> {
+    let with_logs = MinimalQuorumsMembership {
+        read: MinimalQuorums(vec![btreeset! {1}]),
+        write: MinimalQuorums(vec![btreeset! {1}]),
+        roles: btreemap! { 2 => NodeRole::ReceiveLogs },
+    };
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2},
+        with_logs.clone(),
+    )
+    .await?;
+    let leader = cluster.raft(1);
+
+    tracing::info!("--- node 1 leads, and node 2 applies its first write through a stream in flight");
+    {
+        leader.trigger().elect(false).await?;
+        leader.wait(timeout()).applied_index(Some(1), "commit the blank entry").await?;
+        leader.client_write("first".to_string()).await?;
+        cluster.raft(2).wait(timeout()).applied_index(Some(2), "node 2 applies the first write").await?;
+    }
+
+    tracing::info!("--- take ReceiveLogs from node 2, then write while node 2 gets no logs");
+    let without_logs = {
+        let mut without_logs = with_logs.clone();
+        without_logs.roles.insert(2, NodeRole::Empty);
+        leader.append_membership(without_logs.clone(), EntryPayload::Blank, []).await?;
+        leader.client_write("excluded".to_string()).await?;
+        without_logs
+    };
+
+    tracing::info!("--- give ReceiveLogs back to node 2: it catches up through the next write");
+    {
+        leader.append_membership(with_logs.clone(), EntryPayload::Blank, []).await?;
+        let response = leader.client_write("restored".to_string()).await?;
+        let expected_log_id = log_id::<TypeConfig>(1, 1, 6);
+        assert_eq!(expected_log_id, response.log_id);
+
+        cluster
+            .raft(2)
+            .wait(timeout())
+            .applied_index(Some(6), "node 2 applies the write after the restore")
+            .await?;
+        let want = vec![
+            EntryOf::<TypeConfig>::new_membership(log_id::<TypeConfig>(0, 0, 0), with_logs.clone()),
+            EntryOf::<TypeConfig>::new_blank(log_id::<TypeConfig>(1, 1, 1)),
+            EntryOf::<TypeConfig>::new_normal(log_id::<TypeConfig>(1, 1, 2), "first".to_string()),
+            EntryOf::<TypeConfig>::new_membership(log_id::<TypeConfig>(1, 1, 3), without_logs),
+            EntryOf::<TypeConfig>::new_normal(log_id::<TypeConfig>(1, 1, 4), "excluded".to_string()),
+            EntryOf::<TypeConfig>::new_membership(log_id::<TypeConfig>(1, 1, 5), with_logs),
+            EntryOf::<TypeConfig>::new_normal(expected_log_id, "restored".to_string()),
+        ];
+        assert_eq!(want, cluster.applied(2));
+    }
+
+    Ok(())
+}
+
 /// A write voter without `ReceiveLogs` never acknowledges an entry, so `append_membership()`
 /// rejects a membership that has one.
 #[tracing::instrument]

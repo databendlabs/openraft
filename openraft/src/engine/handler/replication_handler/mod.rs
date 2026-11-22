@@ -41,11 +41,15 @@ use crate::vote::raft_vote::RaftVoteExt;
 #[cfg(test)]
 mod append_membership_test;
 #[cfg(test)]
+mod receive_logs_test;
+#[cfg(test)]
 mod try_purge_log_test;
 #[cfg(test)]
 mod update_conflicting_test;
 #[cfg(test)]
 mod update_matching_test;
+#[cfg(test)]
+mod update_progress_test;
 
 /// Bounds replication attached to each matching-point probe, avoiding large fragmented ranges
 /// while retaining batching for small follower gaps.
@@ -91,10 +95,14 @@ where
 
     /// Append a new membership and update related state such as replication streams.
     ///
-    /// It is called by the leader when a new membership log is appended to the log store.
+    /// It is called by the leader when a new membership log is appended to the log store. It does
+    /// not initiate replication: the caller that appended the log does, see
+    /// `LeaderHandler::leader_append_entries()`.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_membership(&mut self, log_id: &LogIdOf<C>, m: &C::Membership) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m);
+
+        let old_membership = self.state.membership_state.effective().clone();
 
         self.state
             .membership_state
@@ -106,8 +114,42 @@ where
         // committed.
 
         self.rebuild_progresses();
+        self.renew_streams_of_changed_nodes(&old_membership);
         self.rebuild_replication_streams(false);
-        self.initiate_replication();
+    }
+
+    /// Give a new replication stream to each target whose node metadata differs from `old`.
+    ///
+    /// A network client may capture the metadata it was created from, such as an address, so
+    /// `RaftCore` replaces the stream of such a target instead of reusing it, see
+    /// [`Command::RebuildReplicationStreams`]. The replaced stream never answers the target's
+    /// inflight request, so the request is dropped, and [`Self::initiate_replication`] sends the
+    /// next one through the new stream. The new stream id makes a late response from the replaced
+    /// stream stale. The matching log id stays, because the target is the same node.
+    fn renew_streams_of_changed_nodes(&mut self, old: &StoredMembershipOf<C>) {
+        let new = self.state.membership_state.effective().clone();
+        let id_gen = self.state.progress_id_gen.clone();
+
+        for item in self.leader.progress.iter_mut_without_reorder() {
+            if item.id == self.config.id {
+                continue;
+            }
+            let (Some(old_node), Some(new_node)) = (old.get_node(&item.id), new.get_node(&item.id)) else {
+                continue;
+            };
+            if old_node == new_node {
+                continue;
+            }
+
+            tracing::info!(
+                "node metadata of target {} changed from {:?} to {:?}: replace its replication stream",
+                item.id,
+                old_node,
+                new_node
+            );
+            item.data.inflight = Inflight::None;
+            item.data.stream_id = StreamId::new(id_gen.next_id());
+        }
     }
 
     /// Rebuild leader's replication progress to reflect replication changes.
@@ -248,13 +290,15 @@ where
         }
     }
 
-    /// Update progress when replicated data(logs or snapshot) does not match the follower/learner
-    /// state and is rejected.
+    /// Update progress when a follower or learner rejects replicated data because its log does not
+    /// match the leader's at `conflict`.
     ///
-    /// If `inflight_id` is `Some`, the inflight state is reset because the response corresponds
-    /// to a replication request with log payload; a stale inflight ID leaves the progress entry
-    /// unchanged. If `None`, the response is from an RPC without payload (e.g., heartbeat), and
-    /// inflight state is not modified.
+    /// `inflight_id` names the tracked replication operation that the response answers; it does not
+    /// tell whether the RPC carried entries. With `Some`, the conflict ends that operation, and the
+    /// inflight state becomes `None`; the ID of an operation no longer in flight leaves the
+    /// progress entry unchanged. With `None`, as for a heartbeat's conflict, no operation ends, but
+    /// when log reversion is allowed and `conflict` is below `matching`, resetting `matching` also
+    /// drops a `LogsSince` plan.
     ///
     /// Returns `false` if the response is stale or `target` has no progress entry, so nothing was
     /// applied.
@@ -325,19 +369,17 @@ where
         });
     }
 
-    /// Enable one-time replication reset for a specific node upon log reversion detection.
+    /// Set whether the log of `target` may revert once.
     ///
-    /// This method sets a flag to allow the replication process to be reset once for the specified
-    /// target node when a log reversion is detected. This is typically used to handle scenarios
-    /// where a follower node's log has unexpectedly reverted to a previous state.
+    /// Sets the one-shot `allow_log_reversion` permission of `target` to `allow`. While it is set,
+    /// a conflict below the target's `matching`, as from a follower that lost its log, resets
+    /// `matching` to `None` and restarts the search for the matching log; that reset clears the
+    /// permission. Passing `false` clears an unused permission. [`Config::allow_log_reversion`]
+    /// allows every reversion, whatever this permission is.
     ///
-    /// # Behavior
+    /// Returns [`NodeNotFound`] if `target` has no progress entry.
     ///
-    /// - Sets the `reset_on_reversion` flag to `true` for the specified node in the leader's
-    ///   progress tracker.
-    /// - This flag will be consumed upon the next log reversion detection, allowing for a one-time
-    ///   reset.
-    /// - If the node is not found in the progress tracker, this method ignore it.
+    /// [`Config::allow_log_reversion`]: crate::config::Config::allow_log_reversion
     pub(crate) fn allow_next_revert(&mut self, target: C::NodeId, allow: bool) -> Result<(), NodeNotFound<C::NodeId>> {
         let res = self.leader.progress.update_data_with(&target, |data| data.allow_log_reversion = allow);
 
@@ -402,16 +444,24 @@ where
             Err(err_str) => {
                 tracing::warn!("update progress error: {}", err_str);
 
-                // Reset inflight state and it will retry. A clear stays: it waits for the
-                // replication task, which may still read the log for the plan the clear dropped,
-                // and an error of that plan says nothing about whether it still does.
+                // Reset the operation the error belongs to, and it will retry. An error without an
+                // operation ID, or with the ID of an earlier operation, leaves the current one: a
+                // stream can report an error after an earlier answer completed its operation and
+                // another one started. A clear stays: it waits for the replication task, which may
+                // still read the log for the plan the clear dropped, and an error of that plan says
+                // nothing about whether it still does.
                 let mut dropped = None;
-                self.leader.progress.update_data_with(&target, |data| match data.inflight {
-                    Inflight::Clear { .. } => {}
-                    Inflight::Probe { .. } | Inflight::LogsSince { .. } => {
-                        dropped = Some(std::mem::replace(&mut data.inflight, Inflight::None));
+                self.leader.progress.update_data_with(&target, |data| {
+                    if data.inflight.inflight_id() != inflight_id {
+                        return;
                     }
-                    Inflight::None | Inflight::Snapshot { .. } => data.inflight = Inflight::None,
+                    match data.inflight {
+                        Inflight::Probe { .. } | Inflight::LogsSince { .. } => {
+                            dropped = Some(std::mem::replace(&mut data.inflight, Inflight::None));
+                        }
+                        Inflight::Snapshot { .. } => data.inflight = Inflight::None,
+                        Inflight::None | Inflight::Clear { .. } => {}
+                    }
                 });
 
                 // A transport that pulls requests on a task of its own may still read the log for
@@ -470,6 +520,13 @@ where
     }
 
     /// Update replication streams to reflect replication progress change.
+    ///
+    /// With `close_old`, `RaftCore` replaces every replication stream, so the work in flight of
+    /// every target is dropped. Without it, `RaftCore` keeps the stream of each target that still
+    /// receives logs, and closes the stream of a target that no longer does. The work in flight of
+    /// such a target is dropped too: the closed stream never answers it, and it would keep the
+    /// target from starting new work once the target receives logs again and gets a new stream.
+    /// The target keeps its matching log id and its heartbeats.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn rebuild_replication_streams(&mut self, close_old: bool) {
         let mut targets = vec![];
@@ -478,7 +535,7 @@ where
 
         for item in self.leader.progress.iter_mut_without_reorder() {
             if item.id != self.config.id {
-                if close_old {
+                if close_old || !membership.membership().receives_logs(&item.id) {
                     item.data.inflight = Inflight::None;
                 }
 
@@ -499,8 +556,6 @@ where
     }
 
     /// Initiate replication for every target that is not sending data in flight.
-    ///
-    /// `send_none` specifies whether to force to send a message even when there is no data to send.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn initiate_replication(&mut self) {
         tracing::debug!("{}: progress: {:?}", func_name!(), self.leader.progress);

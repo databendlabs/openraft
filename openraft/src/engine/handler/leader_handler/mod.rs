@@ -140,6 +140,8 @@ where
             rh.append_membership(&log_id, &m);
         }
 
+        // Proposing entries is what starts their replication. With a membership entry, the
+        // replication streams were rebuilt for the new membership just above.
         rh.initiate_replication();
 
         Some(log_ids)

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maplit::btreemap;
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
 
@@ -20,6 +21,8 @@ use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::replication::payload::Payload;
 use crate::replication::replicate::Replicate;
+use crate::replication::response::Progress;
+use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::StoredMembershipOf;
 use crate::utime::Leased;
@@ -73,6 +76,10 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m34());
+
+    // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+
+    eng.replication_handler().initiate_replication();
 
     assert_eq!(
         MembershipState::new(
@@ -178,6 +185,10 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m4_356());
 
+    // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+
+    eng.replication_handler().initiate_replication();
+
     assert_eq!(
         MembershipState::new(
             Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, 3)), m23_45())),
@@ -247,8 +258,124 @@ fn test_leader_append_membership_updates_self_quorum() -> anyhow::Result<()> {
 
     eng.replication_handler().append_membership(&log_id(3, 1, 4), &m23());
 
+    // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+
+    eng.replication_handler().initiate_replication();
+
     let self_quorum = eng.leader_ref().unwrap().is_self_quorum();
     assert!(!self_quorum, "node 2 alone is not a majority of {{2,3}}");
+
+    Ok(())
+}
+
+/// Voters 2 and 3, and learner 4 at `addr_4`.
+fn m23_4_at(addr_4: &str) -> Membership<u64, String> {
+    let nodes = btreemap! {
+        2 => "n2".to_string(),
+        3 => "n3".to_string(),
+        4 => addr_4.to_string(),
+    };
+    Membership::<u64, String>::new(vec![btreeset! {2, 3}], nodes).unwrap()
+}
+
+/// A membership that changes the node metadata of learner 4, such as its address, gives 4 a new
+/// replication stream. The request in flight on the old stream, logs or a snapshot, is dropped and
+/// planned again for the new stream, and a late answer from the old stream is ignored. Voter 3,
+/// whose metadata stays, keeps its stream and its request in flight.
+#[test]
+fn test_leader_append_membership_renews_the_stream_of_a_changed_node() -> anyhow::Result<()> {
+    type C = UTConfig<String>;
+
+    let logs_since_4 = Inflight::logs_since(Some(log_id(1, 1, 2)), InflightId::new(2));
+    let snapshot_4 = Inflight::snapshot(InflightId::new(2));
+
+    for inflight_4 in [logs_since_4, snapshot_4] {
+        let mut eng = Engine::<C>::testing_default(0);
+        eng.config.id = 2;
+        let old = Arc::new(StoredMembershipOf::<C>::new(Some(log_id(1, 1, 1)), m23_4_at("old")));
+        eng.state.membership_state = MembershipState::new(old.clone(), old);
+        eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 3)]);
+        eng.state.vote = Leased::new(C::now(), Duration::from_millis(500), Vote::new_committed(6, 2));
+        eng.state.server_state = eng.calc_server_state();
+        eng.testing_new_leader();
+
+        tracing::info!(%inflight_4, "--- 3 and 4 match up to index 2, and each has a request in flight");
+        let (before_3, before_4) = {
+            let leader = eng.leader.as_mut().unwrap();
+            leader.progress.update_entry_with(&3, |entry| {
+                entry.matching = Some(log_id(1, 1, 2));
+                entry.data.inflight = Inflight::logs_since(Some(log_id(1, 1, 2)), InflightId::new(1));
+            });
+            leader.progress.update_entry_with(&4, |entry| {
+                entry.matching = Some(log_id(1, 1, 2));
+                entry.data.inflight = inflight_4;
+            });
+            eng.state.last_inflight_id = 2;
+            let leader = eng.leader.as_ref().unwrap();
+            (
+                leader.progress.try_get(&3).unwrap().clone(),
+                leader.progress.try_get(&4).unwrap().clone(),
+            )
+        };
+
+        tracing::info!("--- a membership log moves learner 4 to a new address");
+        eng.replication_handler().append_membership(&log_id(1, 1, 4), &m23_4_at("new"));
+        // As `LeaderHandler::leader_append_entries()` does after it appends the membership.
+        eng.replication_handler().initiate_replication();
+
+        let after_4 = eng.leader.as_ref().unwrap().progress.try_get(&4).unwrap().clone();
+        assert_ne!(
+            before_4.data.stream_id, after_4.data.stream_id,
+            "4 gets a new stream id"
+        );
+        assert_eq!(before_4.matching(), after_4.matching(), "4 keeps its matching log id");
+
+        let after_3 = eng.leader.as_ref().unwrap().progress.try_get(&3).unwrap().clone();
+        assert_eq!(before_3, after_3, "3 keeps its stream and its request in flight");
+
+        let commands = eng.output.take_commands();
+        let renewed_4 = {
+            let mut p = before_4.clone();
+            p.data.stream_id = after_4.data.stream_id;
+            p.data.inflight = Inflight::None;
+            p
+        };
+        let rebuild = Command::RebuildReplicationStreams {
+            leader_vote: Vote::new(6, 2).to_committed(),
+            targets: vec![
+                TargetProgress {
+                    target: 3,
+                    target_node: "n3".to_string(),
+                    progress: before_3,
+                },
+                TargetProgress {
+                    target: 4,
+                    target_node: "new".to_string(),
+                    progress: renewed_4,
+                },
+            ],
+            close_old_streams: false,
+        };
+        assert_eq!(rebuild, commands[0]);
+        assert!(
+            matches!(&commands[1..], [Command::Replicate { target: 4, .. }]),
+            "only 4 gets a new request, through its new stream: {:?}",
+            commands
+        );
+
+        tracing::info!("--- a late answer from the old stream of 4 is stale");
+        {
+            let late = Progress {
+                target: 4,
+                result: Ok(ReplicationResult(Ok(Some(log_id(1, 1, 3))))),
+                hint: None,
+            };
+            eng.replication_handler().update_progress(before_4.data.stream_id, late, Some(InflightId::new(2)));
+
+            let progress_4 = eng.leader.as_ref().unwrap().progress.try_get(&4).unwrap().clone();
+            assert_eq!(after_4, progress_4, "the answer of the replaced stream changes nothing");
+        }
+    }
 
     Ok(())
 }

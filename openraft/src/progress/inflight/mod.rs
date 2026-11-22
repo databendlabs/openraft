@@ -191,6 +191,19 @@ where C: RaftTypeConfig
         matches!(self, Inflight::Snapshot { .. })
     }
 
+    /// Return the ID of the operation in flight, or `None` if there is none.
+    ///
+    /// For [`Inflight::Clear`], it is the ID of the clear request, not that of the dropped plan.
+    pub(crate) fn inflight_id(&self) -> Option<InflightId> {
+        match self {
+            Inflight::None => None,
+            Inflight::Probe { inflight_id, .. }
+            | Inflight::LogsSince { inflight_id, .. }
+            | Inflight::Snapshot { inflight_id }
+            | Inflight::Clear { inflight_id, .. } => Some(*inflight_id),
+        }
+    }
+
     /// Update inflight state when log up to `upto` is acknowledged by a follower/learner.
     ///
     /// Returns `true` if the ack matched the current inflight request and was applied; `false` if

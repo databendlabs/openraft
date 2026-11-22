@@ -37,11 +37,11 @@ pub enum StreamingError<C: RaftTypeConfig> {
     #[error(transparent)]
     Timeout(#[from] Timeout<C>),
 
-    /// The node is temporarily unreachable and should backoff before retrying.
+    /// The node is unreachable, and a retry should wait; see [`Unreachable`].
     #[error(transparent)]
     Unreachable(#[from] Unreachable<C>),
 
-    /// Failed to send the RPC request and should retry immediately.
+    /// A transient transport failure, which a retry may get past; see [`NetworkError`].
     #[error(transparent)]
     Network(#[from] NetworkError<C>),
 }

@@ -15,6 +15,12 @@ where C: RaftTypeConfig
     /// Identifies this replication session (leader vote + target node).
     pub(crate) stream_id: StreamId,
 
+    /// The node metadata that the stream's network client was created from.
+    ///
+    /// A client may capture it, such as a connection address, so a stream is reused only for
+    /// the same metadata.
+    pub(crate) node: C::Node,
+
     /// The log plan for the replication task to run.
     ///
     /// It holds the plan that [`Command::Replicate`] or [`Command::ClearReplicate`] sent last, or
@@ -42,12 +48,14 @@ where C: RaftTypeConfig
 {
     pub(crate) fn new(
         stream_id: StreamId,
+        node: C::Node,
         replicate_tx: WatchSenderOf<C, Option<Replicate<C>>>,
         cancel_tx: WatchSenderOf<C, ()>,
         backoff_reset_tx: WatchSenderOf<C, ()>,
     ) -> Self {
         Self {
             stream_id,
+            node,
             join_handle: None,
             replicate_tx,
             snapshot_transmit_handle: None,

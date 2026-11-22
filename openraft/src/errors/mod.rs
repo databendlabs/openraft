@@ -263,11 +263,11 @@ pub enum RPCError<C: RaftTypeConfig, E: Error = Infallible> {
     #[error(transparent)]
     Timeout(#[from] Timeout<C>),
 
-    /// The node is temporarily unreachable and should backoff before retrying.
+    /// The node is unreachable, and a retry should wait; see [`Unreachable`].
     #[error(transparent)]
     Unreachable(#[from] Unreachable<C>),
 
-    /// Failed to send the RPC request and should retry immediately.
+    /// A transient transport failure, which a retry may get past; see [`NetworkError`].
     #[error(transparent)]
     Network(#[from] NetworkError<C>),
 
@@ -281,11 +281,15 @@ where
     C: RaftTypeConfig,
     E: Error,
 {
-    /// Returns a weight indicating how severe this error is for backoff purposes.
+    /// Returns the weight this error adds to the error rank of a log replication stream.
     ///
-    /// Higher values indicate more severe errors that should trigger longer backoff.
-    /// - Timeout/Network errors: 2 (transient, retry soon)
-    /// - Unreachable/RemoteError: 100 (more serious, back off longer)
+    /// The stream adds up the weights of the failures since its last success, and backs off when
+    /// it opens its next session with a rank above a threshold, 20: so one `Unreachable` or
+    /// `RemoteError` (100) enables backoff, while `Timeout` and `Network` errors (2) do so only
+    /// after more than ten in a row. The weight only decides whether to back off; the
+    /// [`Backoff`] iterator gives the delays.
+    ///
+    /// [`Backoff`]: crate::network::Backoff
     pub(crate) fn backoff_rank(&self) -> u64 {
         match &self {
             RPCError::Timeout(_) => 2,
@@ -376,10 +380,12 @@ where
     }
 }
 
-/// Error that indicates a **temporary** network error and when it is returned, Openraft will retry
-/// immediately.
+/// A transient transport failure, such as a lost connection or a failed send, that sending the
+/// request again may get past.
 ///
-/// Unlike [`Unreachable`], which indicates an error that should backoff before retrying.
+/// Log replication and snapshot transmission retry such a failure at once, and back off only
+/// after more than ten fail in a row. Other RPCs, such as votes and heartbeats, are not retried
+/// this way. Return [`Unreachable`] instead for a node that a retry would not reach soon.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("NetworkError: {source}")]
@@ -403,16 +409,15 @@ impl<C: RaftTypeConfig> NetworkError<C> {
     }
 }
 
-/// Error indicating a node is unreachable. Retries should be delayed.
+/// Error indicating a node is unreachable, so retries should wait.
 ///
-/// This error suggests that immediate retries are not advisable when a node is not reachable.
-/// Upon encountering this error, Openraft will invoke [`backoff()`] to implement a delay before
-/// attempting to resend any information.
-///
-/// This error is similar to [`NetworkError`] but with a key distinction: `Unreachable` advises a
-/// backoff period, whereas with [`NetworkError`], Openraft may attempt an immediate retry.
+/// When log replication or snapshot transmission gets this error, it backs off before it sends to
+/// the node again, with the delays of the network's [`backoff()`], or of
+/// [`Config::backoff`] when the network provides none. A [`NetworkError`] instead is retried at
+/// once until several fail in a row.
 ///
 /// [`backoff()`]: crate::network::RaftNetworkV2::backoff
+/// [`Config::backoff`]: crate::Config::backoff
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]

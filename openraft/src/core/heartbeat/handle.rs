@@ -28,7 +28,10 @@ where C: RaftTypeConfig
     /// Channel to send heartbeat events to the worker.
     event_tx: WatchSenderOf<C, Option<HeartbeatEvent<C>>>,
 
-    #[allow(dead_code)]
+    /// The stream id that the worker stamps on its heartbeats.
+    ///
+    /// The leader ignores a reply for any other stream id, so a worker is reused only for the
+    /// target's current stream id.
     stream_id: StreamId,
 
     /// The node metadata that the worker's network client was created from.
@@ -94,8 +97,11 @@ where C: RaftTypeConfig
             let removed = self.workers.remove(&prog.target);
 
             // A changed node, such as a new address from `SetNodes`, needs a client created from
-            // it, so its old worker is dropped and cancelled as well.
-            let handle = removed.filter(|removed| !close_old && removed.node == prog.target_node);
+            // it, so its old worker is dropped and cancelled as well. The engine gives such a
+            // target a new stream id, which the old worker would stamp wrongly on its heartbeats.
+            let handle = removed.filter(|removed| {
+                !close_old && removed.node == prog.target_node && removed.stream_id == prog.progress.data.stream_id
+            });
 
             let handle = if let Some(handle) = handle {
                 handle

@@ -133,21 +133,26 @@ where
     /// Fail all pending linearizable reads after losing leadership.
     FailPendingReads,
 
-    /// Membership config changed, need to update replication streams.
-    /// The Runtime has to close all old replications and start new ones.
-    /// Because a replication stream should only report state for one membership config.
-    /// When membership config changes, the membership log id stored in ReplicationCore has to be
-    /// updated.
+    /// Bring the replication streams and heartbeat workers in line with `targets`, after the
+    /// leader's vote or its membership changed.
+    ///
+    /// The runtime keeps a heartbeat worker for each target, and a replication stream for each
+    /// target that receives logs; it closes those of every other target, such as one that left the
+    /// membership. The stream and the worker of a target that stays are reused, unless
+    /// `close_old_streams` is set or the target has a new stream id, which the engine gives it when
+    /// its node metadata changes: then they are closed and new ones start from the target's
+    /// progress.
     RebuildReplicationStreams {
         leader_vote: CommittedVoteOf<C>,
 
         /// Targets to replicate to.
         targets: Vec<TargetProgress<C>>,
 
-        /// Whether close old replication before spawn new ones.
+        /// Whether to replace the stream and the worker of every target instead of reusing them.
         ///
-        /// If vote changes, old should be closed;
-        /// If only membership changes, old should be kept.
+        /// The engine sets it when a leader is established, and drops the requests in flight of
+        /// every target: the streams of an earlier vote must not serve this one. A membership
+        /// change leaves it unset, so the streams of targets that stay keep running.
         close_old_streams: bool,
     },
 

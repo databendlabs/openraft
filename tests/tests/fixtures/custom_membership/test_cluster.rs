@@ -25,6 +25,7 @@ use openraft::storage::RaftLogStorageExt;
 use openraft::testing::log_id;
 
 use crate::fixtures::custom_membership::log_store::LogStore;
+use crate::fixtures::custom_membership::network::ClientRecord;
 use crate::fixtures::custom_membership::network::Network;
 use crate::fixtures::custom_membership::network::Router;
 use crate::fixtures::custom_membership::state_machine::StateMachine;
@@ -33,11 +34,11 @@ use crate::fixtures::network_delay::configured_network_send_delay;
 
 /// A type config that [`TestCluster`] can run.
 pub trait TestConfig
-where Self: RaftTypeConfig<NodeId = u64, Node = (), Term = u64, R = ()>
+where Self: RaftTypeConfig<NodeId = u64, Term = u64, R = ()>
 {
 }
 
-impl<C> TestConfig for C where C: RaftTypeConfig<NodeId = u64, Node = (), Term = u64, R = ()> {}
+impl<C> TestConfig for C where C: RaftTypeConfig<NodeId = u64, Term = u64, R = ()> {}
 
 pub type TestRaft<C> = Raft<C, StateMachine<C>>;
 
@@ -86,6 +87,8 @@ where
             nodes: BTreeMap::new(),
             cut_links: BTreeSet::new(),
             send_delay,
+            clients: Vec::new(),
+            closed_endpoints: Vec::new(),
         }));
         let mut state_machines = BTreeMap::new();
 
@@ -132,14 +135,30 @@ where
         source: u64,
         target: u64,
         request: VoteRequest<C>,
-    ) -> Result<VoteResponse<C>, RPCError<C>> {
+    ) -> Result<VoteResponse<C>, RPCError<C>>
+    where
+        C::Node: Default,
+    {
         let mut network = Network {
             source,
             router: self.router.clone(),
         };
-        let mut connection = network.new_client(target, &()).await;
+        let mut connection = network.new_client(target, &C::Node::default()).await;
         let option = RPCOption::new(Duration::from_secs(1));
         connection.vote(request, option).await
+    }
+
+    /// Every network client that a node created so far, in creation order.
+    pub fn clients(&self) -> Vec<ClientRecord<C>> {
+        let router = self.router.lock().unwrap();
+        router.clients.clone()
+    }
+
+    /// Fails every RPC through a client created for `target` at `node`, as an address that no
+    /// longer accepts connections. Clients created for `target` at another node still deliver.
+    pub fn close_endpoint(&self, target: u64, node: C::Node) {
+        let mut router = self.router.lock().unwrap();
+        router.closed_endpoints.push((target, node));
     }
 
     /// Fails every RPC between the two nodes of each link in `links`, and delivers all others.

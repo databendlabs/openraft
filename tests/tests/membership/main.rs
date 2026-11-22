@@ -20,6 +20,7 @@ mod t30_elect_with_new_config;
 mod t31_add_remove_follower;
 mod t31_remove_leader;
 mod t31_removed_follower;
+mod t32_set_nodes_replaces_changed_client;
 mod t40_threshold_membership;
 mod t41_custom_membership_edit;
 mod t42_unproven_read_write_intersection;
