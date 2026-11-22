@@ -58,6 +58,7 @@ pub use adapter::Adapter;
 pub use errors::InstallSnapshotError;
 pub use errors::SnapshotMismatch;
 pub use errors::SnapshotSegmentId;
+pub use message::AppendEntriesResponse;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::SnapshotMeta;

@@ -1,234 +1,39 @@
-use std::fmt;
+use std::marker::PhantomData;
 
-use display_more::DisplayOptionExt;
 use openraft_macros::since;
 
 use crate::RaftTypeConfig;
-use crate::raft::AppendError;
-use crate::raft::AppendResult;
-use crate::raft::StreamAppendError;
-use crate::raft::stream_append::StreamAppendResult;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::VoteOf;
 
-/// The response to an `AppendEntriesRequest`, in a serializable format without the conflict hint.
+/// **REMOVED**: Use `openraft_legacy::network_v1::AppendEntriesResponse` instead.
 ///
-/// The legacy v1 `RaftNetwork` in `openraft-legacy` returns this type, and its `Adapter` converts
-/// it with [`Self::into_append_result()`]. [`Raft::append_entries()`] and
-/// [`RaftNetworkV2::append_entries()`] use [`AppendResult`] instead, which a transport sends in its
-/// own wire format, such as [`StreamAppendResult`].
+/// The v1 `AppendEntriesResponse` has been moved to the `openraft-legacy` crate, next to the v1
+/// `RaftNetwork` that returns it. This empty stub only names the new path in its deprecation
+/// warning: it has no variants or conversions, so any other use fails to compile.
 ///
-/// A transport that keeps sending this format converts with `AppendEntriesResponse::from(result)`
-/// on the follower, and with [`Self::into_append_result()`] on the leader.
+/// # Migration
 ///
-/// [`Raft::append_entries()`]: crate::raft::Raft::append_entries
-/// [`RaftNetworkV2::append_entries()`]: crate::network::RaftNetworkV2::append_entries
-#[derive(Debug, Clone)]
-#[derive(PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesResponse<C: RaftTypeConfig> {
-    /// Successfully replicated all log entries to the target node.
-    Success,
-
-    /// Successfully sent the first portion of log entries.
-    ///
-    /// A transport can report a partial success.
-    /// For example, it tries to send log entries `[1-2..3-10]`, the application is allowed to send
-    /// just `[1-2..1-3]` and return `PartialSuccess(1-3)`
-    ///
-    /// ### Caution
-    ///
-    /// The returned matching log id must be **greater than or equal to** the first log
-    /// id([`AppendEntriesRequest::prev_log_id`]) of the entries to send. If no RPC reply is
-    /// received, the transport must return an [`RPCError`] to inform
-    /// Openraft that the first log id([`AppendEntriesRequest::prev_log_id`]) may not match on
-    /// the remote target node.
-    ///
-    /// [`RPCError`]: crate::errors::RPCError
-    /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
-    PartialSuccess(Option<LogIdOf<C>>),
-
-    /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
-    /// match on the remote target node.
-    ///
-    /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
-    Conflict,
-
-    /// Seen a vote `v` that does not hold `mine_vote >= v`.
-    /// And a leader's vote(committed vote) must be total order with other votes.
-    /// Therefore, it has to be a higher vote: `mine_vote < v`
-    HigherVote(VoteOf<C>),
-}
-
-impl<C> AppendEntriesResponse<C>
+/// Add to `Cargo.toml`:
+/// ```toml
+/// [dependencies]
+/// openraft-legacy = "0.10.2"
+/// ```
+///
+/// Update imports:
+/// ```ignore
+/// use openraft_legacy::network_v1::AppendEntriesResponse;
+/// ```
+#[since(
+    version = "0.10.2",
+    change = "an empty deprecated stub: the type moved to `openraft_legacy::network_v1`"
+)]
+#[deprecated(
+    since = "0.10.2",
+    note = "AppendEntriesResponse has been moved to the `openraft-legacy` crate. \
+            Add `openraft-legacy` to your dependencies and use \
+            `openraft_legacy::network_v1::AppendEntriesResponse` instead."
+)]
+pub struct AppendEntriesResponse<C>
 where C: RaftTypeConfig
 {
-    /// Returns true if the response indicates a successful replication.
-    pub fn is_success(&self) -> bool {
-        matches!(*self, AppendEntriesResponse::Success)
-    }
-
-    /// Returns true if the response indicates a log conflict.
-    pub fn is_conflict(&self) -> bool {
-        matches!(*self, AppendEntriesResponse::Conflict)
-    }
-
-    /// Convert this response to the [`AppendResult`] the leader handles.
-    ///
-    /// `prev_log_id` and `last_log_id` must describe the request the follower received: a
-    /// transport that sent only a prefix of the entries passes the last log id of that prefix.
-    /// This format carries no conflict hint; a new wire format should carry the [`AppendResult`]
-    /// itself, as the `network-v2-http` example's `AppendReply` does.
-    ///
-    /// [`AppendEntriesRequest::last_log_id()`] gives both log ids for a request sent whole,
-    /// including a heartbeat without entries:
-    ///
-    /// ```
-    /// use openraft::Vote;
-    /// use openraft::entry::RaftEntry;
-    /// use openraft::impls::leader_id_adv::LeaderId;
-    /// use openraft::raft::AppendEntriesRequest;
-    /// use openraft::raft::AppendEntriesResponse;
-    /// use openraft::type_config::alias::EntryOf;
-    /// use openraft::type_config::alias::LogIdOf;
-    /// use openraft::vote::RaftLeaderId;
-    ///
-    /// openraft::declare_raft_types!(TypeConfig);
-    ///
-    /// fn log_id(index: u64) -> LogIdOf<TypeConfig> {
-    ///     LogIdOf::<TypeConfig>::new(LeaderId::new(1, 1), index)
-    /// }
-    ///
-    /// fn request(prev: Option<u64>) -> AppendEntriesRequest<TypeConfig> {
-    ///     AppendEntriesRequest {
-    ///         vote: Vote::new_committed(1, 1),
-    ///         prev_log_id: prev.map(log_id),
-    ///         entries: vec![],
-    ///         leader_commit: None,
-    ///     }
-    /// }
-    ///
-    /// fn accepted(sent: &AppendEntriesRequest<TypeConfig>) -> Option<LogIdOf<TypeConfig>> {
-    ///     let response = AppendEntriesResponse::<TypeConfig>::Success;
-    ///     response.into_append_result(sent.prev_log_id.clone(), sent.last_log_id()).unwrap()
-    /// }
-    ///
-    /// // A heartbeat at the start of the log acknowledges nothing.
-    /// assert_eq!(None, accepted(&request(None)));
-    ///
-    /// // A heartbeat after log 5 acknowledges log 5.
-    /// assert_eq!(Some(log_id(5)), accepted(&request(Some(5))));
-    ///
-    /// // Of the entries 6..=8, the transport sent 6..=7: the follower accepted up to 7.
-    /// let mut sent = request(Some(5));
-    /// sent.entries = (6..=7).map(|i| EntryOf::<TypeConfig>::new_blank(log_id(i))).collect();
-    /// assert_eq!(Some(log_id(7)), accepted(&sent));
-    /// ```
-    ///
-    /// [`AppendEntriesRequest::last_log_id()`]: crate::raft::AppendEntriesRequest::last_log_id
-    #[since(version = "0.10.0")]
-    pub fn into_append_result(
-        self,
-        prev_log_id: Option<LogIdOf<C>>,
-        last_log_id: Option<LogIdOf<C>>,
-    ) -> AppendResult<C> {
-        let result = self.into_stream_result(prev_log_id, last_log_id);
-        result.map_err(AppendError::from)
-    }
-
-    /// Convert this response to a stream append result.
-    ///
-    /// Arguments:
-    /// - `prev_log_id`: The prev_log_id from the request, used for Conflict errors.
-    /// - `last_log_id`: The last_log_id of the sent entries, used for Success.
-    pub fn into_stream_result(
-        self,
-        prev_log_id: Option<LogIdOf<C>>,
-        last_log_id: Option<LogIdOf<C>>,
-    ) -> StreamAppendResult<C> {
-        match self {
-            AppendEntriesResponse::Success => Ok(last_log_id),
-            AppendEntriesResponse::PartialSuccess(log_id) => Ok(log_id),
-            AppendEntriesResponse::Conflict => Err(StreamAppendError::Conflict(prev_log_id.unwrap())),
-            AppendEntriesResponse::HigherVote(vote) => Err(StreamAppendError::HigherVote(vote)),
-        }
-    }
-}
-
-impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
-    fn from(r: StreamAppendResult<C>) -> Self {
-        match r {
-            Ok(_) => AppendEntriesResponse::Success,
-            Err(StreamAppendError::Conflict(_)) => AppendEntriesResponse::Conflict,
-            Err(StreamAppendError::HigherVote(v)) => AppendEntriesResponse::HigherVote(v),
-        }
-    }
-}
-
-impl<C> From<AppendResult<C>> for AppendEntriesResponse<C>
-where C: RaftTypeConfig
-{
-    /// Convert a follower's reply to this format, which drops the acknowledged log ID and the
-    /// conflict hint.
-    fn from(result: AppendResult<C>) -> Self {
-        match result {
-            Ok(_) => AppendEntriesResponse::Success,
-            Err(AppendError::Conflict { .. }) => AppendEntriesResponse::Conflict,
-            Err(AppendError::HigherVote(vote)) => AppendEntriesResponse::HigherVote(vote),
-        }
-    }
-}
-
-impl<C> fmt::Display for AppendEntriesResponse<C>
-where C: RaftTypeConfig
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AppendEntriesResponse::Success => write!(f, "Success"),
-            AppendEntriesResponse::PartialSuccess(m) => {
-                write!(f, "PartialSuccess({})", m.display())
-            }
-            AppendEntriesResponse::HigherVote(vote) => write!(f, "Higher vote, {}", vote),
-            AppendEntriesResponse::Conflict => write!(f, "Conflict"),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::Vote;
-    use crate::engine::testing::UTConfig;
-    use crate::engine::testing::log_id;
-    use crate::raft::AppendEntriesResponse;
-    use crate::raft::AppendError;
-    use crate::raft::AppendResult;
-
-    #[test]
-    fn into_append_result_takes_log_ids_from_the_sent_request() {
-        let prev = Some(log_id(1, 1, 3));
-        let last = Some(log_id(1, 1, 5));
-        let partial = Some(log_id(1, 1, 4));
-        let higher = Vote::new(2, 1);
-
-        let cases: Vec<(AppendEntriesResponse<UTConfig>, AppendResult<UTConfig>)> = vec![
-            (AppendEntriesResponse::Success, Ok(last)),
-            (AppendEntriesResponse::PartialSuccess(partial), Ok(partial)),
-            (
-                AppendEntriesResponse::Conflict,
-                Err(AppendError::Conflict {
-                    log_id: log_id(1, 1, 3),
-                    hint: None,
-                }),
-            ),
-            (
-                AppendEntriesResponse::HigherVote(higher),
-                Err(AppendError::HigherVote(higher)),
-            ),
-        ];
-
-        for (response, expected) in cases {
-            let actual = response.into_append_result(prev, last);
-            assert_eq!(expected, actual);
-        }
-    }
+    _p: PhantomData<C>,
 }

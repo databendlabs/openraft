@@ -41,6 +41,7 @@ mod testing;
 /// ```
 pub mod prelude {
     pub use crate::network_v1::Adapter;
+    pub use crate::network_v1::AppendEntriesResponse;
     pub use crate::network_v1::ChunkedSnapshotReceiver;
     pub use crate::network_v1::InstallSnapshotError;
     pub use crate::network_v1::InstallSnapshotRequest;
