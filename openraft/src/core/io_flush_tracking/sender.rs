@@ -51,10 +51,13 @@ where C: RaftTypeConfig
     /// # Arguments
     ///
     /// * `io_id` - The I/O operation that just completed. `None` means no progress to report.
-    pub(crate) fn send_log_progress(&self, io_id: Option<IOId<C>>) -> Option<()> {
+    pub(crate) fn send_log_progress(&self, io_id: Option<IOId<C>>) {
         tracing::debug!("send_log_progress: try to update to :{}", io_id.display());
 
-        let (vote, log_id) = io_id?.to_vote_and_log_id();
+        let Some(io_id) = io_id else {
+            return;
+        };
+        let (vote, log_id) = io_id.to_vote_and_log_id();
 
         {
             let vote = vote.clone();
@@ -80,58 +83,50 @@ where C: RaftTypeConfig
                 false
             }
         });
-
-        Some(())
     }
 
     /// Publish the latest commit log id progress.
-    pub(crate) fn send_commit_progress(&self, log_id: Option<LogIdOf<C>>) -> Option<()> {
+    pub(crate) fn send_commit_progress(&self, log_id: Option<LogIdOf<C>>) {
         tracing::debug!("send_commit_progress: try to update to :{}", log_id.display());
 
         self.commit_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_commit_progress: update commit to :{}", log_id.display());
-                *prev = log_id.clone();
+                *prev = log_id;
                 true
             } else {
                 false
             }
         });
-
-        Some(())
     }
 
     /// Publish the latest snapshot log id progress.
-    pub(crate) fn send_snapshot_progress(&self, log_id: Option<LogIdOf<C>>) -> Option<()> {
+    pub(crate) fn send_snapshot_progress(&self, log_id: Option<LogIdOf<C>>) {
         tracing::debug!("send_snapshot_progress: try to update to :{}", log_id.display());
 
         self.snapshot_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_snapshot_progress: update snapshot to :{}", log_id.display());
-                *prev = log_id.clone();
+                *prev = log_id;
                 true
             } else {
                 false
             }
         });
-
-        Some(())
     }
 
     /// Publish the latest applied log id progress.
-    pub(crate) fn send_apply_progress(&self, log_id: Option<LogIdOf<C>>) -> Option<()> {
+    pub(crate) fn send_apply_progress(&self, log_id: Option<LogIdOf<C>>) {
         tracing::debug!("send_apply_progress: try to update to :{}", log_id.display());
 
         self.apply_tx.send_if_modified(move |prev| {
             if prev.as_ref() != log_id.as_ref() {
                 tracing::debug!("send_apply_progress: update applied to :{}", log_id.display());
-                *prev = log_id.clone();
+                *prev = log_id;
                 true
             } else {
                 false
             }
         });
-
-        Some(())
     }
 }
