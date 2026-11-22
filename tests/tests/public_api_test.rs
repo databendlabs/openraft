@@ -211,7 +211,8 @@ use openraft::network::v2::RaftNetworkV2;
 // raft module exports
 // =============================================================================
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+#[allow(deprecated)]
+use openraft::raft::AppendEntriesResponse as DeprecatedAppendEntriesResponse;
 use openraft::raft::AppendError;
 use openraft::raft::AppendResult;
 use openraft::raft::ClientWriteResponse;
@@ -292,6 +293,7 @@ use openraft::vote::Vote as VoteModule;
 // =============================================================================
 // openraft-legacy crate exports
 // =============================================================================
+use openraft_legacy::network_v1::AppendEntriesResponse;
 use openraft_legacy::network_v1::InstallSnapshotError;
 use openraft_legacy::network_v1::InstallSnapshotRequest;
 use openraft_legacy::network_v1::InstallSnapshotResponse;

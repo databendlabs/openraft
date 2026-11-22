@@ -15,7 +15,6 @@ use openraft::errors::Unreachable;
 use openraft::network::Backoff;
 use openraft::network::RPCOption;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
@@ -24,6 +23,7 @@ use openraft_macros::add_async_trait;
 use openraft_macros::since;
 
 use crate::network_v1::Adapter;
+use crate::network_v1::AppendEntriesResponse;
 use crate::network_v1::InstallSnapshotError;
 use crate::network_v1::InstallSnapshotRequest;
 use crate::network_v1::InstallSnapshotResponse;

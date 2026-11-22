@@ -41,6 +41,7 @@ use linearizable_read::Linearizer;
 use linearizable_read::LinearizerOption;
 use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
+#[allow(deprecated)]
 pub use message::AppendEntriesResponse;
 pub use message::AppendError;
 pub use message::AppendResult;

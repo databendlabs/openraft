@@ -25,6 +25,7 @@ mod write_request;
 mod write_request_args;
 
 pub use append_entries_request::AppendEntriesRequest;
+#[allow(deprecated)]
 pub use append_entries_response::AppendEntriesResponse;
 pub use append_error::AppendError;
 pub use append_error::AppendResult;
