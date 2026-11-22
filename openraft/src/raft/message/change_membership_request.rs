@@ -39,12 +39,13 @@ where C: RaftTypeConfig
 
     /// Use separate application-defined payloads for the membership-change steps.
     ///
-    /// Each payload is tied to the shape of the membership it carries, not to the order of the
-    /// steps. `joint_payload` is used only for a joint membership entry, which the change writes
-    /// only when openraft cannot prove that every old quorum intersects every new quorum.
-    /// `uniform_payload` is used for the uniform membership entry, which every completed change
-    /// writes. A change that needs no joint entry therefore drops `joint_payload` and writes its
-    /// single entry with `uniform_payload`.
+    /// Each payload is tied to an entry of the change, not to the shape of its membership.
+    /// `joint_payload` is used only for an intermediate joint entry, which the change writes only
+    /// when openraft cannot prove that every quorum of the current membership intersects every
+    /// quorum of the target. `uniform_payload` is used for the entry that holds the target, which
+    /// every completed change writes, even when a custom edit returns a joint target. A change
+    /// that needs no intermediate entry therefore drops `joint_payload` and writes its single entry
+    /// with `uniform_payload`.
     #[since(version = "0.10.0", change = "select each payload by the shape of its membership")]
     #[since(version = "0.10.0", change = "accept separate payloads for membership change steps")]
     #[since(version = "0.10.0", change = "added optional membership change payload")]

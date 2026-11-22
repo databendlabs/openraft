@@ -131,10 +131,13 @@ where
     /// Reorganize commands for better I/O performance.
     ///
     /// Currently performs:
-    /// - Merging consecutive `AppendEntries` commands from the same leader into one
+    /// - Merging consecutive `AppendEntries` commands at the front of the queue, with the same
+    ///   committed vote, into one
     ///
-    /// The batch size is limited by `config.max_in_batch_entries` to avoid high latency
-    /// from writing very large batches to storage. A value of 0 means unlimited batching.
+    /// [`Config::max_append_entries()`] limits the merge, to avoid high latency from writing very
+    /// large batches to storage: a command is merged only if the combined entry count stays at or
+    /// below it. So 0 merges no two commands that hold entries. The first command is kept whole,
+    /// even when it already holds more entries than the limit.
     pub(crate) fn sched_commands(&mut self, config: &Config) {
         let mut scheduler = CommandScheduler::new(config, self);
         scheduler.merge_front_append_entries();

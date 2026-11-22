@@ -21,9 +21,12 @@ where C: RaftTypeConfig
     /// - `None`: State machine deferred snapshot creation via `try_create_snapshot_builder()`.
     BuildSnapshotDone(Option<SnapshotMetaOf<C>>),
 
-    /// When finishing installing a snapshot.
+    /// A full snapshot is installed.
     ///
-    /// It does not return any value to RaftCore.
+    /// It carries the log I/O id that the installation completes, and the installed snapshot's
+    /// metadata. RaftCore flushes log progress up to that id, and apply and snapshot progress up to
+    /// the snapshot's last log id, which releases the reply to the installation request and lets
+    /// the logs the snapshot covers be purged.
     InstallSnapshot((LogIOId<C>, Option<SnapshotMetaOf<C>>)),
 
     /// Send back applied result to RaftCore.

@@ -25,18 +25,23 @@ use crate::type_config::alias::VoteOf;
 pub(crate) enum ExternalCommand<C>
 where C: RaftTypeConfig
 {
-    /// Initiate an election immediately.
+    /// Initiate an election, unless this node is a Leader or cannot campaign.
+    ///
+    /// A Leader ignores it, and so does a node that is not a campaigner in its effective or
+    /// committed membership config.
     ///
     /// With `pre_vote = false`, a real election starts at once: the term is incremented and the
     /// node votes for itself, bypassing both `enable_elect` and Pre-Vote. The term climbs even
     /// when the node cannot win, which can step down a healthy leader of a lower term once it
     /// observes the higher term.
     ///
-    /// With `pre_vote = true`, a Pre-Vote round runs first: it probes whether a quorum *would*
-    /// grant a vote at `term + 1` without changing any state, and runs the real election only
-    /// if a quorum would. A node that cannot currently win — e.g. while a healthy leader still
-    /// holds its lease — leaves the term untouched, so an incautious trigger does not disrupt a
-    /// live leader.
+    /// With `pre_vote = true`, a Pre-Vote round first asks whether a quorum *would* grant a vote
+    /// at `term + 1`, and the real election starts only once a quorum grants it. The round neither
+    /// increments the term nor saves a vote, so a node that cannot win leaves its term untouched,
+    /// and an incautious trigger does not disrupt a live leader. The round is skipped while this
+    /// node still sees an unexpired leader lease. A rejection that carries a higher vote updates
+    /// this node's vote to it, as any higher vote does, and one with a longer log delays the next
+    /// election.
     Elect { pre_vote: bool },
 
     /// Send a heartbeat message, only if the node is leader, or it will be ignored.
@@ -45,11 +50,16 @@ where C: RaftTypeConfig
     /// Initiate to build a snapshot on this node.
     Snapshot,
 
-    /// Purge logs covered by a snapshot up to a specified index.
+    /// Purge logs covered by a snapshot up to and including the log at index `upto`.
     ///
-    /// Openraft respects the [`max_in_snapshot_log_to_keep`] config when purging.
+    /// Unlike the purge that follows a snapshot, this ignores the [`max_in_snapshot_log_to_keep`]
+    /// config. It purges no log after the last log in the current snapshot, and does nothing
+    /// without a snapshot or when an earlier purge already covers `upto`. On a leader, a log that a
+    /// replication task still reads is purged only once the task is done with it, see
+    /// [`Trigger::purge_log`].
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
+    /// [`Trigger::purge_log`]: crate::raft::trigger::Trigger::purge_log
     PurgeLog { upto: u64 },
 
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
@@ -92,8 +102,18 @@ where C: RaftTypeConfig
         membership_log_id: Option<LogIdOf<C>>,
     },
 
-    /// Run the timer check that an internal tick runs: the election timeout and, on a leader,
-    /// the heartbeat deadline.
+    /// Check the deadlines that a manual tick checks: on a leader, send a heartbeat if one is due,
+    /// then start an election if one is due.
+    ///
+    /// The heartbeat check is the one that the internal [`Notification::Tick`] runs. Internal
+    /// elections do not need a tick: they start on their own deadline notification,
+    /// [`Notification::ElectionDeadlineReached`]. The election check is kept here for backward
+    /// compatibility, because [`Trigger::tick`] has always started a due election within the same
+    /// call.
+    ///
+    /// [`Notification::Tick`]: crate::core::notification::Notification::Tick
+    /// [`Notification::ElectionDeadlineReached`]: crate::core::notification::Notification::ElectionDeadlineReached
+    /// [`Trigger::tick`]: crate::raft::trigger::Trigger::tick
     Tick,
 }
 

@@ -278,29 +278,36 @@ where C: RaftTypeConfig
         self.notification_counts[name.index()] += 1;
     }
 
-    /// Record that the log entry at `index` reached `stage` now.
+    /// Record that the logs before index `right` reached `stage` now.
+    ///
+    /// `right` is the exclusive end of the batch that newly reached `stage`: pass the index of its
+    /// last log plus one. Entry 0 alone is recorded with `right = 1`, and a batch ending at index 7
+    /// with `right = 8`.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
-    pub fn record_log_stage_now(&mut self, stage: Stage, index: u64) {
+    pub fn record_log_stage_now(&mut self, stage: Stage, right: u64) {
         #[cfg(feature = "runtime-stats")]
-        self.record_log_stage(stage, index, C::now());
+        self.record_log_stage(stage, right, C::now());
 
         #[cfg(not(feature = "runtime-stats"))]
         {
-            let _ = (stage, index);
+            let _ = (stage, right);
         }
     }
 
-    /// Record that the log entry at `index` reached `stage` at `now`.
+    /// Record that the logs before index `right` reached `stage` at `now`.
+    ///
+    /// `right` is the exclusive end of the batch, as for [`Self::record_log_stage_now`]: the index
+    /// of the batch's last log plus one.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
-    pub fn record_log_stage(&mut self, stage: Stage, index: u64, now: InstantOf<C>) {
+    pub fn record_log_stage(&mut self, stage: Stage, right: u64, now: InstantOf<C>) {
         #[cfg(feature = "runtime-stats")]
-        self.log_stage.record_stage(stage, index, now);
+        self.log_stage.record_stage(stage, right, now);
 
         #[cfg(not(feature = "runtime-stats"))]
         {
-            let _ = (stage, index, now);
+            let _ = (stage, right, now);
         }
     }
 

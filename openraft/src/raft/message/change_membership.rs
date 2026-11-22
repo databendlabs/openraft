@@ -19,10 +19,11 @@ use crate::raft::ClientWriteResponse;
 pub struct ChangeMembershipOutcome<C>
 where C: RaftTypeConfig
 {
-    /// The response from the joint membership entry, if the change needed one.
+    /// The response from the intermediate joint entry, if the change needed one.
     pub joint: Option<ClientWriteResponse<C>>,
 
-    /// The response from the uniform membership entry, which every completed change writes.
+    /// The response from the entry that holds the target membership, which every completed change
+    /// writes. A custom edit may return a joint target.
     pub uniform: ClientWriteResponse<C>,
 }
 

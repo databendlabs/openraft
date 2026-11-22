@@ -119,14 +119,14 @@ where
     /// They guard the first proposal. OpenRaft updates the membership-log precondition for a
     /// possible uniform proposal and carries over only the committed-leader precondition.
     ///
-    /// A voter change may append a joint entry followed by a uniform entry. `with_payload()`
-    /// binds each payload to the shape of the membership it carries: the joint payload to the
-    /// joint entry, the uniform payload to the uniform entry. A change needs no joint entry when
-    /// openraft can prove that every quorum of the current config intersects every quorum of the
-    /// proposed one, such as when it moves no voter, or adds or removes one voter. Such a change
-    /// drops the joint payload and writes its single entry with the uniform payload. If
-    /// `with_membership()` preserves application data, the state machine applies each payload at
-    /// its corresponding log ID.
+    /// A voter change may append an intermediate joint entry followed by the target.
+    /// `with_payload()` binds the joint payload to the intermediate entry, and the uniform payload
+    /// to the entry that holds the target, whatever its shape: a custom edit may return a joint
+    /// target. A change needs no intermediate entry when openraft can prove that every quorum of
+    /// the current config intersects every quorum of the target, such as when it moves no voter,
+    /// or adds or removes one voter. Such a change drops the joint payload and writes its single
+    /// entry with the uniform payload. If `with_membership()` preserves application data, the state
+    /// machine applies each payload at its corresponding log ID.
     ///
     /// Both supplied payloads are serialized, stored, and replicated when the change requires two
     /// physical entries.
@@ -134,8 +134,8 @@ where
     /// If the uniform proposal fails, the joint entry is already committed. A retry must build a
     /// new request with the original payloads and preconditions based on the current joint state.
     ///
-    /// The returned [`ChangeMembershipOutcome`] always contains the uniform response, and the
-    /// joint response when the change entered joint consensus.
+    /// The returned [`ChangeMembershipOutcome`] always contains the response of the target entry
+    /// in `uniform`, and of the intermediate entry in `joint` when the change wrote one.
     #[since(version = "0.10.0", change = "the second step appends the target of the edit")]
     #[since(
         version = "0.10.0",

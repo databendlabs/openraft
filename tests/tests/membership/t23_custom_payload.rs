@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fmt;
 use std::future::Future;
 use std::io;
@@ -25,6 +26,7 @@ use openraft::RaftNetworkFactory;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftTypeConfig;
 use openraft::Snapshot;
+use openraft::SnapshotPolicy;
 use openraft::StoredMembership;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
@@ -35,11 +37,14 @@ use openraft::alias::StoredMembershipOf;
 use openraft::alias::VoteOf;
 use openraft::async_runtime::WatchReceiver;
 use openraft::entry::RaftPayload;
+use openraft::errors::MembershipError;
 use openraft::errors::RPCError;
 use openraft::errors::ReplicationClosed;
 use openraft::errors::StreamingError;
 use openraft::errors::Unreachable;
 use openraft::impls::ChangeMembers;
+use openraft::membership::RaftMembershipEdit;
+use openraft::membership::RaftMembershipEditOps;
 use openraft::network::RPCOption;
 use openraft::network::v2::RaftNetworkV2;
 use openraft::raft::AppendEntriesRequest;
@@ -55,6 +60,8 @@ use openraft::storage::RaftStateMachine;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::fixtures::custom_membership::TestCluster;
+use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::timeout;
 use crate::fixtures::ut_harness;
 
@@ -666,5 +673,136 @@ async fn custom_payload_survives_membership_change_and_recovery() -> anyhow::Res
     node1.shutdown().await?;
     node2.shutdown().await?;
     node3.shutdown().await?;
+    Ok(())
+}
+
+/// A payload that carries only a tag, so a test can tell which base payload an entry started from.
+///
+/// It is separate from [`CustomPayload`], whose `blank()` counts calls for the other test.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+struct TaggedPayload {
+    tag: u64,
+    membership: Option<Membership<u64, ()>>,
+}
+
+impl TaggedPayload {
+    fn tag(tag: u64) -> Self {
+        Self { tag, membership: None }
+    }
+}
+
+impl fmt::Display for TaggedPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "tag={}, membership={:?}", self.tag, self.membership)
+    }
+}
+
+impl RaftPayload for TaggedPayload {
+    type D = String;
+    type Membership = Membership<u64, ()>;
+
+    fn blank() -> Self {
+        Self::default()
+    }
+
+    fn with_normal(self, _data: String) -> Self {
+        self
+    }
+
+    fn with_membership(mut self, membership: Membership<u64, ()>) -> Self {
+        self.membership = Some(membership);
+        self
+    }
+
+    fn get_membership(&self) -> Option<Membership<u64, ()>> {
+        self.membership.clone()
+    }
+}
+
+/// An edit that proposes exactly the membership it holds.
+#[derive(Debug)]
+struct ExactEdit(Membership<u64, ()>);
+
+impl fmt::Display for ExactEdit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "exactly {}", self.0)
+    }
+}
+
+impl RaftMembershipEdit<Membership<u64, ()>> for ExactEdit {
+    type Error = Infallible;
+
+    fn apply(
+        self,
+        _current: &Membership<u64, ()>,
+        _retain: bool,
+    ) -> Result<Membership<u64, ()>, MembershipError<u64, Infallible>> {
+        Ok(self.0)
+    }
+}
+
+impl RaftMembershipEditOps<Membership<u64, ()>> for ExactEdit {
+    fn add_learner(_id: u64, _node: ()) -> Self {
+        unimplemented!("the test adds no learner through add_learner()")
+    }
+}
+
+openraft::declare_raft_types!(
+    ExactEditConfig:
+        D = String,
+        R = (),
+        Node = (),
+        Payload = TaggedPayload,
+        MembershipEdit = ExactEdit,
+        AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
+);
+
+/// A custom edit may return a joint target that the current joint membership reaches directly.
+/// The change then writes one entry, the target, with the uniform payload, and reports no joint
+/// response.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn direct_joint_target_takes_the_uniform_payload() -> anyhow::Result<()> {
+    let initial = Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], []);
+    let target = Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], btreeset! {6});
+    let config = cluster_config(SnapshotPolicy::Never);
+    let cluster = TestCluster::<ExactEditConfig>::start(config, 1..=6, initial.clone()).await?;
+
+    tracing::info!("--- node 3, a voter of both configs, leads and applies its blank entry");
+    {
+        cluster.raft(3).trigger().elect(false).await?;
+        cluster.raft(3).wait(timeout()).applied_index(Some(1), "leader applies its blank entry").await?;
+    }
+
+    tracing::info!("--- an exact edit adds learner 6 and keeps both voter configs");
+    {
+        let request = ChangeMembershipRequest::new(ExactEdit(target.clone()), true)
+            .with_payload(TaggedPayload::tag(1), TaggedPayload::tag(2));
+        let outcome = cluster.raft(3).change_membership_with_payload(request).await?;
+
+        assert!(outcome.joint.is_none(), "the target is reached directly");
+        assert_eq!(2, outcome.uniform.log_id.index);
+        assert_eq!(Some(target.clone()), outcome.uniform.membership);
+
+        cluster.raft(3).wait(timeout()).applied_index(Some(2), "leader applies the target").await?;
+        let applied = cluster.applied(3);
+        let payloads = applied.into_iter().map(|entry| (entry.log_id.index, entry.payload)).collect::<Vec<_>>();
+        let want = vec![
+            (0, TaggedPayload {
+                tag: 0,
+                membership: Some(initial),
+            }),
+            (1, TaggedPayload::default()),
+            (2, TaggedPayload {
+                tag: 2,
+                membership: Some(target),
+            }),
+        ];
+        assert_eq!(
+            want, payloads,
+            "one entry, with the uniform payload bound to the whole target"
+        );
+    }
+
     Ok(())
 }

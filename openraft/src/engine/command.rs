@@ -173,7 +173,13 @@ where
     /// A command sent to state machine worker [`sm::worker::Worker`].
     ///
     /// The runtime(`RaftCore`) will just forward this command to [`sm::worker::Worker`].
-    /// The response will be sent back in a `RaftMsg::StateMachine` message to `RaftCore`.
+    ///
+    /// The worker reports a completion to `RaftCore` with a [`Notification::StateMachine`]: when it
+    /// has applied entries, installed a snapshot, or finished or deferred a snapshot build.
+    /// `GetSnapshot` answers its caller directly instead, and what an `ExternalFunc` reports is up
+    /// to its callback.
+    ///
+    /// [`Notification::StateMachine`]: crate::core::notification::Notification::StateMachine
     StateMachine { command: sm::Command<C, SM> },
 
     /// Send result to caller
