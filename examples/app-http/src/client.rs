@@ -8,7 +8,9 @@ use openraft::NodeInfo;
 use openraft::RaftMetrics;
 use openraft::RaftTypeConfig;
 use openraft::TryAsRef;
+use openraft::alias::LogIdOf;
 use openraft::errors::ClientWriteError;
+use openraft::errors::Fatal;
 use openraft::errors::ForwardToLeader;
 use openraft::errors::Infallible;
 use openraft::errors::InitializeError;
@@ -16,6 +18,7 @@ use openraft::errors::LinearizableReadError;
 use openraft::errors::NetworkError;
 use openraft::errors::RPCError;
 use openraft::errors::Unreachable;
+use openraft::macros::since;
 use openraft::raft::ClientWriteResponse;
 use reqwest::Client as HttpClient;
 use serde::Serialize;
@@ -23,21 +26,61 @@ use serde::de::DeserializeOwned;
 use tokio::time::Instant;
 
 use crate::LinearizerData;
+use crate::Readiness;
 
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Why a node did not serve a follower read.
+#[since(version = "0.10.2", change = "name the reason a follower read failed")]
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
-pub struct FollowerReadError {
-    pub message: String,
+#[serde(bound = "")]
+pub enum FollowerReadError<C>
+where C: RaftTypeConfig
+{
+    /// This node knows of no leader, or not the address of the leader it knows of.
+    NoLeader,
+
+    /// No answer arrived from `leader_id`, the last leader asked to authorize the read: the request
+    /// failed, or the read's deadline expired first.
+    NoAnswer { leader_id: C::NodeId, reason: String },
+
+    /// The leader did not authorize the read, for example because it could not confirm its
+    /// leadership with a quorum, or because the redirects to a newer leader ran out.
+    Refused(LinearizableReadError<C>),
+
+    /// The read's deadline expired before this node applied `read_log_id`, the log ID the leader
+    /// authorized the read at. `applied` is the last log ID this node had applied.
+    NotApplied {
+        read_log_id: LogIdOf<C>,
+        applied: Option<LogIdOf<C>>,
+    },
+
+    /// Raft stopped on this node while the read waited for it.
+    Fatal(Fatal<C>),
 }
 
-impl fmt::Display for FollowerReadError {
+impl<C> fmt::Display for FollowerReadError<C>
+where C: RaftTypeConfig
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
+        match self {
+            Self::NoLeader => write!(f, "no known leader to authorize the read"),
+            Self::NoAnswer { leader_id, reason } => write!(f, "no answer from leader {leader_id}: {reason}"),
+            Self::Refused(e) => write!(f, "the leader did not authorize the read: {e}"),
+            Self::NotApplied {
+                read_log_id,
+                applied: Some(applied),
+            } => write!(f, "deadline expired before applying {read_log_id}; applied {applied}"),
+            Self::NotApplied {
+                read_log_id,
+                applied: None,
+            } => write!(f, "deadline expired before applying {read_log_id}; applied nothing"),
+            Self::Fatal(e) => write!(f, "Raft stopped: {e}"),
+        }
     }
 }
 
-impl std::error::Error for FollowerReadError {}
+impl<C> std::error::Error for FollowerReadError<C> where C: RaftTypeConfig {}
 
 pub struct Client<C>
 where C: RaftTypeConfig
@@ -99,16 +142,34 @@ where C: RaftTypeConfig<Node = NodeInfo>
 
     /// Perform a linearizable read on a follower.
     ///
-    /// This method demonstrates follower reads: it fetches a linearizer from the leader,
-    /// waits for the local state machine to catch up, then reads from the local state machine.
+    /// This method demonstrates follower reads: the target node asks the leader to authorize the
+    /// read, waits until its own state machine applies the authorized log ID, then reads from its
+    /// local state machine.
     ///
     /// Returns the value if successful, or an error from the follower.
-    pub async fn follower_read(&self, req: &String) -> Result<Result<C::R, FollowerReadError>, RPCError<C>> {
+    pub async fn follower_read(&self, req: &String) -> Result<Result<C::R, FollowerReadError<C>>, RPCError<C>> {
         self.send("follower_read", Some(req)).await
     }
 
     pub async fn get_linearizer(&self) -> Result<Result<LinearizerData<C>, LinearizableReadError<C>>, RPCError<C>> {
         self.send("get_linearizer", None::<&()>).await
+    }
+
+    /// Ask the leader to authorize a linearizable read, following up to three redirects to a newer
+    /// leader, and give up at `deadline`.
+    #[since(version = "0.10.2")]
+    pub async fn get_linearizer_until(
+        &self,
+        deadline: Instant,
+    ) -> Result<Result<LinearizerData<C>, LinearizableReadError<C>>, RPCError<C>> {
+        self.send_with_forwarding_until("get_linearizer", None::<&()>, 3, deadline).await
+    }
+
+    /// Get what the node reports about its own state; see [`Readiness`].
+    #[since(version = "0.10.2")]
+    pub async fn readiness(&self) -> Result<Readiness<C>, RPCError<C>> {
+        let res = self.send::<_, _, Infallible>("readiness", None::<&()>).await?;
+        Ok(res.unwrap())
     }
 
     // --- Cluster management API

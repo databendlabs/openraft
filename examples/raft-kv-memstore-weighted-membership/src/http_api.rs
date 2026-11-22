@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use app_http::FOLLOWER_READ_TIMEOUT;
 use app_http::FollowerReadError;
 use openraft::errors::Infallible;
 use openraft::errors::LinearizableReadError;
@@ -26,8 +27,8 @@ pub async fn linearizable_read(
 }
 
 /// `POST /follower_read`: wait until this node applies what the leader has committed, then read.
-pub async fn follower_read(app: Arc<App>, key: String) -> Result<types_kv::Response, FollowerReadError> {
-    app.ensure_follower_read_ready().await?;
+pub async fn follower_read(app: Arc<App>, key: String) -> Result<types_kv::Response, FollowerReadError<TypeConfig>> {
+    app.ensure_follower_read_ready(FOLLOWER_READ_TIMEOUT).await?;
     let value = app.data.get(&key).await;
 
     Ok(types_kv::Response { value })

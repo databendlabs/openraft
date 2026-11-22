@@ -108,6 +108,7 @@ where
             .post("/add-learner", App::<C, SM, Data>::add_learner)
             .post("/change-membership", App::<C, SM, Data>::change_membership)
             .get("/metrics", App::<C, SM, Data>::metrics)
+            .get("/readiness", App::<C, SM, Data>::readiness)
             .get("/get_linearizer", App::<C, SM, Data>::get_linearizer)
             .post("/write", App::<C, SM, Data>::write)
     }

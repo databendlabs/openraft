@@ -112,10 +112,19 @@ endpoints, trading latency for consistency:
   returns the latest committed value.
 
 - **`/follower_read`** lets a follower serve a linearizable read. Via
-  [`ensure_follower_read_ready()`](../app-http/src/app.rs) it asks the leader for
-  a read marker (the committed log id), waits until its own state machine has
-  applied up to that marker, then reads locally — consistent reads without
-  routing every read to the leader.
+  [`ensure_follower_read_ready()`](../app-http/src/app.rs) it asks the leader to
+  authorize each read, following the redirect of a node that no longer leads.
+  The leader answers without waiting for its own state machine; the follower
+  then waits until its own state machine applies the authorized log id, and
+  reads locally. This gives consistent reads without routing every read to the
+  leader. Asking and waiting share a five-second deadline, and an expired
+  deadline fails the read instead of returning a value that may be stale.
+
+`GET /readiness` reports what a node knows from its own metrics: the leader it
+follows, whether it is that leader, and whether it has applied that leader's
+no-op entry. Use it to route requests and for health checks, not to authorize
+them: a leader cut off from its quorum still reports that it leads, which is why
+every linearizable read above runs its own check.
 
 ## Run it
 
@@ -167,6 +176,10 @@ In this crate:
  - [`src/bin/main.rs`](./src/bin/main.rs): CLI entry point.
  - [`src/http_api.rs`](./src/http_api.rs): the application read endpoints
    (`/read`, `/linearizable_read`, `/follower_read`).
+ - [`src/read_guarantees_test.rs`](./src/read_guarantees_test.rs): the read
+   endpoints and `/readiness` under faults: an isolated former leader, a paused
+   state machine on the leader or a follower, a leader change between reads,
+   and expired deadlines.
  - [`src/store/mod.rs`](./src/store/mod.rs): re-exports the log and state-machine
    stores from the helper crates below — no storage logic lives here.
 

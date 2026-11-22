@@ -16,7 +16,7 @@ Application HTTP components:
 - `app_http::App<C, SM, D>` is the shared application context held by the
   server. It stores the node id, application address, Raft address, Raft handle,
   and application data. It also provides the common OpenRaft application
-  handlers: `init`, `add_learner`, `change_membership`, `metrics`,
+  handlers: `init`, `add_learner`, `change_membership`, `metrics`, `readiness`,
   `get_linearizer`, and `write`.
 - `app_http::Server<D>` is a small JSON-over-HTTP server. `Server::new(app)`
   starts with no routes. Examples call `add_openraft_routes()` for the common
@@ -29,8 +29,12 @@ Application HTTP components:
   carries the new node id, Raft address, and application address.
 - `app_http::LinearizerData` carries the leader's read linearizer data for the
   follower-read example.
-- `app_http::FollowerReadError` is the simple error returned by the follower-read
-  helper.
+- `app_http::FollowerReadError` says why the follower-read helper served no
+  read: no known leader, no answer from it, a refusal, or a deadline that
+  expired before the local state machine caught up.
+- `app_http::Readiness` is what `/readiness` reports from a node's own metrics:
+  the leader it follows, whether it is that leader, and whether it has applied
+  that leader's no-op entry. None of these authorizes a read or a write.
 
 Raft network HTTP components:
 
@@ -48,7 +52,9 @@ Raft network HTTP components:
 Each node runs two HTTP servers. Application requests enter through `api_addr`;
 Raft replication uses `raft_addr` between nodes. Follower reads also use
 `api_addr`: the follower asks the leader's application server for linearizer
-data before reading from its local state machine.
+data before reading from its local state machine. It asks again for every read,
+follows the redirect of a node that no longer leads, and gives up when
+`FOLLOWER_READ_TIMEOUT` expires.
 
 ```text
 Node 1: leader                                             Node 2: follower
@@ -92,7 +98,7 @@ let app_server = app_http::Server::new(app)
 ```
 
 `add_openraft_routes()` installs `/init`, `/add-learner`,
-`/change-membership`, `/metrics`, `/get_linearizer`, and `/write`.
+`/change-membership`, `/metrics`, `/readiness`, `/get_linearizer`, and `/write`.
 `Server::new(app)` by itself is only the generic JSON route framework.
 
 ## Client

@@ -270,21 +270,41 @@ The above snippet shows how to perform a linearizable read on the leader.
 It is also possible to perform linearizable reads on a follower so that the read load is distributed across the cluster.
 In this scenario:
 
-1. The follower obtains the `read_log_id` from the leader via application-defined RPC
-2. The follower waits for its local state machine to apply up to the `read_log_id`
+1. The follower asks the leader, through an application-defined RPC, to authorize the read. The
+   leader calls [`get_read_linearizer()`] and returns the linearizer's node ID, no-op log ID,
+   committed log ID, and applied log ID.
+2. The follower rebuilds the linearizer with [`Linearizer::new()`] and waits, with
+   [`Linearizer::try_await_ready()`], until its local state machine applies the `read_log_id`.
 3. The follower can then safely read from its local state machine
 
 Note that in this scenario, the application is responsible for implementing the RPC mechanism to obtain the read log ID from the leader.
 
+Each read needs its own authorization, obtained after the read arrives. Reusing an earlier
+read's authorization can miss a write that completed after it. So can trusting a leader role or
+lease read from metrics: a leader cut off from its quorum keeps its role until it learns of a
+newer leader. A follower may share one RPC among several reads only if each of them arrived before
+the RPC was sent. A read that arrives while an RPC is in flight waits for the next one.
+
+The follower waits for its own state machine, not the leader's. The leader answers without
+waiting for its state machine, and the applied log ID it returns describes the leader only: pass
+it to [`Linearizer::new()`] with the leader's node ID, never with the follower's.
+
+Bound the read with one deadline. The RPC, any redirect to a newer leader, and the wait for the
+local state machine share it. When it expires, return an error instead of reading.
+
 A basic example of a follower read:
 
 ```ignore
-// Get read_log_id from remote leader via RPC
-let leader_id = my_raft.current_leader().await?.unwrap();
-let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
+let deadline = Instant::now() + timeout;
 
-// Block waiting local state machine to apply up to to the `read_log_id`
-let linearized_state = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
+// Ask the remote leader to authorize this read, via an application-defined RPC
+let leader_id = my_raft.current_leader().await.unwrap();
+let data = my_app_rpc.get_read_linearizer(leader_id, deadline).await?;
+let linearizer = Linearizer::new(data.node_id, data.noop_log_id, data.committed, data.applied);
+
+// Wait, in the time left, for the local state machine to apply up to the `read_log_id`
+let remaining = deadline.saturating_duration_since(Instant::now());
+let linearized_state = linearizer.try_await_ready(&my_raft, Some(remaining)).await?.map_err(|_| Timeout)?;
 
 // Following read from state machine is linearized across the cluster
 let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
@@ -292,8 +312,9 @@ let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
 
 See a complete implementation in the [raft-kv-memstore example](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore):
 - [`/get_linearizer` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/app-http/src/app.rs) - `App::get_linearizer()`, where the leader provides linearizer data
-- [`/follower_read` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/http_api.rs) - Follower read implementation
+- [`/follower_read` endpoint](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/http_api.rs) - Follower read implementation, through `App::ensure_follower_read_ready()`
 - [Test coverage](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_read_modes.rs)
+- [Fault tests](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv-memstore/src/read_guarantees_test.rs) - A paused state machine on the leader or a follower, a leader change between reads, and expired deadlines
 
 
 ## Ensuring Linearizability with `read_log_id`
@@ -325,6 +346,7 @@ at least as large as any committed log, once `last_applied_log_id.index() >= rea
 [`get_read_log_id()`]: crate::Raft::get_read_log_id
 [`Raft::metrics`]: crate::Raft::metrics
 [`Linearizer`]: crate::raft::linearizable_read::Linearizer
+[`Linearizer::new()`]: crate::raft::linearizable_read::Linearizer::new
 [`Linearizer::await_ready()`]: crate::raft::linearizable_read::Linearizer::await_ready
 [`Linearizer::try_await_ready()`]: crate::raft::linearizable_read::Linearizer::try_await_ready
 [`ReadPolicy`]: crate::raft::ReadPolicy

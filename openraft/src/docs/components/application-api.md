@@ -114,7 +114,29 @@ the state machine to apply the read log id before it reads:
 [`Raft::ensure_linearizable()`] does both on the leader, and a follower read
 waits with [`Linearizer::await_ready()`]. See [read operations][`read`].
 
+## Reporting readiness
+
+A status or health endpoint reports what a node knows about itself. Each fact answers a different
+question, and none of them authorizes a request:
+
+| Question | What answers it |
+|---|---|
+| Which node leads? | [`RaftMetrics::current_leader`], or [`Raft::as_leader()`] on the node itself. A leader cut off from its quorum keeps its role until it learns of a newer leader: route requests by it, but do not treat it as permission to serve them. |
+| Does the state machine hold every entry committed before this leadership? | [`RaftMetrics::last_applied`], once the leader that [`RaftMetrics::vote`] names proposed it: a new leader's first entry is a no-op. |
+| Will a write be admitted? | Only the write's response; see [retrying a rejected write](#retrying-a-rejected-write). An elected leader rejects writes with `LeaseExpired` until a quorum has acknowledged it. |
+| Is a read linearizable? | Only a read barrier taken for that read: [`Raft::ensure_linearizable()`] on the leader, or a follower read. |
+| Has a restarted node recovered its state? | [`Raft::wait_for_recovery()`], called once after startup. |
+
+The [raft-kv-memstore example] serves the first two answers at `/readiness`. Its tests show an
+isolated former leader that reports itself ready while it refuses a linearizable read.
+
 [`RaftMetrics`]: `crate::RaftMetrics`
+[`RaftMetrics::current_leader`]: `crate::RaftMetrics::current_leader`
+[`RaftMetrics::last_applied`]: `crate::RaftMetrics::last_applied`
+[`RaftMetrics::vote`]: `crate::RaftMetrics::vote`
+[`Raft::as_leader()`]: `crate::Raft::as_leader`
+[`Raft::wait_for_recovery()`]: `crate::Raft::wait_for_recovery`
+[raft-kv-memstore example]: https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore
 [`ForwardToLeader`]: `crate::errors::ForwardToLeader`
 [`ForwardReason`]: `crate::errors::ForwardReason`
 [`Precondition`]: `crate::raft::Precondition`
