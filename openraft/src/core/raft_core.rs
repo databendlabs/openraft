@@ -986,8 +986,8 @@ where
 
     /// Handle the admin command `initialize`.
     ///
-    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
-    /// See: [Conditions for initialization][precondition]
+    /// It is allowed to initialize only when this node has no log and its vote has the default
+    /// term. See: [Conditions for initialization][precondition]
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip(self, tx))]

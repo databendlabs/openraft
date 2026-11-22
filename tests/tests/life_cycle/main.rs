@@ -6,6 +6,7 @@ use tests::fixtures;
 // The later tests may depend on the earlier ones.
 
 mod t10_initialization;
+mod t10_initialize_waits_for_flush;
 mod t11_shutdown;
 mod t12_build_run;
 mod t13_external_tick;

@@ -59,7 +59,8 @@ where C: RaftTypeConfig
 
             timer_config: time_state::Config {
                 election_timeout: Duration::ZERO, // sampled below
-                smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
+                // Double the duration, not the milliseconds: twice a large `u64` overflows.
+                smaller_log_timeout: Duration::from_millis(config.election_timeout_max) * 2,
                 leader_lease: Duration::from_millis(config.election_timeout_max),
             },
 
@@ -93,5 +94,46 @@ where C: RaftTypeConfig
         let election_timeout =
             AsyncRuntimeOf::<C>::thread_rng().random_range(self.election_timeout_min..self.election_timeout_max);
         self.timer_config.election_timeout = Duration::from_millis(election_timeout);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::EngineConfig;
+    use crate::Config;
+    use crate::engine::testing::UTConfig;
+
+    /// The delay after seeing a greater log is twice the election timeout maximum, also for a
+    /// maximum whose millisecond count doubled does not fit in `u64`.
+    #[test]
+    fn test_smaller_log_timeout_is_twice_the_election_timeout_max() {
+        let half = u64::MAX / 2;
+        for max in [300, half, half + 1, u64::MAX] {
+            let min = max / 2;
+            let config = Config {
+                election_timeout_min: min,
+                election_timeout_max: max,
+                ..Default::default()
+            }
+            .validate()
+            .unwrap();
+
+            let timers = EngineConfig::<UTConfig>::new(0, &config).timer_config;
+
+            assert_eq!(
+                u128::from(max) * 2,
+                timers.smaller_log_timeout.as_millis(),
+                "max: {max}"
+            );
+            assert_eq!(Duration::from_millis(max), timers.leader_lease, "max: {max}");
+
+            let sampled = timers.election_timeout.as_millis();
+            assert!(
+                u128::from(min) <= sampled && sampled < u128::from(max),
+                "max: {max}, sampled: {sampled}"
+            );
+        }
     }
 }

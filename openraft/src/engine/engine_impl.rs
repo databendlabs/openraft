@@ -220,16 +220,17 @@ where
         );
     }
 
-    /// Initialize a node by appending the first log.
+    /// Initialize a node by appending the first log: a membership config log at index 0.
     ///
-    /// - The first log has to be membership config log.
-    /// - The node has to contain no logs at all and the vote is the minimal value. See: [Conditions
-    ///   for initialization][precondition].
+    /// - The node must have no log, and its vote must have the default term; see [Conditions for
+    ///   initialization][precondition]. The node ID of the vote is not checked.
+    /// - This node must be able to campaign in `membership`, which must be a valid initial config.
     ///
-    ///
-    /// Appending the very first log is slightly different from appending log by a leader or
-    /// follower. This step is not confined by the consensus protocol and has to be dealt with
-    /// differently.
+    /// The first log ID has the default term and this node's ID, as the committed leader ID type
+    /// keeps them: with advanced leader IDs, node 1 appends `(0, 1, 0)`; a standard committed
+    /// leader ID keeps only the term. The node commits its vote for that leader ID and appends the
+    /// log without consensus. `RaftCore` replies once the log is flushed to this node's storage;
+    /// the log is committed later, by an elected leader.
     ///
     /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     #[tracing::instrument(level = "debug", skip_all)]
@@ -252,7 +253,8 @@ where
         let log_id = LogIdOf::<C>::new(leader_id.to_committed(), 0);
         let payload = C::Payload::membership(membership);
         let entry = C::Entry::new(log_id, payload);
-        self.following_handler().do_append_entries(vec![entry]);
+        // Accept the append's I/O first: `RaftCore` responds once that I/O is flushed.
+        self.following_handler().append_entries(None, vec![entry]);
 
         Ok(())
     }
@@ -1000,10 +1002,12 @@ where
         self.try_leader_handler().unwrap().leader_append_entries([C::Payload::blank()]);
     }
 
-    /// Check if a raft node is in a state that allows to initialize.
+    /// Check that this node may initialize: it has no log, and its vote has the default term.
     ///
-    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0,
-    /// node_id=0)`. See: [Conditions for initialization](https://databendlabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+    /// The node ID of the vote is not checked: a node that never voted holds a vote for itself with
+    /// the default term. See: [Conditions for initialization][precondition].
+    ///
+    /// [precondition]: crate::docs::cluster_control::cluster_formation#preconditions-for-initialization
     fn check_initialize(&self) -> Result<(), NotAllowed<C>> {
         if !self.state.is_initialized() {
             return Ok(());

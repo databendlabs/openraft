@@ -227,7 +227,13 @@ where C: RaftTypeConfig
     #[error(transparent)]
     NotAllowed(#[from] NotAllowed<C>),
 
-    /// This node is not included in the initial membership configuration.
+    /// This node cannot campaign in the initial membership configuration: it is absent from it,
+    /// or only a learner in it.
+    ///
+    /// The initializing node starts an election right after initialization, so it has to be a
+    /// [`NodeRole::Campaigner`], such as a voter of a default membership.
+    ///
+    /// [`NodeRole::Campaigner`]: crate::membership::NodeRole::Campaigner
     #[error(transparent)]
     NotInMembers(#[from] NotInMembers<C>),
 
@@ -606,17 +612,24 @@ pub struct NotAllowed<C: RaftTypeConfig> {
     pub vote: VoteOf<C>,
 }
 
-/// Error indicating a node is not a member of the cluster.
+/// Error indicating that the initializing node cannot campaign in the initial membership: it is
+/// absent from it, or only a learner in it.
+///
+/// See [`InitializeError::NotInMembers`].
+#[since(
+    version = "0.10.2",
+    change = "the message says that the node has to be able to campaign, not only to be a member"
+)]
 #[since(version = "0.10.0", change = "`membership` field has type `C::Membership`")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("node {node_id} has to be a member. membership:{membership:?}")]
+#[error("node {node_id} has to be able to campaign in the initial membership, as a voter does: {membership:?}")]
 pub struct NotInMembers<C>
 where C: RaftTypeConfig
 {
-    /// The node ID that is not in the membership.
+    /// The ID of the node that initializes the cluster.
     pub node_id: C::NodeId,
-    /// The current cluster membership.
+    /// The initial membership configuration passed to `initialize()`.
     pub membership: C::Membership,
 }
 

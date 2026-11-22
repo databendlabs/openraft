@@ -21,6 +21,7 @@ use crate::errors::NodeNotFound;
 use crate::errors::NotAllowed;
 use crate::errors::NotInMembers;
 use crate::errors::Operation;
+use crate::raft_state::IOId;
 use crate::raft_state::LogStateReader;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
@@ -56,6 +57,15 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m1(), eng.state.membership_state.effective().membership());
+
+        // `RaftCore` responds once this I/O is flushed.
+        assert_eq!(
+            Some(&IOId::new_log_io(
+                Vote::new_with_default_term(1).to_committed(),
+                Some(log_id0)
+            )),
+            eng.state.accepted_log_io()
+        );
 
         assert_eq!(
             vec![
@@ -100,6 +110,15 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(&m12(), eng.state.membership_state.effective().membership());
+
+        // `RaftCore` responds once this I/O is flushed.
+        assert_eq!(
+            Some(&IOId::new_log_io(
+                Vote::new_with_default_term(1).to_committed(),
+                Some(log_id0)
+            )),
+            eng.state.accepted_log_io()
+        );
 
         assert_eq!(
             vec![
@@ -148,13 +167,19 @@ fn test_initialize() -> anyhow::Result<()> {
     {
         let mut eng = eng();
 
+        let result = eng.initialize(m12());
+        let expected = Err(InitializeError::NotInMembers(NotInMembers {
+            node_id: 0,
+            membership: m12(),
+        }));
+        assert_eq!(expected, result);
         assert_eq!(
-            Err(InitializeError::NotInMembers(NotInMembers {
-                node_id: 0,
-                membership: m12()
-            })),
-            eng.initialize(m12())
+            "node 0 has to be able to campaign in the initial membership, as a voter does: \
+             Membership { configs: [{1, 2}], nodes: {1: (), 2: ()} }",
+            result.unwrap_err().to_string()
         );
+        let commands = eng.output.take_commands();
+        assert_eq!(Vec::<Command<UTConfig>>::new(), commands);
     }
 
     tracing::info!("--- initial learner 0 cannot initialize the cluster");
@@ -164,9 +189,15 @@ fn test_initialize() -> anyhow::Result<()> {
         let result = eng.initialize(membership.clone());
         let expected = Err(InitializeError::NotInMembers(NotInMembers { node_id: 0, membership }));
         assert_eq!(expected, result);
+        assert_eq!(
+            "node 0 has to be able to campaign in the initial membership, as a voter does: \
+             Membership { configs: [{1, 2}], nodes: {0: (), 1: (), 2: ()} }",
+            result.unwrap_err().to_string()
+        );
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
+        assert_eq!(None, eng.state.accepted_log_io());
     }
 
     tracing::info!("--- [{{1}}, {{}}] has no quorum; node 1 stays a voter, or NotInMembers fires first");
@@ -181,6 +212,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
+        assert_eq!(None, eng.state.accepted_log_io());
     }
 
     tracing::info!("--- voter 2 has no node");
@@ -195,6 +227,7 @@ fn test_initialize() -> anyhow::Result<()> {
         let commands = eng.output.take_commands();
         let expected_commands = Vec::<Command<UTConfig>>::new();
         assert_eq!(expected_commands, commands);
+        assert_eq!(None, eng.state.accepted_log_io());
     }
 
     Ok(())
