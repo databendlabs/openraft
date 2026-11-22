@@ -35,6 +35,26 @@ pub(crate) struct Report {
     /// The elections during the measurement: how far the highest term of each group grew, summed
     /// over the groups.
     pub(crate) elections: u64,
+
+    /// The heartbeats, elections and pending-read checks whose deadline was reached, per second,
+    /// or `None` without the `runtime-stats` feature.
+    pub(crate) fires_per_sec: Option<f64>,
+
+    /// The wakes that `RaftCore` gave a timer's task to re-arm it, per second, or `None` without
+    /// the `runtime-stats` feature.
+    pub(crate) rearms_per_sec: Option<f64>,
+
+    /// The `RaftMetrics` sends per second, one per metrics report, or `None` without the
+    /// `runtime-stats` feature.
+    pub(crate) metrics_per_sec: Option<f64>,
+
+    /// The `RaftDataMetrics` sends per second, made only when a field changed, or `None` without
+    /// the `runtime-stats` feature.
+    pub(crate) data_metrics_per_sec: Option<f64>,
+
+    /// The `RaftServerMetrics` sends per second, made only when a field changed, or `None`
+    /// without the `runtime-stats` feature.
+    pub(crate) server_metrics_per_sec: Option<f64>,
 }
 
 impl fmt::Display for Report {
@@ -80,6 +100,21 @@ impl fmt::Display for Report {
             None => write!(f, "\tallocs/s=n/a")?,
         }
         write!(f, "\tappends/s={:.0}", self.appends_per_sec)?;
-        write!(f, "\telections={}", self.elections)
+        write!(f, "\telections={}", self.elections)?;
+
+        let rates = [
+            ("fires/s", self.fires_per_sec),
+            ("rearms/s", self.rearms_per_sec),
+            ("metrics/s", self.metrics_per_sec),
+            ("data_metrics/s", self.data_metrics_per_sec),
+            ("server_metrics/s", self.server_metrics_per_sec),
+        ];
+        for (name, rate) in rates {
+            match rate {
+                Some(rate) => write!(f, "\t{name}={rate:.0}")?,
+                None => write!(f, "\t{name}=n/a")?,
+            }
+        }
+        Ok(())
     }
 }

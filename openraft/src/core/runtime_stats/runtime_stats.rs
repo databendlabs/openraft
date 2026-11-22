@@ -24,6 +24,7 @@ use crate::type_config::alias::InstantOf;
 ///
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
+#[since(version = "0.10.2", change = "Add the re-arm wake and metrics send counters")]
 #[since(version = "0.10.0", change = "Add core_busy_histogram")]
 #[since(version = "0.10.0", change = "Add core_busy_duration snapshot")]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +128,47 @@ where C: RaftTypeConfig
     /// Indexed by `NotificationName::index()`.
     pub notification_counts: Vec<u64>,
 
+    /// Count of the times `RaftCore` woke the heartbeat timer's task to re-arm it.
+    ///
+    /// `RaftCore` wakes the task when it sets a deadline the task could otherwise sleep past: one
+    /// earlier than the stored deadline, or any deadline when the stored one has passed or is
+    /// `None`. The deadline set after a heartbeat fires is one such wake, because the stored
+    /// deadline has just passed. The fires themselves are the `NotificationName::Tick` entries of
+    /// [`Self::notification_counts`].
+    ///
+    /// A deadline moved later is stored without a wake. The task reads it when its timer expires
+    /// at the stored deadline, and that wake is not counted.
+    #[since(version = "0.10.2")]
+    pub heartbeat_rearm_wakes: u64,
+
+    /// Count of the times `RaftCore` woke the election timer's task to re-arm it.
+    ///
+    /// The fires of this timer are the `NotificationName::ElectionDeadlineReached` entries of
+    /// [`Self::notification_counts`]. See [`Self::heartbeat_rearm_wakes`] for when `RaftCore`
+    /// wakes a timer's task.
+    #[since(version = "0.10.2")]
+    pub election_rearm_wakes: u64,
+
+    /// Count of the times `RaftCore` woke the pending-read timer's task to re-arm it.
+    ///
+    /// The fires of this timer are the `NotificationName::PendingReadDeadlineReached` entries of
+    /// [`Self::notification_counts`]. See [`Self::heartbeat_rearm_wakes`] for when `RaftCore`
+    /// wakes a timer's task.
+    #[since(version = "0.10.2")]
+    pub pending_read_rearm_wakes: u64,
+
+    /// Count of the `RaftMetrics` sends: one per metrics report, whether or not a field changed.
+    #[since(version = "0.10.2")]
+    pub metrics_sends: u64,
+
+    /// Count of the `RaftDataMetrics` sends: the metrics reports that changed one of its fields.
+    #[since(version = "0.10.2")]
+    pub data_metrics_sends: u64,
+
+    /// Count of the `RaftServerMetrics` sends: the metrics reports that changed one of its fields.
+    #[since(version = "0.10.2")]
+    pub server_metrics_sends: u64,
+
     /// Per-entry timestamp tracking across 6 lifecycle stages
     /// (Proposed, Received, Submitted, Persisted, Committed, Applied).
     ///
@@ -171,6 +213,12 @@ where C: RaftTypeConfig
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
             notification_counts: vec![0; NotificationName::COUNT],
+            heartbeat_rearm_wakes: 0,
+            election_rearm_wakes: 0,
+            pending_read_rearm_wakes: 0,
+            metrics_sends: 0,
+            data_metrics_sends: 0,
+            server_metrics_sends: 0,
             log_stage: LogStages::new(config.log_stage_capacity(), 0),
             log_stage_histograms: LogStageHistograms::new(),
             _phantom: PhantomData,

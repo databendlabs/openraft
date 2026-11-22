@@ -61,6 +61,28 @@ It prints one line of tab-separated fields:
 - `elections`: how far the highest term of each group grew during the measurement, summed over
   the groups. It stays 0 while every group keeps its leader.
 
+Built with `--features runtime-stats`, which turns on the `runtime-stats` feature of openraft, it
+also reads `Raft::runtime_stats()` of every member before and after the measurement, and adds
+these rates, summed over the members. Without the feature they are `n/a`.
+
+- `fires/s`: the timer deadlines reached per second: the heartbeats, elections and pending-read
+  checks that `RaftCore` was notified of.
+- `rearms/s`: the wakes per second that `RaftCore` gave a timer's task to re-arm it, by setting
+  a deadline earlier than the stored one, or any deadline when the stored one has passed or is
+  unset. Every heartbeat that fires is followed by one. A timer that expires at a deadline that
+  has since moved later re-arms without either count.
+- `metrics/s`: the `RaftMetrics` sends per second, one per metrics report.
+- `data_metrics/s` and `server_metrics/s`: the `RaftDataMetrics` and `RaftServerMetrics` sends
+  per second. These are sent only when one of their fields changed.
+
+The two reads of the stats fall outside the CPU window. Compare `cpu%` only between builds that
+both have the feature or both do not, because openraft's `runtime-stats` feature also times each
+turn of its core loop.
+
+```sh
+cargo run --release --manifest-path benchmarks/idle-groups/Cargo.toml --features runtime-stats -- --groups 1000
+```
+
 Counting allocations costs CPU: at 5,000 groups with `--followers local`, which make 6.1 million
 allocations a second, it adds 7% to 11% to `cpu%`. Compare `cpu%` only between runs that both
 count or both do not. Without `--count-allocs` the wrapper reads one flag per allocation, and

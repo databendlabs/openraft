@@ -19,3 +19,8 @@ clap    = { version = "4.2", features = ["derive"] }
 futures = { version = "0.3" }
 libc    = { version = "0.2" }
 tokio   = { version = "1.39", default-features = false, features = ["rt-multi-thread", "time"] }
+
+[features]
+# Count timer wakes and metrics publications, through `Raft::runtime_stats()`. Off by default, so
+# that a default build measures openraft without the feature.
+runtime-stats = ["openraft/runtime-stats"]
