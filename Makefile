@@ -241,6 +241,18 @@ detsim:
 detsim-threshold:
 	cd tests-turmoil && cargo run --bin fuzz --features threshold-membership -- $(DETSIM_ARGS)
 
+# Read-only checks of message timing that `verify` does not run, as CI runs
+# them: the integration tests with a 30 ms network send delay, then the
+# simulations of the `detsim` jobs, a replay of seed 812 and `DETSIM_ARGS` with
+# the default membership type, then `DETSIM_ARGS` with `ThresholdMembership`.
+# The release builds keep debug assertions, see `tests-turmoil/Cargo.toml`. Run
+# it before pushing a change to replication or the network path.
+verify-timing:
+	OPENRAFT_NETWORK_SEND_DELAY=30 cargo test -p tests
+	cd tests-turmoil && cargo run --release --bin fuzz -- --reproduce 812 --max-steps 10000 --storage lossy
+	cd tests-turmoil && cargo run --release --bin fuzz -- $(DETSIM_ARGS)
+	cd tests-turmoil && cargo run --release --bin fuzz --features threshold-membership -- $(DETSIM_ARGS)
+
 # Extra arguments passed to every `cargo fmt` below. Empty rewrites the files;
 # `fmt_check` overrides it with `-- --check` to report without rewriting.
 FMT_ARGS ?=
@@ -427,7 +439,7 @@ clean:
 	cargo clean --manifest-path jepsen/openraft-test-app/Cargo.toml
 	rm -rf tests/_log
 
-.PHONY: test test-runtime test-turmoil test-turmoil-default test-turmoil-threshold verify verify-full basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos
+.PHONY: test test-runtime test-turmoil test-turmoil-default test-turmoil-threshold verify verify-full verify-timing basic_check fmt fmt_check fix clippy-basic clippy lint clean doc docs-check guide detsim detsim-threshold typos
 
 # Focused validation for the optional core-loop occupancy timer.
 .PHONY: test-core-busy-time

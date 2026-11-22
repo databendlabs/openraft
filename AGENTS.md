@@ -9,6 +9,9 @@ Always use `make` targets for checking and linting:
 # Never writes to the worktree.
 make verify
 
+# Delayed-network integration tests and deterministic simulations, as CI runs them.
+make verify-timing
+
 # Full check: features, full Clippy, docs, and integration/runtime/benchmark tests.
 make verify-full
 
@@ -23,6 +26,11 @@ Finish a change with `make verify`. Run `make fix` only when the change is
 yours to rewrite: it edits files in place, so it must never run on a diff
 someone else has already reviewed.
 
+Before pushing a change to replication or the network path, such as anything
+under `openraft/src/replication/` or `openraft/src/network/`, also run
+`make verify-timing`. Its delayed and dropped messages expose ordering bugs that
+`make verify` misses, and CI would report them only after the push.
+
 Do not run `cargo clippy` or `cargo fmt` directly. The Makefile targets apply the same settings across every workspace crate.
 
 ## Key Makefile Targets
@@ -33,6 +41,10 @@ Read-only:
   (all targets), and workspace library tests; use before pushing or opening a PR
 - `make verify-full`: `verify` plus isolated feature checks, full Clippy coverage,
   documentation, doctests, integration tests, benchmark tests, and runtime tests
+- `make verify-timing`: integration tests with a 30 ms network send delay, then the
+  simulations of the CI `detsim` jobs: seed 812 and five random seeds with the
+  default membership type, and five random seeds with `ThresholdMembership`; use
+  before pushing a change to replication or the network path
 - `make test`: run all tests
 - `make docs-check`: documentation build, doctests, and repository-link check;
   both `make verify-full` and the CI lint job run it
