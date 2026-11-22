@@ -122,7 +122,9 @@ where
                 entries: vec![],
             };
 
-            let input_stream = Box::pin(futures_util::stream::once(async { payload }));
+            // `stream::iter()` over an array is `Unpin`, so the one-request input needs no
+            // `Box::pin()` and no allocation.
+            let input_stream = futures_util::stream::iter([payload]);
 
             let reply = self.send_heartbeat(input_stream, option, C::now() + timeout).await;
 
