@@ -31,6 +31,12 @@ where C: RaftTypeConfig
     #[allow(dead_code)]
     stream_id: StreamId,
 
+    /// The node metadata that the worker's network client was created from.
+    ///
+    /// A client may capture it, such as a connection address, so a worker is reused only for
+    /// the same metadata.
+    node: C::Node,
+
     /// Dropping this handle cancels the worker during any await.
     _cancel: CancelHandleOf<C>,
 
@@ -87,7 +93,9 @@ where C: RaftTypeConfig
 
             let removed = self.workers.remove(&prog.target);
 
-            let handle = removed.filter(|_removed| !close_old);
+            // A changed node, such as a new address from `SetNodes`, needs a client created from
+            // it, so its old worker is dropped and cancelled as well.
+            let handle = removed.filter(|removed| !close_old && removed.node == prog.target_node);
 
             let handle = if let Some(handle) = handle {
                 handle
@@ -116,6 +124,7 @@ where C: RaftTypeConfig
                 WorkerHandle {
                     event_tx: tx,
                     stream_id: prog.progress.data.stream_id,
+                    node: prog.target_node.clone(),
                     _cancel: cancel,
                     _join_handle: worker_handle,
                 }
@@ -128,3 +137,6 @@ where C: RaftTypeConfig
         let _left = std::mem::replace(&mut self.workers, new_workers);
     }
 }
+
+#[cfg(test)]
+mod handle_test;
