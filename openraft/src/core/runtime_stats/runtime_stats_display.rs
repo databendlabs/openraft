@@ -20,9 +20,13 @@ use crate::core::runtime_stats::log_stage::LogStages;
 use crate::engine::CommandName;
 use crate::type_config::alias::InstantOf;
 
-/// Precomputed display data for [`RuntimeStats`](super::RuntimeStats).
+/// Display data for [`RuntimeStats`](super::RuntimeStats).
 ///
-/// All values are computed upfront so `Display::fmt()` is cheap.
+/// The percentiles are computed and the counters and log-stage records copied when it is created.
+/// Each `Display::fmt()` call formats them into text, building the tables and charts of the
+/// human-readable mode again. It reads no clock, so the same display gives the same text each time
+/// it is formatted, also after the runtime that created it has exited.
+///
 /// Use [`DisplayMode`] to control the output format.
 pub struct RuntimeStatsDisplay<C>
 where C: RaftTypeConfig
@@ -209,9 +213,11 @@ where C: RaftTypeConfig
             }
         }
 
-        let mut lines = self.log_stages.display_lines().peekable();
+        // Wall-clock timestamps would need the current time of the runtime that recorded them,
+        // which may have exited, so proposals are shown relative to the first one.
+        let mut lines = self.log_stages.relative_display_lines().peekable();
         if lines.peek().is_some() {
-            writeln!(f, "  log_stage_segments:")?;
+            writeln!(f, "  log_stage_segments (T: proposal of the first segment):")?;
             for line in lines {
                 writeln!(f, "    {}", line)?;
             }
@@ -677,18 +683,23 @@ mod tests {
         let mut d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
         d.log_stages = log_stages;
 
-        let s = format!("{}", d.multiline());
+        let d = d.multiline();
+        let s = format!("{}", d);
         println!("{s}");
 
-        assert!(s.contains("log_stage_segments:"));
-        // 3 segments
-        assert!(s.contains("[0,10):"));
-        assert!(s.contains("[10,20):"));
-        assert!(s.contains("[20,30):"));
-        // Stage names and durations present
-        assert!(s.contains("proposed +"));
-        assert!(s.contains("persisted +"));
-        assert!(s.contains("applied +"));
+        // Each proposal is shown relative to the first one, so the text depends on the recorded
+        // instants alone.
+        let want = [
+            "  log_stage_segments (T: proposal of the first segment):",
+            "    [0,10): T+0.00ns +0.00ns; proposed +0.00ns (0.00ns), received +1.00ms (1.00ms), submitted +0.00ns (1.00ms), persisted +2.00ms (3.00ms), committed +1.00ms (4.00ms), applied +1.00ms (5.00ms)",
+            "    [10,20): T+5.00ms +5.00ms; proposed +0.00ns (0.00ns), received +1.00ms (1.00ms), submitted +1.00ms (2.00ms), persisted +3.00ms (5.00ms), committed +2.00ms (7.00ms), applied +1.00ms (8.00ms)",
+            "    [20,30): T+12.00ms +7.00ms; proposed +0.00ns (0.00ns), received +1.00ms (1.00ms), submitted +1.00ms (2.00ms), persisted +8.00ms (10.00ms), committed +3.00ms (13.00ms), applied +3.00ms (16.00ms)",
+        ];
+        let start = s.find(want[0]).expect("the segments section");
+        let got = s[start..].lines().collect::<Vec<_>>();
+        assert_eq!(want.to_vec(), got);
+
+        assert_eq!(s, format!("{}", d), "formatting again gives the same text");
     }
 
     #[test]
@@ -696,7 +707,7 @@ mod tests {
         let d = make_display(EMPTY_STATS, vec![0; CommandName::COUNT], empty_log_stages());
         let s = format!("{}", d.multiline());
 
-        assert!(!s.contains("log_stage_segments:"));
+        assert!(!s.contains("log_stage_segments"));
     }
 
     #[test]

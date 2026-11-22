@@ -144,3 +144,59 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
 
     Ok(())
 }
+
+/// A display of runtime statistics gives the same text after the simulated runtime that created
+/// it has exited, because formatting it reads no clock: the clock of `openraft-rt-sim` exists only
+/// inside `SimRuntime::block_on`.
+///
+/// It is a plain test because it must run the cluster in a `block_on` call of its own, and format
+/// after that call returns.
+#[cfg(feature = "rt-sim")]
+#[test]
+fn runtime_stats_display_formats_after_the_sim_runtime_exits() -> Result<()> {
+    use openraft::SnapshotPolicy;
+    use openraft::async_runtime::AsyncRuntime;
+    use openraft_rt_sim::SimRuntime;
+
+    let mut runtime = SimRuntime::with_seed(0);
+    let (stats, multiline, inside, compact, human) = runtime.block_on(async {
+        let config = Config {
+            enable_tick: false,
+            enable_elect: false,
+            enable_heartbeat: false,
+            snapshot_policy: SnapshotPolicy::Never,
+            ..Default::default()
+        };
+        let mut router = RaftRouter::new(config)?;
+        let log_index = router.new_cluster([0], []).await?;
+        router.wait(&0).applied_index(Some(log_index), "bootstrap applied").await?;
+
+        let raft = router.get_raft_handle(&0)?;
+        let stats = raft.runtime_stats().await?;
+        let segments = stats.log_stage.segments().count();
+        assert!(segments > 0, "the bootstrap entries leave log-stage segments");
+
+        let multiline = stats.display().multiline();
+        let inside = multiline.to_string();
+        let compact = stats.display().compact().to_string();
+        let human = stats.display().human_readable().to_string();
+        raft.shutdown().await?;
+        anyhow::Ok((stats, multiline, inside, compact, human))
+    })?;
+
+    assert!(inside.contains("log_stage_segments (T: proposal of the first segment):"));
+    assert_eq!(
+        inside,
+        multiline.to_string(),
+        "the display made inside formats the same outside"
+    );
+    assert_eq!(
+        inside,
+        stats.display().multiline().to_string(),
+        "a display made outside, too"
+    );
+    assert_eq!(compact, stats.display().compact().to_string());
+    assert_eq!(human, stats.display().human_readable().to_string());
+
+    Ok(())
+}

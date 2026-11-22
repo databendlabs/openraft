@@ -76,11 +76,14 @@ fn unix_secs_micros(t: SystemTime) -> (i64, u32) {
     match t.duration_since(UNIX_EPOCH) {
         Ok(d) => (d.as_secs() as i64, d.subsec_micros()),
         Err(e) => {
+            // `t` lies `d` before the epoch. Borrow a whole second for any fraction of a second
+            // first, and truncate only the fraction within that second, so that `t` stays in its
+            // own second and microsecond.
             let d = e.duration();
             let secs = -(d.as_secs() as i64);
-            match d.subsec_micros() {
+            match d.subsec_nanos() {
                 0 => (secs, 0),
-                micros => (secs - 1, 1_000_000 - micros),
+                nanos => (secs - 1, (1_000_000_000 - nanos) / 1_000),
             }
         }
     }
@@ -123,6 +126,7 @@ mod tests {
 
     use super::DisplayUtc;
     use super::civil_from_days;
+    use super::unix_secs_micros;
     use crate::display_ext::DisplayInstantExt;
     use crate::engine::testing::UTConfig;
     use crate::type_config::TypeConfigExt;
@@ -153,6 +157,64 @@ mod tests {
             "1969-12-31T23:59:59.999999Z",
             DisplayUtc::<false>(before_epoch).to_string()
         );
+    }
+
+    /// Every time stays in its own second and microsecond, on both sides of the epoch.
+    #[test]
+    fn test_unix_secs_micros() {
+        let nanos = |n: u64| Duration::from_nanos(n);
+
+        let after = [
+            (1, (0, 0)),
+            (999, (0, 0)),
+            (1_000, (0, 1)),
+            (1_001, (0, 1)),
+            (999_999_999, (0, 999_999)),
+            (1_000_000_000, (1, 0)),
+            (1_000_000_001, (1, 0)),
+        ];
+        for (n, want) in after {
+            assert_eq!(want, unix_secs_micros(UNIX_EPOCH + nanos(n)), "{n} ns after the epoch");
+        }
+
+        let before = [
+            (1, (-1, 999_999)),
+            (999, (-1, 999_999)),
+            (1_000, (-1, 999_999)),
+            (1_001, (-1, 999_998)),
+            (999_999_999, (-1, 0)),
+            (1_000_000_000, (-1, 0)),
+            (1_000_000_001, (-2, 999_999)),
+        ];
+        for (n, want) in before {
+            assert_eq!(want, unix_secs_micros(UNIX_EPOCH - nanos(n)), "{n} ns before the epoch");
+        }
+    }
+
+    #[test]
+    fn test_display_utc_around_the_epoch() {
+        let cases = [
+            (UNIX_EPOCH - Duration::from_nanos(1), "1969-12-31T23:59:59.999999Z"),
+            (UNIX_EPOCH - Duration::from_nanos(1_001), "1969-12-31T23:59:59.999998Z"),
+            (
+                UNIX_EPOCH - Duration::from_nanos(999_999_999),
+                "1969-12-31T23:59:59.000000Z",
+            ),
+            (
+                UNIX_EPOCH - Duration::from_nanos(1_000_000_001),
+                "1969-12-31T23:59:58.999999Z",
+            ),
+            (UNIX_EPOCH + Duration::from_nanos(999), "1970-01-01T00:00:00.000000Z"),
+            (
+                UNIX_EPOCH + Duration::from_nanos(1_000_000_001),
+                "1970-01-01T00:00:01.000000Z",
+            ),
+        ];
+        for (t, full) in cases {
+            assert_eq!(full, DisplayUtc::<false>(t).to_string());
+            let simple = &full["yyyy-mm-ddT".len()..full.len() - 1];
+            assert_eq!(simple, DisplayUtc::<true>(t).to_string());
+        }
     }
 
     #[test]

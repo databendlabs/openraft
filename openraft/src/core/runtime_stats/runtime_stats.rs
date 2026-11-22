@@ -323,8 +323,9 @@ where C: RaftTypeConfig
 
     /// Returns a displayable representation of the runtime statistics.
     ///
-    /// All values are precomputed when calling this method, so the returned
-    /// `RuntimeStatsDisplay` can be cheaply formatted multiple times.
+    /// The percentiles are computed when calling this method, and the returned
+    /// `RuntimeStatsDisplay` formats them into text each time it is displayed. It reads no clock,
+    /// so it can be formatted any number of times, also after the runtime has exited.
     ///
     /// Use builder methods like `.human_readable()` to change the display mode.
     pub fn display(&self) -> RuntimeStatsDisplay<C> {

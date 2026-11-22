@@ -113,9 +113,31 @@ where I: Instant
 
     /// Returns an iterator of formatted lines, one per segment.
     ///
-    /// Each line shows the log index range, the proposed timestamp, the
-    /// inter-batch gap, and per-stage step/cumulative durations.
+    /// Each line shows the log index range, the proposed timestamp as a wall-clock time, the
+    /// inter-batch gap, and per-stage step/cumulative durations. Converting a timestamp to a
+    /// wall-clock time reads the current time of the runtime that recorded it; see
+    /// [`Self::relative_display_lines`] for lines that read no clock.
     pub fn display_lines(&self) -> impl Iterator<Item = String> + '_ {
+        self.segment_lines(|proposed| proposed.display().to_string())
+    }
+
+    /// Returns an iterator of formatted lines, one per segment, as [`Self::display_lines`] does,
+    /// except that each proposed timestamp is shown as `T+<duration>`, its distance from the
+    /// proposal of the first segment, `T`.
+    ///
+    /// It computes every value from the recorded instants alone and reads no clock, so it gives the
+    /// same text whenever it runs, also after the runtime that recorded the instants has exited.
+    pub fn relative_display_lines(&self) -> impl Iterator<Item = String> + '_ {
+        let mut first: Option<I> = None;
+        self.segment_lines(move |proposed| {
+            let first = *first.get_or_insert(proposed);
+            format!("T+{:.2?}", proposed.saturating_duration_since(first))
+        })
+    }
+
+    /// Format each segment, with `proposed_at` rendering the segment's proposed timestamp.
+    fn segment_lines<'a, F>(&'a self, mut proposed_at: F) -> impl Iterator<Item = String> + 'a
+    where F: FnMut(I) -> String + 'a {
         use std::fmt::Write;
 
         let mut prev_proposed: Option<I> = None;
@@ -130,7 +152,7 @@ where I: Instant
                 "[{},{}): {} +{:.2?}; ",
                 seg.range.start,
                 seg.range.end,
-                proposed.display(),
+                proposed_at(proposed),
                 delta
             )
             .unwrap();
