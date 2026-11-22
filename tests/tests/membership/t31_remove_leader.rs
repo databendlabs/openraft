@@ -1,18 +1,24 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use maplit::btreemap;
 use maplit::btreeset;
+use openraft::ChangeMembers;
 use openraft::Config;
+use openraft::ReadPolicy;
 use openraft::ServerState;
 use openraft::StepDownPolicy;
 use openraft::Vote;
+use openraft::async_runtime::OneshotSender;
 use openraft::errors::ClientWriteError;
+use openraft::impls::ProgressResponder;
 use openraft::type_config::TypeConfigExt;
 use openraft_memstore::ClientRequest;
 use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
+use crate::fixtures::WAIT_TIMEOUT;
 use crate::fixtures::expect_timeout;
 use crate::fixtures::log_id;
 use crate::fixtures::timeout;
@@ -347,6 +353,159 @@ async fn remove_leader_fenced_step_down() -> Result<()> {
         node.trigger().refresh_server_state(Some(vote), Some(membership_log_id)).await?;
 
         router.wait(&0).state(ServerState::Learner, "removed leader reverts to learner").await?;
+    }
+
+    Ok(())
+}
+
+/// Remove leader node 0, then readmit it while its automatic transfer is queued: `RaftCore`
+/// handles the readmission first and drops the stale transfer, and node 0 keeps leading.
+///
+/// The core waits for room in a full state-machine command channel while the step-down delay
+/// passes, so the watcher queues the transfer behind the readmission.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn remove_leader_readmitted_before_queued_transfer() -> Result<()> {
+    let step_down_delay_ms = 1_000;
+    let step_down_delay = Duration::from_millis(step_down_delay_ms);
+    let config = Config {
+        enable_heartbeat: false,
+        enable_elect: false,
+        // A leader accepts a membership change only within its lease, `election_timeout_max`
+        // after a quorum last acknowledged it: the lease must outlast the time the core is held.
+        election_timeout_min: 10_000,
+        election_timeout_max: 10_001,
+        removed_leader_step_down: StepDownPolicy::After(step_down_delay_ms),
+        state_machine_channel_size: Some(1),
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    let mut log_index = router.new_cluster([0, 1, 2], []).await?;
+    let n0 = router.get_raft_handle(&0)?;
+
+    tracing::info!(log_index, "--- change membership 012 to 12: the step-down delay starts");
+    let removing_since = {
+        let removing_since = TypeConfig::now();
+        n0.change_membership([1, 2], false).await?;
+        log_index += 1;
+        removing_since
+    };
+
+    tracing::info!(
+        log_index,
+        "--- hold the core: pause the worker, fill its only command slot, commit a write"
+    );
+    let (release_1, release_2, completed) = {
+        let (started_tx, started_rx) = TypeConfig::oneshot();
+        let (release_1, release_rx_1) = TypeConfig::oneshot::<()>();
+        n0.external_state_machine_request(move |_sm| {
+            Box::pin(async move {
+                started_tx.send(()).ok();
+                release_rx_1.await.ok();
+            })
+        })
+        .await?;
+        started_rx.await?;
+
+        let (release_2, release_rx_2) = TypeConfig::oneshot::<()>();
+        n0.external_state_machine_request(move |_sm| {
+            Box::pin(async move {
+                release_rx_2.await.ok();
+            })
+        })
+        .await?;
+
+        let (responder, committed, completed) = ProgressResponder::new();
+        let request = ClientRequest::make_request("foo", 1);
+        n0.client_write_ff(request, Some(responder)).await?;
+        log_index += 1;
+        let committed = TypeConfig::timeout(WAIT_TIMEOUT, committed).await??;
+        assert_eq!(log_id(1, 0, log_index), committed);
+
+        (release_1, release_2, completed)
+    };
+
+    tracing::info!(
+        log_index,
+        "--- the core waits to send the apply and reads no API message"
+    );
+    let read = {
+        let mut read = Box::pin(n0.with_raft_state(|_state| ()));
+        let result = TypeConfig::timeout(Duration::from_millis(50), read.as_mut()).await;
+        assert!(result.is_err(), "the held core handles no API message");
+        read
+    };
+
+    tracing::info!(
+        log_index,
+        "--- queue a readmission of node 0 and an observation of the effective membership"
+    );
+    let (readmit, readmitted) = {
+        let change = ChangeMembers::AddNodes(btreemap! {0 => ()});
+        let mut readmit = Box::pin(n0.change_membership(change, false));
+        let polled = futures::poll!(readmit.as_mut());
+        assert!(polled.is_pending(), "the held core has not handled the readmission");
+
+        let (tx, rx) = TypeConfig::oneshot();
+        n0.external_request(move |state| {
+            let contains = state.membership_state.effective().get_node(&0).is_some();
+            tx.send(contains).ok();
+        })
+        .await?;
+
+        let queued_before_delay = TypeConfig::now() < removing_since + step_down_delay;
+        assert!(
+            queued_before_delay,
+            "the readmission is queued before the watcher's transfer"
+        );
+
+        (readmit, rx)
+    };
+
+    tracing::info!(
+        log_index,
+        "--- let the step-down delay pass: the watcher queues its transfer behind the readmission"
+    );
+    {
+        TypeConfig::sleep_until(removing_since + step_down_delay * 2).await;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- release the core: it handles the readmission, then drops the stale transfer"
+    );
+    {
+        drop(release_1);
+        drop(release_2);
+        TypeConfig::timeout(WAIT_TIMEOUT, read).await??;
+
+        TypeConfig::timeout(WAIT_TIMEOUT, readmit).await??;
+        log_index += 1;
+
+        let readmitted = TypeConfig::timeout(WAIT_TIMEOUT, readmitted).await??;
+        assert!(
+            readmitted,
+            "the readmission is effective before the transfer is handled"
+        );
+
+        let response = TypeConfig::timeout(WAIT_TIMEOUT, completed).await???;
+        assert_eq!(log_id(1, 0, log_index - 1), response.log_id);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- node 0 still leads in term 1: it serves a write and a linearizable read"
+    );
+    {
+        let metrics = router.wait(&0).applied_index(Some(log_index), "readmission applied").await?;
+        assert_eq!(ServerState::Leader, metrics.state);
+        assert_eq!(1, metrics.current_term);
+
+        router.client_request(0, "foo", 2).await?;
+        log_index += 1;
+        n0.ensure_linearizable(ReadPolicy::ReadIndex).await?;
+        router.wait(&0).applied_index(Some(log_index), "write applied").await?;
     }
 
     Ok(())

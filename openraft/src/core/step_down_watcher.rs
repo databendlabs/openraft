@@ -1,8 +1,12 @@
 //! Step-down watcher: a task that steps down a Leader that is removed from a committed
 //! membership config.
 
+use std::future::Future;
+use std::pin::pin;
 use std::time::Duration;
 
+use futures_util::future::Either;
+use futures_util::future::select;
 use tracing::Instrument;
 
 use crate::Config;
@@ -14,6 +18,7 @@ use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::core::raft_msg::RaftMsg;
 use crate::core::raft_msg::external_command::ExternalCommand;
+use crate::core::raft_msg::leader_removal::LeaderRemoval;
 use crate::membership::RaftMembershipExt;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RaftServerMetrics;
@@ -30,12 +35,16 @@ use crate::type_config::alias::WatchReceiverOf;
 /// from a snapshot of the full metrics), then after another `heartbeat_interval` it reverts this
 /// node to a learner, in case the transfer does not take effect.
 ///
-/// It is an automation plugin outside the consensus kernel: it only sends the commands an
-/// application could send manually, [`TriggerTransferLeader`] and [`RefreshServerState`], both of
-/// which re-validate the state inside `RaftCore`. Therefore acting on stale or coalesced metrics
-/// is harmless: an outdated command is just a no-op.
+/// It is an automation plugin outside the consensus kernel: it sends `RaftCore` two commands,
+/// [`TriggerTransferLeader`] and [`RefreshServerState`], each fenced by the removal it observed:
+/// the vote of this Leader and the log id of the membership config that removes it. `RaftCore`
+/// re-validates a command when it handles it and drops it if the fence no longer matches, such as
+/// after a membership change or a new vote that it handled first. The transfer also requires this
+/// node to be a Leader whose effective membership config is committed and does not contain it.
+/// Therefore acting on stale or coalesced metrics is harmless: an outdated command is a no-op.
 ///
-/// The task quits when `RaftCore` terminates.
+/// The task quits as soon as `RaftCore` terminates, also while it sleeps or waits to send a
+/// command, see [`until_closed()`].
 ///
 /// [`removed_leader_step_down`]: crate::Config::removed_leader_step_down
 /// [`TriggerTransferLeader`]: ExternalCommand::TriggerTransferLeader
@@ -87,7 +96,8 @@ where C: RaftTypeConfig
         };
 
         let span = tracing::debug_span!("step_down_watcher");
-        let watch_fut = this.watch_loop().instrument(span);
+        let rx_closed = this.rx_server_metrics.clone();
+        let watch_fut = until_closed::<C, _>(rx_closed, this.watch_loop()).instrument(span);
         let _join_handle = C::spawn(watch_fut);
     }
 
@@ -105,49 +115,85 @@ where C: RaftTypeConfig
 
     /// Step down this node if it is a Leader that is removed from a committed membership config:
     ///
-    /// - Wait for `step_down_delay`, then re-check the condition: it may no longer hold, e.g., a
-    ///   newer membership config that contains this node is committed.
-    /// - Transfer leadership to the most up-to-date voter.
+    /// - Wait for `step_down_delay` after the removal is observed. The delay belongs to that
+    ///   removal: the vote and the committed membership config that removes this node. It ends
+    ///   early when this node is no longer a removed Leader, such as when a newer membership config
+    ///   that contains it is committed, and it starts again when the removal is another one, such
+    ///   as a second removal after a readmission, or the same config under a new vote. Other
+    ///   metrics updates leave the deadline as it is.
+    /// - Transfer leadership to the most up-to-date voter. The command is fenced by the removal:
+    ///   `RaftCore` drops it unless this node is still a Leader with the vote of the removal, whose
+    ///   effective membership config is the removing one, committed, and without this node.
     /// - Wait for `transfer_wait`, then revert this node to a learner. This is the guaranteed
     ///   fallback in case the transfer takes no effect; the command is fenced by the vote and the
-    ///   membership config log id observed above, thus it is dropped if a new Leader is already
+    ///   membership config log id of the removal, thus it is dropped if a new Leader is already
     ///   established or the membership config has changed.
-    async fn try_step_down(&self) {
+    async fn try_step_down(&mut self) {
         // Clone the metrics out of the watch channel: the borrowed reference is not `Send`,
         // and holding it across an `await` would block the metrics updater.
-        let server_metrics = self.rx_server_metrics.borrow_watched().clone();
+        let mut server_metrics = self.rx_server_metrics.borrow_watched().clone();
         if !is_removed_leader(&server_metrics) {
             return;
         }
 
-        C::sleep(self.step_down_delay).await;
+        let mut deadline = C::now() + self.step_down_delay;
+        loop {
+            let closed = {
+                let sleep = pin!(C::sleep_until(deadline));
+                let changed = pin!(self.rx_server_metrics.changed());
+                matches!(select(sleep, changed).await, Either::Right((Err(_), _)))
+            };
+            if closed {
+                tracing::info!("RaftCore terminated during the step-down delay, quit step_down_watcher");
+                return;
+            }
 
-        let server_metrics = self.rx_server_metrics.borrow_watched().clone();
-        if !is_removed_leader(&server_metrics) {
-            return;
+            // Re-check after any wake-up: a change and the deadline may come at once.
+            let latest = self.rx_server_metrics.borrow_watched().clone();
+            if !is_removed_leader(&latest) {
+                return;
+            }
+            if !is_same_removal(&server_metrics, &latest) {
+                tracing::info!("another removal of this Leader is observed, restart the step-down delay");
+                server_metrics = latest;
+                deadline = C::now() + self.step_down_delay;
+                continue;
+            }
+            if C::now() >= deadline {
+                break;
+            }
         }
+
+        // The removal fences both commands. In the fence of the fallback a `None` membership log
+        // id means skipping the membership check, thus it must be `Some` here. It always holds:
+        // this node is a Leader, hence the cluster is initialized, hence the membership config
+        // comes from a log entry that has a log id.
+        debug_assert!(
+            server_metrics.membership_config.log_id().is_some(),
+            "the membership config of a Leader must have a log id"
+        );
+        let removal = LeaderRemoval {
+            vote: server_metrics.vote.clone(),
+            membership_log_id: server_metrics.membership_config.log_id().clone(),
+        };
 
         let metrics = self.rx_metrics.borrow_watched().clone();
         let target = transfer_target(&metrics);
 
         if let Some(to) = target {
             tracing::info!("removed Leader steps down: transfer leadership to {}", to);
-            self.send(ExternalCommand::TriggerTransferLeader { to }).await;
+            let cmd = ExternalCommand::TriggerTransferLeader {
+                to,
+                removal: Some(removal.clone()),
+            };
+            self.send(cmd).await;
         }
 
         C::sleep(self.transfer_wait).await;
 
-        // In the fence a `None` membership log id means skipping the membership check, thus it
-        // must be `Some` here. It always holds: this node is a Leader, hence the cluster is
-        // initialized, hence the membership config comes from a log entry that has a log id.
-        debug_assert!(
-            server_metrics.membership_config.log_id().is_some(),
-            "the membership config of a Leader must have a log id"
-        );
-
         let cmd = ExternalCommand::RefreshServerState {
-            vote: Some(server_metrics.vote.clone()),
-            membership_log_id: server_metrics.membership_config.log_id().clone(),
+            vote: Some(removal.vote),
+            membership_log_id: removal.membership_log_id,
         };
         self.send(cmd).await;
     }
@@ -155,13 +201,30 @@ where C: RaftTypeConfig
     /// Send an external command to `RaftCore`.
     ///
     /// A failure to upgrade the weak sender or to send means `RaftCore` is terminated. It is
-    /// safe to ignore it here: the watch loop quits at the next `changed()` call in this case.
+    /// safe to ignore it here: the task quits once `RaftCore` drops the server metrics sender.
     async fn send(&self, cmd: ExternalCommand<C>) {
         let Some(tx_api) = self.tx_api.upgrade() else {
             return;
         };
 
         let _ = tx_api.send(RaftMsg::ExternalCommand { cmd }).await;
+    }
+}
+
+/// Run `work` until it returns or `RaftCore` terminates, whichever comes first.
+///
+/// `RaftCore` terminates when it drops the server metrics sender. `rx` is a receiver of its own, so
+/// the metrics updates it takes stay unseen for `work`, and it waits until `changed()` reports the
+/// closure, which comes after a last value it has not seen. Dropping `work` then cancels a pending
+/// sleep or send, and releases what `work` holds, such as its metrics receivers.
+async fn until_closed<C, F>(mut rx: WatchReceiverOf<C, RaftServerMetrics<C>>, work: F)
+where
+    C: RaftTypeConfig,
+    F: Future<Output = ()>,
+{
+    let closed = async move { while rx.changed().await.is_ok() {} };
+    if let Either::Right(_) = select(pin!(work), pin!(closed)).await {
+        tracing::info!("RaftCore terminated, quit step_down_watcher");
     }
 }
 
@@ -186,6 +249,13 @@ where C: RaftTypeConfig {
     metrics.committed_membership_config == metrics.membership_config
 }
 
+/// Decide whether two snapshots observe the same removal of this Leader: the same vote, and the
+/// same committed membership config, which removes it.
+fn is_same_removal<C>(a: &RaftServerMetrics<C>, b: &RaftServerMetrics<C>) -> bool
+where C: RaftTypeConfig {
+    a.vote == b.vote && a.committed_membership_config.log_id() == b.committed_membership_config.log_id()
+}
+
 /// Choose the transfer-leader target: the voter with the greatest matching log id, which needs
 /// the least catching up.
 fn transfer_target<C>(metrics: &RaftMetrics<C>) -> Option<C::NodeId>
@@ -199,101 +269,4 @@ where C: RaftTypeConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use maplit::btreemap;
-    use maplit::btreeset;
-
-    use super::is_removed_leader;
-    use super::transfer_target;
-    use crate::Membership;
-    use crate::core::ServerState;
-    use crate::engine::testing::UTConfig;
-    use crate::engine::testing::log_id;
-    use crate::metrics::RaftMetrics;
-    use crate::metrics::RaftServerMetrics;
-    use crate::type_config::alias::StoredMembershipOf;
-
-    /// Voters 2,3; node 1 is removed.
-    fn m23() -> Membership<u64, ()> {
-        Membership::new_with_defaults(vec![btreeset! {2,3}], [])
-    }
-
-    fn stored(log_index: u64, mem: Membership<u64, ()>) -> Arc<StoredMembershipOf<UTConfig>> {
-        Arc::new(StoredMembershipOf::<UTConfig>::new(Some(log_id(2, 1, log_index)), mem))
-    }
-
-    /// Build server metrics of a Leader node 1, with the same effective and committed
-    /// membership config.
-    fn server_metrics(mem: Membership<u64, ()>) -> RaftServerMetrics<UTConfig> {
-        let mut m = RaftServerMetrics::new_initial(1);
-        m.state = ServerState::Leader;
-        m.membership_config = stored(3, mem.clone());
-        m.committed_membership_config = stored(3, mem);
-        m
-    }
-
-    #[test]
-    fn test_is_removed_leader_not_leader() {
-        let mut m = server_metrics(m23());
-        m.state = ServerState::Follower;
-
-        assert!(!is_removed_leader(&m));
-    }
-
-    #[test]
-    fn test_is_removed_leader_voter_leader() {
-        let m = server_metrics(Membership::new_with_defaults(vec![btreeset! {1,2,3}], []));
-
-        assert!(!is_removed_leader(&m));
-    }
-
-    #[test]
-    fn test_is_removed_leader_learner_leader() {
-        let m = server_metrics(Membership::new_with_defaults(vec![btreeset! {2,3}], btreeset! {1}));
-
-        assert!(!is_removed_leader(&m));
-    }
-
-    #[test]
-    fn test_is_removed_leader_uncommitted_membership() {
-        let mut m = server_metrics(m23());
-        m.committed_membership_config = stored(1, Membership::new_with_defaults(vec![btreeset! {1,2}], []));
-
-        assert!(!is_removed_leader(&m));
-    }
-
-    #[test]
-    fn test_is_removed_leader_committed_membership() {
-        let m = server_metrics(m23());
-
-        assert!(is_removed_leader(&m));
-    }
-
-    #[test]
-    fn test_transfer_target_not_leader() {
-        let m = RaftMetrics::<UTConfig>::new_initial(1);
-
-        assert_eq!(None, transfer_target(&m));
-    }
-
-    #[test]
-    fn test_transfer_target_greatest_matching() {
-        let mut m = RaftMetrics::<UTConfig>::new_initial(1);
-        m.membership_config = stored(3, m23());
-        m.replication = Some(btreemap! {
-            2u64 => Some(log_id(2, 1, 2)),
-            3u64 => Some(log_id(2, 1, 3)),
-        });
-
-        assert_eq!(Some(3), transfer_target(&m));
-
-        m.replication = Some(btreemap! {
-            2u64 => Some(log_id(2, 1, 3)),
-            3u64 => None,
-        });
-
-        assert_eq!(Some(2), transfer_target(&m));
-    }
-}
+mod step_down_watcher_test;

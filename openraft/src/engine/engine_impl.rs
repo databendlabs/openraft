@@ -7,6 +7,7 @@ use crate::LogIdOptionExt;
 use crate::RaftTypeConfig;
 use crate::core::ServerState;
 use crate::core::raft_msg::AppendEntriesTx;
+use crate::core::raft_msg::leader_removal::LeaderRemoval;
 use crate::display_ext::DisplayInstantExt;
 use crate::engine::Command;
 use crate::engine::Condition;
@@ -886,6 +887,30 @@ where
 
         self.log_handler().update_purge_upto(log_id);
         self.try_purge_log();
+    }
+
+    /// Whether this node is still the Leader that `removal` describes: a Leader with the vote of
+    /// `removal`, whose effective membership config is the one that `removal` names, is committed,
+    /// and does not contain this node.
+    ///
+    /// The [`StepDownWatcher`] observes a removal outside `RaftCore`; a membership change or a new
+    /// vote that `RaftCore` handles after that observation makes it stale.
+    ///
+    /// [`StepDownWatcher`]: crate::core::StepDownWatcher
+    pub(crate) fn is_removed_leader(&self, removal: &LeaderRemoval<C>) -> bool {
+        if self.leader.is_none() {
+            return false;
+        }
+
+        let membership_state = &self.state.membership_state;
+        let effective = membership_state.effective();
+
+        let same_vote = self.state.vote_ref() == &removal.vote;
+        let same_membership = effective.log_id() == &removal.membership_log_id;
+        let committed = membership_state.committed().log_id() == effective.log_id();
+        let removed = !membership_state.contains(&self.config.id);
+
+        same_vote && same_membership && committed && removed
     }
 
     pub(crate) fn trigger_transfer_leader(&mut self, to: C::NodeId) {

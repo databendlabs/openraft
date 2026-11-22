@@ -10,6 +10,7 @@ use crate::RaftTypeConfig;
 use crate::batch::Batch;
 use crate::core::raft_msg::ExternalCommandName;
 use crate::core::raft_msg::ResultSender;
+use crate::core::raft_msg::leader_removal::LeaderRemoval;
 use crate::errors::AllowNextRevertError;
 use crate::metrics::MetricsRecorder;
 use crate::type_config::alias::BatchOf;
@@ -63,7 +64,21 @@ where C: RaftTypeConfig
     PurgeLog { upto: u64 },
 
     /// Submit a command to inform RaftCore to transfer leadership to the specified node.
-    TriggerTransferLeader { to: C::NodeId },
+    ///
+    /// `removal` is `None` for a transfer that an application requests with
+    /// [`Trigger::transfer_leader`]. The [`StepDownWatcher`] sets it to the removal of this Leader
+    /// that it observed, and `RaftCore` drops the command unless the removal still holds when it
+    /// handles the command, see [`Engine::is_removed_leader()`]: a membership change or a new vote
+    /// handled meanwhile, such as a readmission of this node, makes the removal stale. A dropped
+    /// command clears no leader lease, resets no backoff, and starts no transfer.
+    ///
+    /// [`Trigger::transfer_leader`]: crate::raft::trigger::Trigger::transfer_leader
+    /// [`StepDownWatcher`]: crate::core::StepDownWatcher
+    /// [`Engine::is_removed_leader()`]: crate::engine::Engine::is_removed_leader
+    TriggerTransferLeader {
+        to: C::NodeId,
+        removal: Option<LeaderRemoval<C>>,
+    },
 
     /// Reset the backoff state of the replication to the specified nodes.
     ResetBackoff { to: BatchOf<C, C::NodeId> },
@@ -162,8 +177,12 @@ where C: RaftTypeConfig
             ExternalCommand::PurgeLog { upto } => {
                 write!(f, "PurgeLog[..={}]", upto)
             }
-            ExternalCommand::TriggerTransferLeader { to } => {
-                write!(f, "TriggerTransferLeader: to {}", to)
+            ExternalCommand::TriggerTransferLeader { to, removal } => {
+                write!(f, "TriggerTransferLeader: to {}", to)?;
+                if let Some(removal) = removal {
+                    write!(f, ", if {} holds", removal)?;
+                }
+                Ok(())
             }
             ExternalCommand::ResetBackoff { to } => {
                 if to.is_empty() {

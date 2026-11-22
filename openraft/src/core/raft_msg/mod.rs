@@ -35,6 +35,7 @@ use crate::type_config::alias::VoteOf;
 
 pub(crate) mod external_command;
 pub(crate) mod install_full_snapshot_request;
+pub(crate) mod leader_removal;
 pub(crate) mod membership_payloads;
 mod raft_msg_name;
 

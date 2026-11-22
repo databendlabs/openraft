@@ -2076,13 +2076,27 @@ where
             ExternalCommand::PurgeLog { upto } => {
                 self.engine.trigger_purge_log(upto);
             }
-            ExternalCommand::TriggerTransferLeader { to } => {
-                self.lease_read_state_publisher.clear();
-                if self.config.get_reset_backoff_on_transfer_leader() {
-                    let targets = BatchOf::<C, _>::of([to.clone()]);
-                    self.trigger_reset_backoff(targets);
+            ExternalCommand::TriggerTransferLeader { to, removal } => {
+                // The step-down watcher observed the removal before this command was queued. Check
+                // that it still holds before any side effect: a command handled ahead of this one,
+                // such as a readmission, may have made it stale.
+                let removed = removal.as_ref().is_none_or(|r| self.engine.is_removed_leader(r));
+                if removed {
+                    self.lease_read_state_publisher.clear();
+                    if self.config.get_reset_backoff_on_transfer_leader() {
+                        let targets = BatchOf::<C, _>::of([to.clone()]);
+                        self.trigger_reset_backoff(targets);
+                    }
+                    self.engine.trigger_transfer_leader(to);
+                } else {
+                    tracing::info!(
+                        "TriggerTransferLeader to {} is dropped: {} no longer holds; current vote: {}, membership log id: {}",
+                        to,
+                        removal.display(),
+                        self.engine.state.vote_ref(),
+                        self.engine.state.membership_state.effective().log_id().display(),
+                    );
                 }
-                self.engine.trigger_transfer_leader(to);
             }
             ExternalCommand::ResetBackoff { to } => {
                 self.trigger_reset_backoff(to);

@@ -147,7 +147,9 @@ where C: RaftTypeConfig
     ///
     /// [`Config::reset_backoff_on_transfer_leader`]: crate::Config::reset_backoff_on_transfer_leader
     pub async fn transfer_leader(&self, to: C::NodeId) -> Result<(), Fatal<C>> {
-        self.raft_inner.send_external_command(ExternalCommand::TriggerTransferLeader { to }).await
+        self.raft_inner
+            .send_external_command(ExternalCommand::TriggerTransferLeader { to, removal: None })
+            .await
     }
 
     /// Request to reset the current replication backoff for the specified nodes.

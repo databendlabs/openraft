@@ -58,6 +58,7 @@ mod tests {
     mod handle_vote_resp_test;
     mod initialize_test;
     mod install_full_snapshot_test;
+    mod is_removed_leader_test;
     mod pre_elect_test;
     mod refresh_server_state_test;
     mod startup_test;
