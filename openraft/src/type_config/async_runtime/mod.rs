@@ -35,3 +35,8 @@ pub use openraft_rt::watch;
 #[cfg(feature = "tokio-rt")]
 #[deprecated(since = "0.10.0", note = "use `openraft_rt_tokio::TokioInstant` directly")]
 pub use openraft_rt_tokio::TokioInstant;
+
+#[cfg(test)]
+pub(crate) mod hook_runtime;
+#[cfg(test)]
+pub(crate) mod hook_watch;
