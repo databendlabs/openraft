@@ -188,14 +188,14 @@ where C: RaftTypeConfig
                 )
             }
             Self::HeartbeatProgress {
-                stream_id: leader_vote,
+                stream_id,
                 sending_time,
                 target,
             } => {
                 write!(
                     f,
-                    "HeartbeatProgress: target={}, leader_vote: {}, sending_time: {}",
-                    target, leader_vote, sending_time,
+                    "HeartbeatProgress: target={}, stream_id: {}, sending_time: {}",
+                    target, stream_id, sending_time,
                 )
             }
             Self::StateMachine { command_result } => {
@@ -211,5 +211,33 @@ where C: RaftTypeConfig
                 write!(f, "ElectionDeadlineReached")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Notification;
+    use crate::engine::testing::UTConfig;
+    use crate::progress::stream_id::StreamId;
+    use crate::proposer::SendStamp;
+    use crate::type_config::TypeConfigExt;
+
+    /// The send time is displayed as a wall-clock time derived from the current time, so
+    /// formatting the same stamp twice can give two different times: only its shape is checked.
+    #[test]
+    fn test_heartbeat_progress_display_labels_the_stream_id() {
+        let notification = Notification::<UTConfig>::HeartbeatProgress {
+            stream_id: StreamId::new(2),
+            sending_time: SendStamp::new(UTConfig::<()>::now(), 3),
+            target: 1,
+        };
+
+        let display = notification.to_string();
+        let time = display
+            .strip_prefix("HeartbeatProgress: target=1, stream_id: StreamId(2), sending_time: ")
+            .and_then(|rest| rest.strip_suffix("(heartbeat_round=3)"))
+            .unwrap_or_else(|| panic!("unexpected display: {display}"));
+        let shape: String = time.chars().map(|c| if c.is_ascii_digit() { '9' } else { c }).collect();
+        assert_eq!(shape, "99:99:99.999999", "send time in: {display}");
     }
 }
