@@ -4,7 +4,6 @@
 //! and are also used by network layer to talk to other Raft nodes.
 
 mod append_entries_request;
-mod append_entries_response;
 mod append_error;
 mod change_membership;
 mod change_membership_request;
@@ -25,7 +24,6 @@ mod write_request;
 mod write_request_args;
 
 pub use append_entries_request::AppendEntriesRequest;
-pub use append_entries_response::AppendEntriesResponse;
 pub use append_error::AppendError;
 pub use append_error::AppendResult;
 pub use change_membership::ChangeMembershipOutcome;

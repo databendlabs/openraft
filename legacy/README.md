@@ -19,6 +19,7 @@ use openraft_legacy::prelude::*;
 The legacy `RaftNetwork` v1 trait with chunk-based snapshot transmission:
 
 - **`RaftNetwork`**: The legacy v1 network trait using `install_snapshot()` for chunked snapshot transfer
+- **`AppendEntriesResponse`**: The reply `RaftNetwork::append_entries()` returns, in the 0.9 wire format
 - **`Adapter`**: Converts a v1 `RaftNetwork` impl to `RaftNetworkV2`
 - **`ChunkedSnapshotReceiver`**: Extension trait that adds `install_snapshot()` to `Raft` for receiving chunks
 

@@ -13,7 +13,6 @@ use openraft::errors::Unreachable;
 use openraft::network::RPCOption;
 use openraft::network::RaftNetworkFactory;
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft_legacy::prelude::*;

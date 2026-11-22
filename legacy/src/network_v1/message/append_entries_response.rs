@@ -1,32 +1,37 @@
 use std::fmt;
 
 use display_more::DisplayOptionExt;
+use openraft::RaftTypeConfig;
+use openraft::raft::AppendError;
+use openraft::raft::AppendResult;
+use openraft::raft::StreamAppendError;
+use openraft::raft::StreamAppendResult;
+use openraft::type_config::alias::LogIdOf;
+use openraft::type_config::alias::VoteOf;
 use openraft_macros::since;
-
-use crate::RaftTypeConfig;
-use crate::raft::AppendError;
-use crate::raft::AppendResult;
-use crate::raft::StreamAppendError;
-use crate::raft::stream_append::StreamAppendResult;
-use crate::type_config::alias::LogIdOf;
-use crate::type_config::alias::VoteOf;
 
 /// The response to an `AppendEntriesRequest`, in a serializable format without the conflict hint.
 ///
-/// The legacy v1 `RaftNetwork` in `openraft-legacy` returns this type, and its `Adapter` converts
-/// it with [`Self::into_append_result()`]. [`Raft::append_entries()`] and
+/// The v1 [`RaftNetwork::append_entries()`] returns this type, and [`Adapter`] converts it with
+/// [`Self::into_append_result()`]. [`Raft::append_entries()`] and
 /// [`RaftNetworkV2::append_entries()`] use [`AppendResult`] instead, which a transport sends in its
 /// own wire format, such as [`StreamAppendResult`].
 ///
 /// A transport that keeps sending this format converts with `AppendEntriesResponse::from(result)`
-/// on the follower, and with [`Self::into_append_result()`] on the leader.
+/// on the follower, and with [`Self::into_append_result()`] on the leader. Its serde encoding is
+/// the one Openraft 0.9 uses.
 ///
-/// [`Raft::append_entries()`]: crate::raft::Raft::append_entries
-/// [`RaftNetworkV2::append_entries()`]: crate::network::RaftNetworkV2::append_entries
+/// [`RaftNetwork::append_entries()`]: crate::network_v1::RaftNetwork::append_entries
+/// [`Adapter`]: crate::network_v1::Adapter
+/// [`Raft::append_entries()`]: openraft::Raft::append_entries
+/// [`RaftNetworkV2::append_entries()`]: openraft::network::RaftNetworkV2::append_entries
+#[since(version = "0.10.2", change = "moved from `openraft::raft::AppendEntriesResponse`")]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesResponse<C: RaftTypeConfig> {
+pub enum AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
     /// Successfully replicated all log entries to the target node.
     Success,
 
@@ -44,14 +49,14 @@ pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     /// Openraft that the first log id([`AppendEntriesRequest::prev_log_id`]) may not match on
     /// the remote target node.
     ///
-    /// [`RPCError`]: crate::errors::RPCError
-    /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
+    /// [`RPCError`]: openraft::errors::RPCError
+    /// [`AppendEntriesRequest::prev_log_id`]: openraft::raft::AppendEntriesRequest::prev_log_id
     PartialSuccess(Option<LogIdOf<C>>),
 
     /// The first log id([`AppendEntriesRequest::prev_log_id`]) of the entries to send does not
     /// match on the remote target node.
     ///
-    /// [`AppendEntriesRequest::prev_log_id`]: crate::raft::AppendEntriesRequest::prev_log_id
+    /// [`AppendEntriesRequest::prev_log_id`]: openraft::raft::AppendEntriesRequest::prev_log_id
     Conflict,
 
     /// Seen a vote `v` that does not hold `mine_vote >= v`.
@@ -88,10 +93,10 @@ where C: RaftTypeConfig
     /// use openraft::entry::RaftEntry;
     /// use openraft::impls::leader_id_adv::LeaderId;
     /// use openraft::raft::AppendEntriesRequest;
-    /// use openraft::raft::AppendEntriesResponse;
     /// use openraft::type_config::alias::EntryOf;
     /// use openraft::type_config::alias::LogIdOf;
     /// use openraft::vote::RaftLeaderId;
+    /// use openraft_legacy::network_v1::AppendEntriesResponse;
     ///
     /// openraft::declare_raft_types!(TypeConfig);
     ///
@@ -125,7 +130,7 @@ where C: RaftTypeConfig
     /// assert_eq!(Some(log_id(7)), accepted(&sent));
     /// ```
     ///
-    /// [`AppendEntriesRequest::last_log_id()`]: crate::raft::AppendEntriesRequest::last_log_id
+    /// [`AppendEntriesRequest::last_log_id()`]: openraft::raft::AppendEntriesRequest::last_log_id
     #[since(version = "0.10.0")]
     pub fn into_append_result(
         self,
@@ -155,7 +160,9 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C: RaftTypeConfig> From<StreamAppendResult<C>> for AppendEntriesResponse<C> {
+impl<C> From<StreamAppendResult<C>> for AppendEntriesResponse<C>
+where C: RaftTypeConfig
+{
     fn from(r: StreamAppendResult<C>) -> Self {
         match r {
             Ok(_) => AppendEntriesResponse::Success,
@@ -196,27 +203,28 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
-    use crate::Vote;
-    use crate::engine::testing::UTConfig;
-    use crate::engine::testing::log_id;
-    use crate::raft::AppendEntriesResponse;
-    use crate::raft::AppendError;
-    use crate::raft::AppendResult;
+    use openraft::Vote;
+    use openraft::raft::AppendError;
+    use openraft::raft::AppendResult;
+    use openraft::testing::log_id;
+
+    use super::AppendEntriesResponse;
+    use crate::testing::TestConfig;
 
     #[test]
     fn into_append_result_takes_log_ids_from_the_sent_request() {
-        let prev = Some(log_id(1, 1, 3));
-        let last = Some(log_id(1, 1, 5));
-        let partial = Some(log_id(1, 1, 4));
+        let prev = Some(log_id::<TestConfig>(1, 1, 3));
+        let last = Some(log_id::<TestConfig>(1, 1, 5));
+        let partial = Some(log_id::<TestConfig>(1, 1, 4));
         let higher = Vote::new(2, 1);
 
-        let cases: Vec<(AppendEntriesResponse<UTConfig>, AppendResult<UTConfig>)> = vec![
+        let cases: Vec<(AppendEntriesResponse<TestConfig>, AppendResult<TestConfig>)> = vec![
             (AppendEntriesResponse::Success, Ok(last)),
             (AppendEntriesResponse::PartialSuccess(partial), Ok(partial)),
             (
                 AppendEntriesResponse::Conflict,
                 Err(AppendError::Conflict {
-                    log_id: log_id(1, 1, 3),
+                    log_id: log_id::<TestConfig>(1, 1, 3),
                     hint: None,
                 }),
             ),
