@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::followers::Followers;
 use crate::mode::Mode;
+use crate::write_burst::WriteBurst;
 
 /// What one measurement found.
 #[derive(Debug, Clone)]
@@ -55,6 +56,9 @@ pub(crate) struct Report {
     /// The `RaftServerMetrics` sends per second, made only when a field changed, or `None`
     /// without the `runtime-stats` feature.
     pub(crate) server_metrics_per_sec: Option<f64>,
+
+    /// The write burst before the settle period, or `None` without `--burst-writes`.
+    pub(crate) burst: Option<WriteBurst>,
 }
 
 impl fmt::Display for Report {
@@ -114,6 +118,23 @@ impl fmt::Display for Report {
                 Some(rate) => write!(f, "\t{name}={rate:.0}")?,
                 None => write!(f, "\t{name}=n/a")?,
             }
+        }
+
+        match &self.burst {
+            Some(burst) => write!(
+                f,
+                "\tburst_writes={}\tburst_retries={}\tburst_writes/s={:.0}\tburst_p50_us={}\tburst_p99_us={}\tburst_max_us={}",
+                burst.writes,
+                burst.retries,
+                burst.writes_per_sec(),
+                burst.percentile_micros(0.5),
+                burst.percentile_micros(0.99),
+                burst.max_micros
+            )?,
+            None => write!(
+                f,
+                "\tburst_writes=0\tburst_retries=n/a\tburst_writes/s=n/a\tburst_p50_us=n/a\tburst_p99_us=n/a\tburst_max_us=n/a"
+            )?,
         }
         Ok(())
     }

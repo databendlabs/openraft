@@ -15,10 +15,13 @@ openraft          = { path = "../../openraft" }
 openraft-memstore = { path = "../../stores/memstore" }
 openraft-multi    = { path = "../../multiraft" }
 
-clap    = { version = "4.2", features = ["derive"] }
-futures = { version = "0.3" }
-libc    = { version = "0.2" }
-tokio   = { version = "1.39", default-features = false, features = ["rt-multi-thread", "time"] }
+# The histogram that openraft uses. `openraft::stats` re-exports it only with the `runtime-stats`
+# feature, which a default build leaves off.
+base2histogram = { version = "0.2.3" }
+clap           = { version = "4.2", features = ["derive"] }
+futures        = { version = "0.3" }
+libc           = { version = "0.2" }
+tokio          = { version = "1.39", default-features = false, features = ["rt-multi-thread", "time"] }
 
 [features]
 # Count timer wakes and metrics publications, through `Raft::runtime_stats()`. Off by default, so
