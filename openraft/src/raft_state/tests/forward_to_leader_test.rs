@@ -10,6 +10,7 @@ use crate::RaftState;
 use crate::Vote;
 use crate::engine::testing::UTConfig;
 use crate::errors::ForwardToLeader;
+use crate::impls::BasicNode;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::LogIdOf;
@@ -76,4 +77,34 @@ fn test_forward_to_leader_has_leader() {
     };
 
     assert_eq!(ForwardToLeader::new(3, 6), rs.forward_to_leader());
+}
+
+/// `UTConfig` takes node metadata that has no order, such as `BasicNode`.
+#[test]
+fn test_forward_to_leader_has_leader_with_basic_node() {
+    let m123 = || {
+        let nodes = btreemap! {1=>BasicNode::new("a1"), 2=>BasicNode::new("a2"), 3=>BasicNode::new("a3")};
+        Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}], nodes).unwrap()
+    };
+
+    let rs = RaftState::<UTConfig<BasicNode>> {
+        vote: Leased::new(
+            UTConfig::<()>::now(),
+            Duration::from_millis(500),
+            Vote::new_committed(1, 3),
+        ),
+        membership_state: MembershipState::new(
+            Arc::new(StoredMembershipOf::<UTConfig<BasicNode>>::new(
+                Some(log_id(1, 0, 1)),
+                m123(),
+            )),
+            Arc::new(StoredMembershipOf::<UTConfig<BasicNode>>::new(
+                Some(log_id(1, 0, 1)),
+                m123(),
+            )),
+        ),
+        ..Default::default()
+    };
+
+    assert_eq!(ForwardToLeader::new(3, BasicNode::new("a3")), rs.forward_to_leader());
 }

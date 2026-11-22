@@ -133,7 +133,9 @@ where CLID: RaftCommittedLeaderId
 
             // A*C cases:
 
-            let mid_index = (first.index() + last.index()) / 2;
+            // `first.index() + last.index()` can overflow, while the distance between them cannot.
+            let distance = last.index() - first.index();
+            let mid_index = first.index() + distance / 2;
             let mid = sto.get_log_id(mid_index).await?;
 
             // Case AAC: boundary is between mid and last
@@ -177,24 +179,27 @@ where CLID: RaftCommittedLeaderId
 
     /// Extends a list of `log_id` that are proposed by the same leader.
     ///
-    /// The log ids in the input have to be continuous.
-    pub(crate) fn extend_from_same_leader<LID, I>(&mut self, new_ids: I)
+    /// The log ids in the input have to be continuous. The first and the last of them move into the
+    /// list, so it clones no leader id.
+    pub(crate) fn extend_from_same_leader<I>(&mut self, new_ids: I)
     where
-        LID: RaftLogId<CommittedLeaderId = CLID>,
-        I: IntoIterator<Item = LID>,
+        I: IntoIterator<Item = LogId<CLID>>,
         <I as IntoIterator>::IntoIter: DoubleEndedIterator,
     {
         let mut it = new_ids.into_iter();
-        if let Some(first) = it.next() {
-            self.append(first.to_log_id());
+        let Some(first) = it.next() else {
+            return;
+        };
 
-            if let Some(last) = it.next_back() {
-                debug_assert_eq!(last.committed_leader_id(), first.committed_leader_id());
+        // Compare the ends before they move into the list.
+        let last = it.next_back().filter(|last| {
+            debug_assert_eq!(last.committed_leader_id(), first.committed_leader_id());
+            *last != first
+        });
 
-                if last != first {
-                    self.append(last.to_log_id());
-                }
-            }
+        self.append(first);
+        if let Some(last) = last {
+            self.append(last);
         }
     }
 

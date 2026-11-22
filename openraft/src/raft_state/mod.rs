@@ -312,10 +312,9 @@ where C: RaftTypeConfig
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_log_ids_from_same_leader<LID, I>(&mut self, new_log_ids: I)
+    pub(crate) fn extend_log_ids_from_same_leader<I>(&mut self, new_log_ids: I)
     where
-        LID: RaftLogId<CommittedLeaderId = CommittedLeaderIdOf<C>>,
-        I: IntoIterator<Item = LID>,
+        I: IntoIterator<Item = LogIdOf<C>>,
         <I as IntoIterator>::IntoIter: DoubleEndedIterator,
     {
         self.log_ids.extend_from_same_leader(new_log_ids)

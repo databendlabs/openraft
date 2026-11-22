@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use openraft_rt_tokio::TokioRuntime;
 
 use crate::Node;
@@ -11,10 +13,28 @@ use crate::vote::RaftLeaderIdExt;
 
 /// Trivial Raft type config for Engine-related unit tests,
 /// with an optional custom node type `N` for the Node type.
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct UTConfig<N = ()> {
     _p: std::marker::PhantomData<N>,
+}
+
+// `RaftTypeConfig` requires `Ord`. A derive would also require `N: Ord`, which node types such as
+// `BasicNode` lack; comparing the marker needs only `N: Eq`.
+impl<N> PartialOrd for UTConfig<N>
+where N: Eq
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<N> Ord for UTConfig<N>
+where N: Eq
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self._p.cmp(&other._p)
+    }
 }
 
 impl<N> Default for UTConfig<N> {
@@ -34,7 +54,7 @@ impl<N> Clone for UTConfig<N> {
 impl<N> Copy for UTConfig<N> {}
 
 impl<N> RaftTypeConfig for UTConfig<N>
-where N: Node + Ord
+where N: Node
 {
     type D = u64;
     type R = ();
