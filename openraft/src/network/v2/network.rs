@@ -233,9 +233,15 @@ where C: RaftTypeConfig
     /// When the follower finished receiving the snapshot, it calls
     /// [`Raft::install_full_snapshot()`] with this vote.
     ///
+    /// Return `Ok` only with the response that [`Raft::install_full_snapshot()`] returned on the
+    /// target, and never for a snapshot that the target only staged to install at a later
+    /// restart: the leader takes `Ok` as proof that the target installed it. See
+    /// [`NetSnapshot::full_snapshot`] for what the leader records for each outcome.
+    ///
     /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission.
     ///
     /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
+    /// [`NetSnapshot::full_snapshot`]: crate::network::NetSnapshot::full_snapshot
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,

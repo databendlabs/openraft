@@ -1173,6 +1173,23 @@ where
     /// The application receives a snapshot from the leader, in chunks or a stream, and
     /// then rebuild a snapshot, then pass the snapshot to Raft to install.
     ///
+    /// It returns `Ok` with this node's vote:
+    ///
+    /// - once [`RaftStateMachine::install_snapshot()`] has returned `Ok` for this snapshot, or at
+    ///   once if this node's committed log already reaches the snapshot's last log id;
+    /// - at once, without installing the snapshot, if this node rejects `vote`. The returned vote
+    ///   is then greater than `vote`.
+    ///
+    /// Answer the leader's [`NetSnapshot::full_snapshot()`] with this response. Unless the vote in
+    /// it is greater, the leader takes it as proof that this node has every log through the
+    /// snapshot's last log id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fatal`] if this node stopped before it answered, for example because
+    /// [`RaftStateMachine::install_snapshot()`] returned an error. The snapshot is then not known
+    /// to be installed: answer the leader with an error, not with a successful response.
+    ///
     /// # Panics
     ///
     /// If `vote` is accepted, the input must be one a protocol-following cluster can produce,
