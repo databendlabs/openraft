@@ -11,6 +11,7 @@ use openraft::errors::RPCError;
 
 use crate::fixtures::Node;
 use crate::fixtures::RaftRouter;
+use crate::fixtures::WAIT_TIMEOUT;
 use crate::fixtures::ut_harness;
 
 /// Shutdown raft node and check the metrics change.
@@ -226,6 +227,47 @@ async fn with_state_machine_returns_stopped_when_func_panics() -> Result<()> {
             .with_state_machine::<_, ()>(|_sm| Box::pin(async move { panic!("injected worker panic") }))
             .await;
         assert_eq!(Fatal::Stopped, res.unwrap_err());
+    }
+
+    Ok(())
+}
+
+/// A write after the state-machine worker died stops RaftCore with `Fatal::Stopped`, not with a
+/// storage error: no storage operation failed.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn write_after_sm_worker_died_returns_stopped() -> Result<()> {
+    let config = Config {
+        enable_heartbeat: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let log_index = router.new_cluster([0], []).await?;
+    let raft = router.get_raft_handle(&0)?;
+
+    tracing::info!(
+        log_index,
+        "--- panic a state machine callback: the worker dies, RaftCore keeps running"
+    );
+    {
+        let res = raft
+            .with_state_machine::<_, ()>(|_sm| Box::pin(async move { panic!("injected worker panic") }))
+            .await;
+        assert_eq!(Fatal::Stopped, res.unwrap_err());
+        let server_state = raft.with_raft_state(|state| state.server_state).await?;
+        assert_eq!(ServerState::Leader, server_state);
+    }
+
+    tracing::info!(
+        log_index,
+        "--- a write needs the worker: RaftCore stops with Fatal::Stopped"
+    );
+    {
+        let err = raft.write_blank().await.unwrap_err();
+        assert_eq!(Some(Fatal::Stopped), err.into_fatal());
+
+        let metrics = raft.wait(Some(WAIT_TIMEOUT)).state(ServerState::Shutdown, "RaftCore stops").await?;
+        assert_eq!(Err(Fatal::Stopped), metrics.running_state);
     }
 
     Ok(())

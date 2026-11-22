@@ -210,9 +210,10 @@ where
     /// The [`RaftMembership`] implementation rejected the change for a reason of its own.
     ///
     /// [`RaftMembership`]: crate::membership::RaftMembership
+    #[since(version = "0.10.2", change = "exposes `E` as the error source")]
     #[since(version = "0.10.0")]
     #[error("user-defined membership error: {0}")]
-    UserDefined(E),
+    UserDefined(#[source] E),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
@@ -449,7 +450,14 @@ pub struct Timeout<C: RaftTypeConfig> {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ForwardReason {
-    /// The receiving node is not the leader.
+    /// The receiving node is not the leader, or not the leader that the request expected.
+    ///
+    /// A write whose [`WriteOption::with_leader()`] names another committed leader than the
+    /// current one gets this reason too, also from the current leader. Its hint names the current
+    /// leader, so it can be the receiving node itself, and this reason does not show that the
+    /// receiver is a follower. Check whether the expected leader still holds before retrying.
+    ///
+    /// [`WriteOption::with_leader()`]: crate::raft::WriteOption::with_leader
     #[default]
     NotLeader,
 
@@ -629,3 +637,45 @@ pub enum Infallible {}
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("no-forward")]
 pub enum NoForward {}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::fmt;
+
+    use anyerror::AnyError;
+
+    use super::ChangeMembershipError;
+    use super::ClientWriteError;
+    use super::RaftError;
+    use crate::RaftTypeConfig;
+    use crate::engine::testing::UTConfig;
+    use crate::type_config::alias::CommittedLeaderIdOf;
+
+    type C = UTConfig;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("edit rejected")]
+    struct EditRejected(#[source] fmt::Error);
+
+    /// A user-defined membership error is the source of the errors that wrap it, and its own
+    /// causes follow it in the chain.
+    #[test]
+    fn test_user_defined_membership_error_is_the_source() {
+        let user = AnyError::new(&EditRejected(fmt::Error));
+        let err = ChangeMembershipError::<CommittedLeaderIdOf<C>, u64, <C as RaftTypeConfig>::ErrorSource>::UserDefined(
+            user.clone(),
+        );
+        let write_err = ClientWriteError::<C>::ChangeMembershipError(err.clone());
+        let raft_err = RaftError::<C, ClientWriteError<C>>::APIError(write_err.clone());
+
+        let sources: [&dyn Error; 3] = [&err, &write_err, &raft_err];
+        for wrapper in sources {
+            let source = wrapper.source().and_then(|s| s.downcast_ref::<AnyError>());
+            assert_eq!(Some(&user), source, "the source of: {}", wrapper);
+
+            let cause = source.and_then(|s| s.source()).map(|s| s.to_string());
+            assert_eq!(Some(fmt::Error.to_string()), cause, "the cause of: {}", wrapper);
+        }
+    }
+}

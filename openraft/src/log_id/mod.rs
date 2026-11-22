@@ -12,14 +12,20 @@
 //! ## Overview
 //!
 //! Each log entry is uniquely identified by a [`LogId`] containing:
-//! - **Leader ID**: `(term, node_id)` of the leader that proposed the log
+//! - **Committed leader ID**: the `CLID` of the leader that proposed the log. What it holds depends
+//!   on the leader ID type: the committed ID of [`leader_id_std::LeaderId`] holds only the term,
+//!   and [`leader_id_adv::LeaderId`] holds the term and the node ID.
 //! - **Index**: Consecutive integer position in the log
 //!
 //! ## Log ID Ordering
 //!
 //! Log IDs are ordered by:
-//! 1. Leader ID (term, then node_id)
+//! 1. The committed leader ID, in the order its `CLID` type defines: by term for
+//!    [`leader_id_std::LeaderId`], and by term, then node ID, for [`leader_id_adv::LeaderId`].
 //! 2. Index
+//!
+//! [`leader_id_std::LeaderId`]: crate::impls::leader_id_std::LeaderId
+//! [`leader_id_adv::LeaderId`]: crate::impls::leader_id_adv::LeaderId
 //!
 //! This ordering ensures that logs from higher terms always supersede logs from lower terms,
 //! which is fundamental to Raft's consistency guarantees.

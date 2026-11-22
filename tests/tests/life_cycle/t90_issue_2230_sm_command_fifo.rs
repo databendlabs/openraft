@@ -1131,9 +1131,7 @@ async fn bounded_worker_error_stops_core() -> Result<()> {
             let error = StorageError::apply(failed_log_id, source);
             Err(Fatal::StorageError(error))
         };
-        let source = TypeConfig::err_from_string("cannot send to sm::Worker");
-        let error = StorageError::write_state_machine(source);
-        let send_error = Err(Fatal::StorageError(error));
+        let send_error = Err(Fatal::Stopped);
         let expected = [apply_error(log_index + 1), apply_error(log_index + 2), send_error];
         let expected_error = expected.contains(&metrics.running_state);
         assert!(expected_error, "unexpected running state: {:?}", metrics.running_state);

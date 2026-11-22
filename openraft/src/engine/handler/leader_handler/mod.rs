@@ -72,11 +72,27 @@ where
 
     /// Append new log entries by a leader.
     ///
-    /// Also Update effective membership if the payload contains
-    /// membership config.
+    /// A membership entry in `payloads` becomes the effective membership at once, and the entries
+    /// from it on commit by its write quorums alone. This method checks none of the conditions that
+    /// make that safe. A caller that appends a membership entry must ensure that:
     ///
-    /// If there is a membership config log entry, the caller has to guarantee the previous one is
-    /// committed.
+    /// - `payloads` holds at most one membership entry.
+    /// - The last membership log is committed.
+    /// - The proposed membership is valid, and a direct step from that committed membership to it
+    ///   is allowed: it is their joint membership, or a membership that
+    ///   [`RaftMembership::supports_direct_transition_to()`] accepts. See
+    ///   [`MembershipState::next_membership()`] and
+    ///   [`MembershipState::validate_append_membership()`].
+    /// - The blank log this leader appended when it was established is committed. A committed log
+    ///   of another leader, even one of the same term, does not count. See
+    ///   `RaftCore::ensure_leader_log_committed()`.
+    ///
+    /// `RaftCore::change_membership()` and `RaftCore::append_membership()` check them all. Entries
+    /// without membership need none of them, such as the blank log of a new leader.
+    ///
+    /// [`RaftMembership::supports_direct_transition_to()`]: crate::membership::RaftMembership::supports_direct_transition_to
+    /// [`MembershipState::next_membership()`]: crate::raft_state::MembershipState::next_membership
+    /// [`MembershipState::validate_append_membership()`]: crate::raft_state::MembershipState::validate_append_membership
     #[tracing::instrument(level = "debug", skip(self, payloads))]
     pub(crate) fn leader_append_entries<I>(&mut self, payloads: I) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>>
     where I: IntoIterator<Item = PayloadOf<C>> + AsRef<[PayloadOf<C>]> {
@@ -116,9 +132,10 @@ where
 
         let mut rh = self.replication_handler();
 
-        // Since this entry, the condition to commit has been changed.
-        // But we only need to commit in the new membership config.
-        // Because any quorum in the new one intersects with one in the previous membership config.
+        // From this entry on, entries commit by the write quorums of the new membership alone. The
+        // caller checked the step from the committed membership: each read quorum of either side
+        // intersects each write quorum of the other. So a leader that either side elects holds
+        // every entry that the other side committed.
         if let Some((log_id, m)) = membership_entry {
             rh.append_membership(&log_id, &m);
         }

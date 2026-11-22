@@ -173,12 +173,9 @@ where C: RaftTypeConfig
                 }
             }
             ExternalCommand::AllowNextRevert { to, allow, .. } => {
-                write!(
-                    f,
-                    "{}-on-next-log-revert: to {}",
-                    if *allow { "AllowReset" } else { "Panic" },
-                    to
-                )
+                // Print the requested flag only: whether a later revert panics also depends on
+                // `Config::allow_log_reversion`, which permits every revert when it is enabled.
+                write!(f, "AllowNextRevert: to {}, allow: {}", to, allow)
             }
             ExternalCommand::SetMetricsRecorder { .. } => {
                 write!(f, "SetMetricsRecorder")
@@ -197,6 +194,23 @@ where C: RaftTypeConfig
             ExternalCommand::Tick => {
                 write!(f, "Tick")
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::raft_msg::external_command::ExternalCommand;
+    use crate::engine::testing::UTConfig;
+    use crate::type_config::TypeConfigExt;
+
+    /// The display names the requested flag, and predicts nothing about the next revert.
+    #[test]
+    fn test_display_allow_next_revert() {
+        for allow in [true, false] {
+            let (tx, _rx) = UTConfig::<()>::oneshot();
+            let cmd = ExternalCommand::<UTConfig>::AllowNextRevert { to: 1, allow, tx };
+            assert_eq!(format!("AllowNextRevert: to 1, allow: {allow}"), cmd.to_string());
         }
     }
 }

@@ -1399,7 +1399,10 @@ where
     /// Send responds whose waiting conditions are satisfied.
     ///
     /// Responds are queued when their waiting conditions (log flushed, applied, snapshot built)
-    /// are not yet met. This method drains all responds whose conditions are now satisfied.
+    /// are not yet met. This method sends the satisfied responds at the front of each queue; see
+    /// [`PendingResponds::drain_satisfied()`].
+    ///
+    /// [`PendingResponds::drain_satisfied()`]: crate::engine::pending_responds::PendingResponds::drain_satisfied
     pub(crate) fn send_satisfied_responds(&mut self) {
         let io_state = self.engine.state.io_state();
 
@@ -2916,10 +2919,12 @@ where
                 Select3::First(Ok(())) => {}
                 Select3::First(Err(_)) | Select3::Third(None) => return Err(Fatal::Stopped),
                 Select3::Second(Ok(())) => return Ok(()),
+                // The worker dropped its command receiver: it stopped without an error that
+                // `RaftCore` received, such as after a panic. No storage operation failed, so stop
+                // without a cause, as the API calls that find the worker gone do.
                 Select3::Second(Err(_)) => {
-                    let source = C::err_from_string("cannot send to sm::Worker");
-                    let error = StorageError::write_state_machine(source);
-                    return Err(Fatal::StorageError(error));
+                    tracing::error!("the state machine worker stopped, RaftCore stops");
+                    return Err(Fatal::Stopped);
                 }
                 Select3::Third(Some(notify)) => self.handle_notification(notify)?,
             }

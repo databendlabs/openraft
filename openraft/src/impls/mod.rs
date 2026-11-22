@@ -19,7 +19,8 @@
 //!
 //! ## Runtime
 //!
-//! - [`TokioRuntime`] - Tokio-based async runtime (feature: `tokio-rt`)
+//! - `openraft_rt_tokio::TokioRuntime` - Tokio-based async runtime. This module re-exports it as
+//!   the deprecated `TokioRuntime` only with the `tokio-rt` feature.
 //!
 //! ## Leader ID Modes
 //!

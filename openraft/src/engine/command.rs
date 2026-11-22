@@ -274,7 +274,7 @@ where
             Command::SendVote { vote_req } => write!(f, "SendVote: {}", vote_req),
             Command::SendPreVote { vote_req } => write!(f, "SendPreVote: {}", vote_req),
             Command::PurgeLog { upto } => write!(f, "PurgeLog: upto: {}", upto),
-            Command::TruncateLog { after } => write!(f, "TruncateLog: since: {}", after.display()),
+            Command::TruncateLog { after } => write!(f, "TruncateLog: after: {}", after.display()),
             Command::StateMachine { command } => write!(f, "StateMachine: command: {}", command),
             Command::Respond { when, resp } => write!(f, "Respond: when: {}, resp: {}", when.display(), resp),
         }
@@ -617,5 +617,27 @@ where
 
     pub(crate) fn send(self) {
         self.tx.send(self.value).ok();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::engine::Command;
+    use crate::engine::testing::UTConfig;
+    use crate::engine::testing::log_id;
+
+    /// `TruncateLog` names its boundary `after`: the log at it is kept, and the logs after it are
+    /// deleted. `Debug` shows the same text as `Display`.
+    #[test]
+    fn test_truncate_log_display() {
+        let cmd = Command::<UTConfig>::TruncateLog {
+            after: Some(log_id(2, 1, 3)),
+        };
+        assert_eq!("TruncateLog: after: T2-N1.3", cmd.to_string());
+        assert_eq!(cmd.to_string(), format!("{:?}", cmd));
+
+        let cmd = Command::<UTConfig>::TruncateLog { after: None };
+        assert_eq!("TruncateLog: after: None", cmd.to_string());
+        assert_eq!(cmd.to_string(), format!("{:?}", cmd));
     }
 }

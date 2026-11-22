@@ -7,7 +7,7 @@ use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::SnapshotSignatureOf;
 
-/// Convert error to StorageError::IO();
+/// Convert the I/O error of a storage result into a [`StorageError`] that says what failed.
 pub trait ToStorageResult<C, T>
 where C: RaftTypeConfig
 {
@@ -121,9 +121,15 @@ where C: RaftTypeConfig
 
 /// Error that occurs when operating the store.
 ///
-/// It indicates a data crash.
-/// An application returning this error will shut down the Openraft node immediately to prevent
-/// further damage.
+/// It reports a storage operation that failed, with its subject, its verb and the source error.
+/// It does not mean that the stored data is corrupted.
+///
+/// When the running node gets this error from its storage, it stops with
+/// [`Fatal::StorageError`]. Creating or returning the value does not stop anything by itself: an
+/// error that a helper or an adapter returns outside the running node, such as the legacy chunked
+/// snapshot receiver, is for its caller to handle.
+///
+/// [`Fatal::StorageError`]: crate::errors::Fatal::StorageError
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct StorageError<C>

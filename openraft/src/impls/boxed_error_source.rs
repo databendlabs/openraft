@@ -46,15 +46,47 @@ impl ErrorSource for BoxedErrorSource {
         }
     }
 
+    /// Whether the wrapped error stores a backtrace.
     fn has_backtrace(&self) -> bool {
-        anyerror::backtrace_str().is_some()
+        self.inner.backtrace().is_some()
     }
 
+    /// Write the backtrace stored in the wrapped error.
     fn fmt_backtrace(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(bt) = anyerror::backtrace_str() {
+        if let Some(bt) = self.inner.backtrace() {
             write!(f, "{}", bt)
         } else {
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BoxedErrorSource;
+    use crate::errors::BacktraceDisplay;
+    use crate::errors::ErrorSource;
+
+    /// The backtrace is the one stored in the wrapped error, also when it came over the wire.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_reports_the_stored_backtrace_of_the_wrapped_error() {
+        let json = serde_json::json!({"inner": {
+            "typ": null, "msg": "read", "source": null, "context": [], "backtrace": "stored-marker"
+        }});
+        let err: BoxedErrorSource = serde_json::from_value(json).unwrap();
+
+        assert!(err.has_backtrace());
+        assert_eq!("stored-marker", BacktraceDisplay(&err).to_string());
+    }
+
+    /// A wrapped error without a stored backtrace reports none, also when backtrace capture is
+    /// enabled.
+    #[test]
+    fn test_reports_no_backtrace_when_the_wrapped_error_has_none() {
+        let err = BoxedErrorSource::from_string("read");
+
+        assert!(!err.has_backtrace());
+        assert_eq!("", BacktraceDisplay(&err).to_string());
     }
 }

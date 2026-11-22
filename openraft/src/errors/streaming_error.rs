@@ -7,9 +7,21 @@ use crate::errors::ReplicationError;
 use crate::errors::Timeout;
 use crate::errors::Unreachable;
 
-/// Error occurred when streaming local data to a remote raft node.
+/// Error returned when streaming a snapshot to a remote Raft node, such as by
+/// [`NetSnapshot::full_snapshot`].
 ///
-/// Thus, this error includes storage error, network error, and remote error.
+/// - `Closed`: the transfer stopped because the `cancel` future given to the transport resolved.
+/// - `StorageError`: reading the local snapshot failed. It is a failure of this node's storage, and
+///   it stops this node.
+/// - `Timeout`, `Unreachable`, and `Network`: transport failures, such as a timeout or a lost
+///   connection.
+///
+/// There is no variant for an error returned by the remote node: this error converts only from an
+/// [`RPCError`] whose remote error type is the default `Infallible`. A transport reports a failure
+/// of the remote node, such as a target that could not install the snapshot, as one of the
+/// transport failures, never as a `StorageError`.
+///
+/// [`NetSnapshot::full_snapshot`]: crate::network::NetSnapshot::full_snapshot
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(bound = ""))]
 pub enum StreamingError<C: RaftTypeConfig> {

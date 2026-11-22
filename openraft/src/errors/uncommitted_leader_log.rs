@@ -4,13 +4,13 @@ use openraft_macros::since;
 use crate::LogId;
 use crate::vote::RaftCommittedLeaderId;
 
-/// The leader has not yet committed a log entry proposed in its own term.
+/// The cluster has not yet committed the blank log of the current leader.
 ///
-/// A membership change requires the leader to commit a new log entry of its current term before
-/// it appends a configuration entry. Openraft proposes that entry when the leader is
-/// established and records it as the leader's blank (noop) log id. Until a quorum stores it, a
-/// configuration entry from an earlier term can still be committed, and two configurations whose
-/// quorums do not intersect could both become committed.
+/// A membership change requires the cluster to commit this leader's own blank (noop) log, which
+/// Openraft proposes when the leader is established, before the leader appends a configuration
+/// entry. A committed log of another leader of the same term does not count. Until a quorum stores
+/// the blank log, a configuration entry from an earlier leader can still be committed, and two
+/// configurations whose quorums do not intersect could both become committed.
 ///
 /// A valid leader lease does not imply this condition. The lease only proves that a quorum still
 /// sees this leader; it does not prove that a quorum stored the leader's blank log.
@@ -33,7 +33,7 @@ use crate::vote::RaftCommittedLeaderId;
 /// 5. `a` replicates its own index 6 over `c` and `d`, destroying the committed `[{a,b,c,d,v}]`.
 ///
 /// Quorum `{a,b,u}` and quorum `{c,d,v}` share no node, so neither election blocked the other.
-/// Committing a term-1 log before step 1 is what rules this run out.
+/// Committing the blank log of `a` before step 1 is what rules this run out.
 ///
 /// # References
 ///
@@ -46,12 +46,13 @@ use crate::vote::RaftCommittedLeaderId;
 /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
 /// [ongaro-bug]: https://gist.github.com/ongardie/a11f32b70581e20d6bcd
 /// [pitfalls]: https://blog.openacid.com/distributed/raft-bug/
+#[since(version = "0.10.2", change = "the message names the leader's own blank log")]
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error(
-    "membership change is blocked: the leader must first commit a new log of its current term, \
-     but its blank log {leader_log_id} is not committed; cluster committed: {}",
+    "membership change is blocked: the cluster must first commit the leader's own blank log \
+     {leader_log_id}; cluster committed: {}",
     committed.display()
 )]
 pub struct UncommittedLeaderLog<CLID>

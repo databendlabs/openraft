@@ -5,7 +5,9 @@ use crate::errors::ConflictingLogId;
 use crate::errors::RejectVote;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
+pub(crate) enum RejectAppendEntries<C>
+where C: RaftTypeConfig
+{
     #[error("reject AppendEntries by a greater vote: {0}")]
     RejectVote(RejectVote<C>),
 
@@ -13,14 +15,18 @@ pub(crate) enum RejectAppendEntries<C: RaftTypeConfig> {
     ConflictingLogId(ConflictingLogId<C>),
 }
 
-impl<C: RaftTypeConfig> From<RejectVote<C>> for RejectAppendEntries<C> {
+impl<C> From<RejectVote<C>> for RejectAppendEntries<C>
+where C: RaftTypeConfig
+{
     fn from(r: RejectVote<C>) -> Self {
         RejectAppendEntries::RejectVote(r)
     }
 }
 
 /// Peel off `RejectVote`, leaving `ConflictingLogId` as the residual.
-impl<C: RaftTypeConfig> Peel for RejectAppendEntries<C> {
+impl<C> Peel for RejectAppendEntries<C>
+where C: RaftTypeConfig
+{
     type Peeled = RejectVote<C>;
     type Residual = ConflictingLogId<C>;
 

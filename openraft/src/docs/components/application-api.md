@@ -95,7 +95,7 @@ decides the retry:
 
 | Error | What happened | What the client does |
 |---|---|---|
-| `ForwardToLeader`, `NotLeader` | The node does not lead. `leader_id` names the leader it knows, if any. | Send the write to `leader_id`, or find the leader first when it is `None`. |
+| `ForwardToLeader`, `NotLeader` | The node does not lead, or it is not the leader that [`WriteOption::with_leader()`] expected. `leader_id` names the leader it knows, if any, which is the node itself when it leads. | For a write with an expected leader, check whether that leader still holds first. Otherwise send the write to `leader_id`, or find the leader first when it is `None`. |
 | `ForwardToLeader`, `LeadershipTransfer` | The node is handing leadership to `leader_id`, which may not lead yet. | Send the write to `leader_id`, and expect another `NotLeader` until the transfer completes. |
 | `ForwardToLeader`, `LeaseExpired` | The node leads but no quorum has acknowledged it recently. `leader_id` is `None`. | Retry on the same node after a short delay; it is not a redirect. |
 | `LogEntryDiscarded` | The node accepted the write, then dropped its entry when it followed another leader. The entry may still commit through that leader. | Retry only a write that the application can deduplicate or that is idempotent. |
@@ -149,6 +149,7 @@ isolated former leader that reports itself ready while it refuses a linearizable
 [raft-kv-memstore-dedup example]: https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore-dedup
 [`ForwardToLeader`]: `crate::errors::ForwardToLeader`
 [`ForwardReason`]: `crate::errors::ForwardReason`
+[`WriteOption::with_leader()`]: `crate::raft::WriteOption::with_leader`
 [`Precondition`]: `crate::raft::Precondition`
 [`ReadPolicy::ReadIndex`]: `crate::raft::ReadPolicy::ReadIndex`
 [`ReadPolicy::LeaseRead`]: `crate::raft::ReadPolicy::LeaseRead`

@@ -7,18 +7,22 @@ use crate::RaftTypeConfig;
 use crate::type_config::alias::LeaderIdOf;
 use crate::type_config::alias::VoteOf;
 
-/// Error indicating that the established leader has changed.
+/// Error indicating that the stored vote does not show the expected established leader.
 ///
-/// This error occurs when expecting a specific established leader but finding
-/// that the cluster has moved to a different leader or candidate (indicated by a newer vote).
+/// [`RaftLogReader::leader_bounded_stream()`] returns it when no vote is stored, when the stored
+/// vote is of another leader or is not committed, or when the vote changed while the entries were
+/// read. It reports only what the reader found: `current_vote` need not be greater than the vote
+/// of `expected_leader`, and it does not tell which leader the cluster has now.
+///
+/// [`RaftLogReader::leader_bounded_stream()`]: crate::RaftLogReader::leader_bounded_stream
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub struct LeaderChanged<C>
 where C: RaftTypeConfig
 {
-    /// The expected established leader ID.
+    /// The leader that the caller expected the stored vote to show, committed.
     pub expected_leader: LeaderIdOf<C>,
 
-    /// The current vote, indicating a new established leader or a candidate.
+    /// The vote the reader found, or `None` if no vote is stored.
     pub current_vote: Option<VoteOf<C>>,
 }
 

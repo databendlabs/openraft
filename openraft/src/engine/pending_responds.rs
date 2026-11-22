@@ -29,10 +29,18 @@ where C: RaftTypeConfig
 impl<C> PendingResponds<C>
 where C: RaftTypeConfig
 {
-    /// Drain all satisfied responds based on the current IO state.
+    /// Drain the satisfied responds at the front of each queue, based on the current IO state.
     ///
-    /// Returns an iterator that yields all responds whose conditions are met by the provided
-    /// IO state. The responds are removed from their respective queues as they are yielded.
+    /// Returns an iterator that yields, queue by queue, the responds at the front whose conditions
+    /// the IO state satisfies, and removes each one as it yields it. A queue keeps its responds in
+    /// the order their requests arrived, and its drain stops at the first respond that is not
+    /// satisfied: a satisfied respond behind it waits until every respond before it is satisfied.
+    ///
+    /// Steady-state replication queues conditions in increasing order: the leader sends appends in
+    /// log order, and a heartbeat carries a matching log ID that the follower has already flushed,
+    /// so its respond is sent without being queued. A respond waits behind another one only in a
+    /// transition, for example the retry of an append whose RPC timed out, which can end before an
+    /// append queued before it; its respond is sent once that append is flushed.
     pub(crate) fn drain_satisfied<'a>(&'a mut self, io_state: &'a IOState<C>) -> DrainSatisfied<'a, C> {
         DrainSatisfied {
             pending_responds: self,
@@ -63,8 +71,9 @@ where
 
 /// Iterator that drains satisfied responds from pending queues.
 ///
-/// Iterates through all phases (LogIO, LogFlush, Apply, Snapshot) and yields responds
-/// whose waiting conditions are satisfied by the current IO state.
+/// Iterates through all phases (LogIO, LogFlush, Apply, Snapshot) and yields the responds at the
+/// front of each queue whose waiting conditions are satisfied by the current IO state; see
+/// [`PendingResponds::drain_satisfied()`].
 pub(crate) struct DrainSatisfied<'a, C>
 where C: RaftTypeConfig
 {

@@ -21,8 +21,14 @@ where C: RaftTypeConfig
         Self { config, state }
     }
 
-    /// Re-calculate the server-state if it changed, update the `server_state` field and dispatch
-    /// commands to inform a runtime.
+    /// Recalculate the server state from the vote and the membership, and store it in the
+    /// `server_state` field if it changed.
+    ///
+    /// A change into or out of `Leader` is logged. This method pushes no command: a caller that
+    /// changes the role pushes the commands of the transition itself, as
+    /// [`VoteHandler::become_leader()`] does. `RaftCore` reports the new state in its metrics.
+    ///
+    /// [`VoteHandler::become_leader()`]: crate::engine::handler::vote_handler::VoteHandler::become_leader
     pub(crate) fn update_server_state_if_changed(&mut self) {
         let server_state = self.state.calc_server_state(&self.config.id);
 

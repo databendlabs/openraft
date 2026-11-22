@@ -1,4 +1,4 @@
-//! This mod handles state machine operations
+//! Snapshot build admission and the snapshot metadata of the engine state.
 
 use display_more::DisplayOptionExt;
 
@@ -16,7 +16,7 @@ mod trigger_snapshot_test;
 #[cfg(test)]
 mod update_snapshot_test;
 
-/// Handle raft vote related operations
+/// Starts snapshot builds, and records the metadata of the latest snapshot.
 pub(crate) struct SnapshotHandler<'st, 'out, C, SM = ()>
 where
     C: RaftTypeConfig,
@@ -35,7 +35,10 @@ where
         Self { state, output }
     }
 
-    /// Trigger building a snapshot if there is no pending building job.
+    /// Queue a snapshot build, unless one is outstanding.
+    ///
+    /// Returns `true` if it queued a build, and `false` while an earlier build has not reported
+    /// back.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn trigger_snapshot(&mut self) -> bool {
         tracing::debug!("{}", func_name!());
@@ -53,10 +56,16 @@ where
         true
     }
 
-    /// Update engine state when a new snapshot is built or installed.
+    /// Replace the recorded snapshot metadata with `meta`, if `meta` has a greater last log id.
     ///
-    /// Engine records only the metadata of a snapshot. Snapshot data is stored by
-    /// [`RaftStateMachine`] implementation.
+    /// Returns `true` if it replaced the metadata. With an equal or smaller last log id it leaves
+    /// the metadata unchanged and returns `false`.
+    ///
+    /// The engine records only the metadata; the [`RaftStateMachine`] stores the snapshot data. A
+    /// snapshot this node builds is recorded when the build completes. A snapshot from the Leader
+    /// is recorded before its installation is queued, so the metadata can describe a snapshot that
+    /// is not installed yet: the installation is done once the flushed snapshot progress reaches
+    /// its last log id.
     ///
     /// [`RaftStateMachine`]: crate::storage::RaftStateMachine
     #[tracing::instrument(level = "debug", skip_all)]

@@ -82,12 +82,14 @@ impl ErrorSource for AnyError {
         AnyError::error(msg)
     }
 
+    /// Whether this error stores a backtrace.
     fn has_backtrace(&self) -> bool {
-        anyerror::backtrace_str().is_some()
+        self.backtrace().is_some()
     }
 
+    /// Write the backtrace stored in this error, which was captured when the error was created.
     fn fmt_backtrace(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(bt) = anyerror::backtrace_str() {
+        if let Some(bt) = self.backtrace() {
             write!(f, "{}", bt)
         } else {
             Ok(())
@@ -105,5 +107,36 @@ impl<E: ErrorSource> fmt::Display for BacktraceDisplay<'_, E> {
         } else {
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyerror::AnyError;
+
+    use super::BacktraceDisplay;
+    use super::ErrorSource;
+
+    /// The backtrace is the one stored in the error, also when it came over the wire.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_any_error_reports_its_stored_backtrace() {
+        let json = serde_json::json!({
+            "typ": null, "msg": "read", "source": null, "context": [], "backtrace": "stored-marker"
+        });
+        let err: AnyError = serde_json::from_value(json).unwrap();
+
+        assert!(err.has_backtrace());
+        assert_eq!("stored-marker", BacktraceDisplay(&err).to_string());
+    }
+
+    /// An error without a stored backtrace reports none, also when backtrace capture is enabled.
+    #[test]
+    fn test_any_error_without_a_backtrace_reports_none() {
+        let err = AnyError::error("read");
+        assert_eq!(None, err.backtrace());
+
+        assert!(!err.has_backtrace());
+        assert_eq!("", BacktraceDisplay(&err).to_string());
     }
 }
