@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::FutureExt;
+use futures_util::Stream;
 use futures_util::StreamExt;
 
 use crate::Config;
@@ -24,6 +25,7 @@ use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CancelHandleOf;
 use crate::type_config::alias::CommittedVoteOf;
+use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::MpscSenderOf;
 use crate::type_config::alias::WatchReceiverOf;
 use crate::type_config::async_runtime::mpsc::MpscSender;
@@ -95,7 +97,10 @@ where
                 return Ok(());
             }
 
-            let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_watched().clone();
+            // Mark the event read here as seen: an event sent after `changed()` returned is read
+            // here, and would otherwise wake the next `changed()` and be sent a second time. The
+            // guard is dropped at the end of this statement, before any await.
+            let heartbeat: Option<HeartbeatEvent<C>> = self.rx.borrow_and_update().clone();
 
             // None is the initial value of the WatchReceiver, ignore it.
             let Some(heartbeat) = heartbeat else {
@@ -119,36 +124,76 @@ where
 
             let input_stream = Box::pin(futures_util::stream::once(async { payload }));
 
-            let res = C::timeout(timeout, async {
-                let mut output = self.network.stream_append(input_stream, option).await?.fuse();
-                let res = output.next().await.transpose();
-                // Poll output until it returns `None`, which should be the very next value, to
-                // allow the network layer to close the connection cleanly. Save the first extra
-                // response for logging.
-                let extra = output.next().await;
-                output.for_each(|_| async {}).await;
-                if let Some(extra) = extra {
-                    tracing::warn!("{} unexpected extra heartbeat response: {:?}", self, extra);
-                }
-                res
-            })
-            .await;
+            let reply = self.send_heartbeat(input_stream, option, C::now() + timeout).await;
 
-            tracing::debug!("{} sent a heartbeat: {}, result: {:?}", self, heartbeat, res);
+            tracing::debug!("{} sent a heartbeat: {}, reply: {:?}", self, heartbeat, reply);
 
-            match res {
-                Ok(Ok(Some(stream_result))) => {
-                    self.handle_stream_result(stream_result, &heartbeat).await?;
+            if let Some(reply) = reply {
+                self.handle_stream_result(reply, &heartbeat).await?;
+            }
+        }
+    }
+
+    /// Sends one heartbeat and reads the responses that arrive before `deadline`.
+    ///
+    /// A transport may return more than one response, so all of them are read, and the one that
+    /// matters most is returned: a higher vote, then a conflict, then a success. The stream is
+    /// polled to its end, which lets the network close the connection cleanly. Each wait is
+    /// bounded by `deadline` on its own, and a response is kept once it is received, so a stream
+    /// that is slow to end cannot discard it. Returns `None`, after logging why, when no response
+    /// arrived.
+    async fn send_heartbeat<S>(
+        &mut self,
+        input: S,
+        option: RPCOption,
+        deadline: InstantOf<C>,
+    ) -> Option<AppendResult<C>>
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+    {
+        // The response stream borrows the network, so the messages below name the fields that
+        // `Display` would print.
+        let (id, target) = (&self.id, &self.target);
+
+        let opened = C::timeout_at(deadline, self.network.stream_append(input, option)).await;
+        let mut output = match opened {
+            Ok(Ok(output)) => output,
+            Ok(Err(error)) => {
+                tracing::warn!("id={} target={} failed to send a heartbeat: {}", id, target, error);
+                return None;
+            }
+            Err(_elapsed) => {
+                tracing::warn!("id={} target={} timed out sending a heartbeat", id, target);
+                return None;
+            }
+        };
+
+        let mut reply: Option<AppendResult<C>> = None;
+        loop {
+            let next = C::timeout_at(deadline, output.next()).await;
+            let result = match next {
+                Ok(Some(Ok(result))) => result,
+                Ok(Some(Err(error))) => {
+                    tracing::warn!("id={} target={} heartbeat response failed: {}", id, target, error);
+                    break;
                 }
-                Ok(Ok(None)) => {
-                    // Stream returned no response - treat as network error
-                    tracing::warn!("{} heartbeat stream returned no response", self);
+                Ok(None) => {
+                    if reply.is_none() {
+                        tracing::warn!("id={} target={} heartbeat stream ended without a response", id, target);
+                    }
+                    break;
                 }
-                _ => {
-                    tracing::warn!("{} failed to send a heartbeat: {:?}", self, res);
+                Err(_elapsed) => {
+                    tracing::warn!("id={} target={} heartbeat responses did not end in time", id, target);
+                    break;
                 }
             };
+
+            if reply.as_ref().is_none_or(|kept| importance(&result) > importance(kept)) {
+                reply = Some(result);
+            }
         }
+        reply
     }
 
     /// Handle the stream append result, send appropriate notifications.
@@ -227,218 +272,16 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-    use std::task::Poll;
-    use std::time::Duration;
-
-    use futures_util::FutureExt;
-    use futures_util::Stream;
-    use futures_util::StreamExt;
-
-    use super::HeartbeatWorker;
-    use crate::Config;
-    use crate::OptionalSend;
-    use crate::async_runtime::MpscReceiver;
-    use crate::async_runtime::MpscSender;
-    use crate::async_runtime::watch::WatchSender;
-    use crate::base::BoxFuture;
-    use crate::base::BoxStream;
-    use crate::core::heartbeat::event::HeartbeatEvent;
-    use crate::core::notification::Notification;
-    use crate::engine::testing::UTConfig;
-    use crate::engine::testing::UTLeaderId;
-    use crate::error::RPCError;
-    use crate::impls::Vote;
-    use crate::network::NetStreamAppend;
-    use crate::network::RPCOption;
-    use crate::progress::stream_id::StreamId;
-    use crate::proposer::SendStamp;
-    use crate::raft::AppendEntriesRequest;
-    use crate::raft::AppendResult;
-    use crate::type_config::TypeConfigExt;
-    use crate::type_config::alias::MpscSenderOf;
-    use crate::type_config::alias::WatchSenderOf;
-    use crate::vote::raft_vote::RaftVoteExt;
-
-    type C = UTConfig;
-
-    const TEST_TIMEOUT: Duration = Duration::from_secs(1);
-    const BLOCKED_HEARTBEAT_MS: u64 = 3_600_000;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum BlockAt {
-        Idle,
-        Setup,
-        Response,
-        Notification,
-    }
-
-    struct TestNetwork {
-        block_at: BlockAt,
-        reached: Arc<AtomicBool>,
-        dropped: Arc<AtomicBool>,
-    }
-
-    impl Drop for TestNetwork {
-        fn drop(&mut self) {
-            self.dropped.store(true, Ordering::Relaxed);
-        }
-    }
-
-    impl NetStreamAppend<C> for TestNetwork {
-        fn stream_append<'s, S>(
-            &'s mut self,
-            mut input: S,
-            _option: RPCOption,
-        ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
-        where
-            S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
-        {
-            if self.block_at == BlockAt::Setup {
-                self.reached.store(true, Ordering::Relaxed);
-                return Box::pin(std::future::pending());
-            }
-
-            let block_at = self.block_at;
-            let reached = self.reached.clone();
-            let output = futures_util::stream::poll_fn(move |cx| {
-                if block_at == BlockAt::Response {
-                    reached.store(true, Ordering::Relaxed);
-                    return Poll::Pending;
-                }
-                match input.poll_next_unpin(cx) {
-                    Poll::Pending => Poll::Pending,
-                    Poll::Ready(Some(_request)) => Poll::Ready(Some(Ok(Ok(None)))),
-                    Poll::Ready(None) => {
-                        reached.store(true, Ordering::Relaxed);
-                        Poll::Ready(None)
-                    }
-                }
-            });
-            let output: BoxStream<'s, _> = Box::pin(output);
-            Box::pin(async move { Ok(output) })
-        }
-    }
-
-    struct Fixture {
-        worker: HeartbeatWorker<C, TestNetwork>,
-        event_tx: WatchSenderOf<C, Option<HeartbeatEvent<C>>>,
-        reached: Arc<AtomicBool>,
-        dropped: Arc<AtomicBool>,
-    }
-
-    impl Fixture {
-        fn new(block_at: BlockAt, tx_notification: MpscSenderOf<C, Notification<C>>) -> Self {
-            let reached = Arc::new(AtomicBool::new(false));
-            let dropped = Arc::new(AtomicBool::new(false));
-            let (event_tx, rx) = C::watch_channel(None);
-            let vote = Vote::<UTLeaderId>::new(1, 1);
-            let leader_vote = vote.to_committed();
-            let network = TestNetwork {
-                block_at,
-                reached: reached.clone(),
-                dropped: dropped.clone(),
-            };
-            let config = Config {
-                heartbeat_interval: BLOCKED_HEARTBEAT_MS,
-                ..Config::default()
-            };
-            Self {
-                worker: HeartbeatWorker {
-                    id: 1,
-                    leader_vote,
-                    stream_id: StreamId::new(1),
-                    rx,
-                    network,
-                    target: 2,
-                    node: (),
-                    config: Arc::new(config),
-                    tx_notification,
-                },
-                event_tx,
-                reached,
-                dropped,
-            }
-        }
-    }
-
-    #[test]
-    fn test_heartbeat_polls_response_stream_to_end() {
-        C::run(async {
-            let (tx_notification, mut rx_notification) = C::mpsc(1);
-            let fixture = Fixture::new(BlockAt::Notification, tx_notification);
-            let heartbeat = HeartbeatEvent {
-                time: SendStamp::new(C::now(), 1),
-                matching: None,
-                cluster_committed: None,
-            };
-            fixture.event_tx.send(Some(heartbeat)).unwrap();
-            let (_cancel, future) = fixture.worker.run();
-            let join = C::spawn(future);
-            let notification = C::timeout(TEST_TIMEOUT, rx_notification.recv()).await.unwrap();
-            let progress = matches!(notification, Some(Notification::HeartbeatProgress { .. }));
-            assert!(progress);
-            let drained = fixture.reached.load(Ordering::Relaxed);
-            assert!(drained, "the response stream must drain before progress is reported");
-            drop(fixture.event_tx);
-            C::timeout(TEST_TIMEOUT, join).await.unwrap().unwrap();
-        });
-    }
-
-    #[test]
-    fn cancellation_interrupts_every_worker_wait() {
-        C::run(async {
-            for block_at in [BlockAt::Idle, BlockAt::Setup, BlockAt::Response, BlockAt::Notification] {
-                tracing::info!(?block_at, "cancel a heartbeat worker while its current wait is blocked");
-                let (tx_notification, mut rx_notification) = C::mpsc(1);
-                tx_notification.send(Notification::Tick { i: 1 }).await.unwrap();
-                let fixture = Fixture::new(block_at, tx_notification);
-                if block_at != BlockAt::Idle {
-                    let heartbeat = HeartbeatEvent {
-                        time: SendStamp::new(C::now(), 1),
-                        matching: None,
-                        cluster_committed: None,
-                    };
-                    fixture.event_tx.send(Some(heartbeat)).unwrap();
-                }
-
-                let (cancel, future) = fixture.worker.run();
-                let mut future = std::pin::pin!(future);
-                let pending = future.as_mut().now_or_never();
-                assert_eq!(None, pending, "worker must block at {block_at:?}");
-                let reached = fixture.reached.load(Ordering::Relaxed);
-                let expected_reached = block_at != BlockAt::Idle;
-                assert_eq!(expected_reached, reached, "worker must reach {block_at:?}");
-
-                drop(cancel);
-                C::timeout(TEST_TIMEOUT, future).await.unwrap();
-                let dropped = fixture.dropped.load(Ordering::Relaxed);
-                assert!(dropped, "cancellation must release the worker's network");
-
-                let first = rx_notification.recv().await;
-                let sentinel = matches!(first, Some(Notification::Tick { i: 1 }));
-                assert!(sentinel);
-                let next = rx_notification.recv().await;
-                let closed = next.is_none();
-                assert!(closed, "the cancelled worker must release its notification sender");
-            }
-        });
-    }
-
-    #[test]
-    fn closing_the_event_channel_stops_the_worker() {
-        C::run(async {
-            let (tx_notification, _rx_notification) = C::mpsc(1);
-            let fixture = Fixture::new(BlockAt::Idle, tx_notification);
-            let (_cancel, future) = fixture.worker.run();
-            drop(fixture.event_tx);
-            C::timeout(TEST_TIMEOUT, future).await.unwrap();
-            let dropped = fixture.dropped.load(Ordering::Relaxed);
-            assert!(dropped, "event-channel closure must release the worker's network");
-        });
+/// How much a heartbeat response tells the leader: a higher vote ends its leadership, a conflict
+/// reports a log without the matching entry, and a success only acknowledges it.
+fn importance<C>(result: &AppendResult<C>) -> u8
+where C: RaftTypeConfig {
+    match result {
+        Ok(_) => 0,
+        Err(AppendError::Conflict { .. }) => 1,
+        Err(AppendError::HigherVote(_)) => 2,
     }
 }
+
+#[cfg(test)]
+mod worker_test;
