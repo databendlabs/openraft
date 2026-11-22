@@ -8,6 +8,8 @@ Run `make verify-full` for isolated feature checks, full Clippy coverage, docume
 
 `make fix` is the mutating counterpart: it applies Clippy fixes, typo fixes, and formatting.
 
+Before pushing a change to replication or the network path, also run `make verify-timing`. It runs the integration tests with a 30 ms network send delay and the deterministic simulations as CI does; they catch message-ordering bugs that `make verify` misses.
+
 ## Code style
 
 Beyond `rustfmt`, OpenRaft follows the conventions in [`CLAUDE.md`](CLAUDE.md). The essentials are:
