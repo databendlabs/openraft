@@ -31,8 +31,13 @@ use crate::type_config::alias::MpscReceiverOf;
 /// - Only `RaftMsg::ClientWrite` messages are batched
 /// - A message is merged only if [`WriteOption::merge()`] merges its `write_option` with the
 ///   batch's; the batch is then proposed with the merged option
-/// - Non-`ClientWrite` messages stop the batching and are buffered for the next recv
-/// - Maximum batch size is 4096 messages
+/// - A non-`ClientWrite` message, or a `ClientWrite` that does not merge, stops the batching and is
+///   buffered for the next receive
+/// - A batch holds at most `capacity` input messages, counting the first one. `Raft::new` sets it
+///   from `Config::api_batch_capacity`, 4096 by default. One message can carry several payloads,
+///   and a capacity of 0 or 1 merges no message.
+/// - A batch waits for more messages until one deadline, `linger` after its first message; see
+///   [`try_recv()`](Self::try_recv)
 ///
 /// # Usage Pattern
 ///
@@ -41,7 +46,7 @@ use crate::type_config::alias::MpscReceiverOf;
 /// receiver.ensure_buffered().await?;
 ///
 /// // Process all available messages (with batching)
-/// while let Some(msg) = receiver.try_recv()? {
+/// while let Some(msg) = receiver.try_recv().await? {
 ///     handle_msg(msg);
 /// }
 /// ```
@@ -57,10 +62,10 @@ where C: RaftTypeConfig
     /// - A `ClientWrite` with a non-mergeable `write_option` is encountered
     buffered: Option<RaftMsg<C>>,
 
-    /// Maximum items allowed to be merged before return the batch.
+    /// The most input messages a batch holds, counting the first one.
     capacity: u64,
 
-    /// Maximum time allowed to wait until max capacity target is reached.
+    /// How long after its first message a batch waits for more, unless it fills up first.
     linger: Duration,
 
     /// The underlying mpsc receiver.
@@ -100,13 +105,15 @@ where C: RaftTypeConfig
         Ok(())
     }
 
-    /// Attempts to receive a message, merging consecutive `ClientWrite` messages.
+    /// Receives a message, and merges the mergeable `ClientWrite` messages that follow it.
     ///
-    /// Returns `Ok(Some(msg))` if a message is available, `Ok(None)` if the channel
-    /// is empty, or `Err(Fatal::Stopped)` if the sender is dropped.
+    /// Returns `Ok(None)` at once if no message is buffered or queued, and
+    /// `Err(Fatal::Stopped)` if the sender is dropped.
     ///
-    /// If the first available message is a `ClientWrite`, this method attempts to
-    /// merge additional `ClientWrite` messages with a mergeable `write_option`.
+    /// If the message is a `ClientWrite`, this call can wait: it merges the queued messages and,
+    /// with a positive linger, those that arrive before the batch's deadline, `linger` after the
+    /// first message. A full batch or a message that cannot be merged returns the batch before
+    /// the deadline. With a linger of 0, it merges only the messages already queued.
     pub(crate) async fn try_recv(&mut self) -> Result<Option<RaftMsg<C>>, Fatal<C>> {
         let msg = self.buffered_try_recv()?;
 
@@ -188,9 +195,10 @@ where C: RaftTypeConfig
     /// `write_option` with the merged one. Stops merging when:
     /// - A non-`ClientWrite` message is encountered (buffered for next recv)
     /// - A `ClientWrite` whose `write_option` does not merge is found (buffered for next recv)
-    /// - Maximum batch size is reached
-    /// - No more messages are available
-    /// - Linger timeout expires before the batch is filled
+    /// - The batch holds `capacity` messages
+    /// - No message is queued after the deadline, `linger` after the first message. Until the
+    ///   deadline it waits for one, and a message already queued is merged even after it, because
+    ///   each receive checks the queue first.
     async fn merge_client_writes(&mut self, msg: &mut RaftMsg<C>) -> Result<(), Fatal<C>> {
         debug_assert!(self.buffered.is_none());
 

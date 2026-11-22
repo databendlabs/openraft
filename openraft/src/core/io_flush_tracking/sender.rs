@@ -26,7 +26,7 @@ where C: RaftTypeConfig
     /// `VoteOf<C>` implementations may not provide it.
     pub(crate) vote_tx: WatchSenderOf<C, Option<Vote<C::LeaderId>>>,
 
-    /// Sender for commit progress (state machine submission).
+    /// Sender for commit progress: the local committed log id, safe to apply locally.
     pub(crate) commit_tx: WatchSenderOf<C, Option<LogIdOf<C>>>,
 
     /// Sender for snapshot persistence progress.
