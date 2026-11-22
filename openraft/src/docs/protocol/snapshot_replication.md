@@ -125,6 +125,13 @@ prepares separate database generations and publishes the active one through
 use them; cleanup removes only generations with no remaining owner. An abandoned
 receive handle removes its incomplete generation when its last owner drops.
 
+The response of [`Raft::install_full_snapshot()`] answers the leader's
+[`full_snapshot()`]. The leader takes a successful response as proof that the
+follower installed the snapshot, or already had every log it covers, and
+records the snapshot's last log id as the follower's matching log id. A
+snapshot that is only staged, to be installed at a later restart, is not
+installed: answer the leader with an error, and it sends the snapshot again.
+
 ## 3. Purge Logs
 
 The final step is to purge logs up to [`snapshot_meta.last_log_id`].
@@ -148,3 +155,4 @@ the log will be purged the next start-up, in [`get_initial_state()`].
 [`snapshot_meta.last_log_id`]: `crate::storage::SnapshotMeta::last_log_id`
 
 [`Raft::install_full_snapshot()`]: `crate::Raft::install_full_snapshot`
+[`full_snapshot()`]: `crate::network::NetSnapshot::full_snapshot`
