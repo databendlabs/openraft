@@ -6,9 +6,13 @@ use crate::type_config::alias::WatchSenderOf;
 
 /// The watch channels [`RaftCore`] broadcasts local IO progress on.
 ///
-/// These carry the cursors that other tasks need in order to decide what is safe to read or
-/// replicate. They are separate from [`MetricsChannels`], which exists for observation only: a
-/// value lost here changes behavior, not just reporting.
+/// These are direct IO and replication progress signals. Storage reports each completed IO on
+/// `completed`, and the replication tasks follow `accepted`, `submitted` and `committed` to
+/// decide which entries they may read and send, and which commit to send. They are separate
+/// from [`MetricsChannels`], which publishes snapshots of the node's state. Those snapshots are
+/// not for reporting alone: a linearizable read waits on them for its read log id to be applied,
+/// and a leader removed from the membership watches them to step down. Like any watch channel,
+/// both may skip intermediate values.
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`MetricsChannels`]: crate::core::MetricsChannels

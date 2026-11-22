@@ -7,8 +7,12 @@ use crate::type_config::alias::WatchSenderOf;
 
 /// The channels [`RaftCore`] publishes its own state on, for observers to read.
 ///
-/// Every field here is write-only from [`RaftCore`]'s side and is updated together by
-/// [`RaftCore::flush_metrics()`], so that a reader of any one of them sees a consistent snapshot.
+/// The fields are senders that [`RaftCore`] owns. [`RaftCore::flush_metrics()`] is the routine
+/// publisher: it publishes the IO progress first, and then `report_metrics()` updates `data` and
+/// `server` when they changed, and sends `all` last, so a reader that sees `all` change finds the
+/// other two updated. `RaftCore::main()` is the terminal publisher: when it stops, after its last
+/// `flush_metrics()`, it publishes the shutdown state. Each channel holds a consistent snapshot of
+/// its own values; the channels are not updated as one.
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`RaftCore::flush_metrics()`]: crate::core::RaftCore::flush_metrics
