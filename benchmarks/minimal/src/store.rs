@@ -523,16 +523,15 @@ impl RaftLogStorage<TypeConfig> for Arc<LogStore> {
             let mut log = self.log.write().await;
             log.extend(entries.into_iter().map(|entry| (entry.index(), entry)));
         }
-        if !self.append_delay.is_zero() {
-            tokio::time::sleep(self.append_delay).await;
-        }
+        blocking_delay(self.append_delay).await?;
         if self.flush_delay.is_zero() {
             callback.io_completed(Ok(()));
         } else {
             let deadline = tokio::time::Instant::now() + self.flush_delay;
             tokio::spawn(async move {
-                tokio::time::sleep_until(deadline).await;
-                callback.io_completed(Ok(()));
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                let flushed = blocking_delay(remaining).await;
+                callback.io_completed(flushed);
             });
         }
         Ok(())
@@ -661,7 +660,7 @@ impl RaftStateMachine<TypeConfig> for Arc<StateMachineStore> {
 ///
 /// Unlike `tokio::time::sleep()`, which rounds up to the 1 ms timer tick, this keeps
 /// sub-millisecond delays accurate.
-async fn blocking_delay(delay: Duration) -> Result<(), io::Error> {
+pub(crate) async fn blocking_delay(delay: Duration) -> Result<(), io::Error> {
     if delay.is_zero() {
         return Ok(());
     }

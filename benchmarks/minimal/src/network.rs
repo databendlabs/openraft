@@ -40,6 +40,7 @@ use crate::store::NodeId;
 use crate::store::SnapshotData;
 use crate::store::StateMachineStore;
 use crate::store::TypeConfig;
+use crate::store::blocking_delay;
 use crate::store::snapshot_bytes;
 use crate::store::snapshot_data;
 use crate::wire_append::WireAppend;
@@ -487,9 +488,7 @@ impl Network {
     async fn send<T>(&self, value: T) -> Result<T, RPCError<TypeConfig>>
     where T: serde::Serialize + serde::de::DeserializeOwned {
         let Some(link) = &self.request_link else {
-            if !self.delay.is_zero() {
-                tokio::time::sleep(self.delay).await;
-            }
+            blocking_delay(self.delay).await.map_err(|error| RPCError::Unreachable(self.unreachable(error)))?;
             return Ok(value);
         };
         link.transmit(value).await.map_err(|error| RPCError::Unreachable(self.unreachable(error)))
@@ -498,9 +497,7 @@ impl Network {
     async fn receive<T>(&self, value: T) -> Result<T, RPCError<TypeConfig>>
     where T: serde::Serialize + serde::de::DeserializeOwned {
         let Some(link) = &self.response_link else {
-            if !self.delay.is_zero() {
-                tokio::time::sleep(self.delay).await;
-            }
+            blocking_delay(self.delay).await.map_err(|error| RPCError::Unreachable(self.unreachable(error)))?;
             return Ok(value);
         };
         link.transmit(value).await.map_err(|error| RPCError::Unreachable(self.unreachable(error)))
@@ -543,7 +540,9 @@ where T: Send + 'static {
 
     let output = stream::unfold(rx, |mut rx| async move {
         let (deliver_at, item) = rx.recv().await?;
-        tokio::time::sleep_until(deliver_at).await;
+        let remaining = deliver_at.saturating_duration_since(tokio::time::Instant::now());
+        // The wait fails only when the runtime is shutting down; end the link then.
+        blocking_delay(remaining).await.ok()?;
         Some((item, rx))
     });
     Box::pin(output)

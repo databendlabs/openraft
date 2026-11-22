@@ -241,37 +241,37 @@ python3 benchmarks/minimal/scripts/compare.py --base c880c148 -- \
 
 These runs measure whether the leader's log read for replication is ever on the critical path,
 by delaying it together with the network. `--network-delay-us` delays every AppendEntries
-request and every response. It sleeps on the Tokio timer, which rounds a deadline up to the
-next 1 ms tick, so a 500 µs delay takes 0.5 to 1.5 ms each way. `--replication-read-delay-us`
-delays every `limited_get_log_entries()` call, which only replication issues; the apply path
-reads through `entries_stream()` and is not delayed. The read delay occupies a blocking-pool
-thread, so it keeps sub-millisecond accuracy.
+request and every response. `--replication-read-delay-us` delays every
+`limited_get_log_entries()` call, which only replication issues; the apply path reads through
+`entries_stream()` and is not delayed. Both delays occupy a blocking-pool thread, like the
+append, flush, and apply delays, so they keep sub-millisecond accuracy.
 
 Setup: as in "Apply-path delays", with 256 clients doing 30,000 writes per run. The table shows
-medians of five rounds, each running every row once, at a load average of 10 to 11.
+medians of five rounds, each running every row once, at a load average of 22 to 29.
 
 | network µs | repl. read µs | writes/s  | p50 µs | p99 µs |
 | --:        | --:           | --:       | --:    | --:    |
-|          0 |             0 | 1,267,278 |    168 |  1,259 |
-|        500 |             0 |    69,303 |  3,864 |  6,253 |
-|          0 |           500 |   216,859 |  1,250 |  1,443 |
-|        500 |           500 |    57,440 |  4,005 |  7,644 |
+|          0 |             0 | 1,562,585 |    139 |    860 |
+|        500 |             0 |   193,890 |  1,310 |  1,605 |
+|          0 |           500 |   232,749 |  1,081 |  1,392 |
+|        500 |           500 |   105,737 |  2,523 |  2,785 |
 
-- With only the read delayed, throughput falls to 216,859 writes/s. The read is the only cost,
+- With only the read delayed, throughput falls to 232,749 writes/s. The read is the only cost,
   and the reads for one follower run one at a time, so each read's batch sets the throughput.
-- With the network delayed as well, the read adds 141 µs to p50, less than the 500 µs of one
-  read, and throughput keeps 83% of the network-only 69,303 writes/s. The leader reads the log
-  for the next request while earlier requests are on the wire, so most of the read is hidden
-  behind the round trip.
+- With the network delayed as well, throughput drops to 55% of the network-only 193,890
+  writes/s, and p50 rises by 1,213 µs, more than two 500 µs reads. Here the read is not
+  hidden behind the round trip. In earlier runs the network delay slept on the Tokio timer,
+  which rounded each 500 µs hop up to the next 1 ms tick; the read then added 141 µs to p50
+  and the leader appeared to read the next request's entries while earlier ones were on the
+  wire. With an accurate delay that overlap does not show.
 
-So the leader does not serialize replication reads behind the network, the way the
-state-machine worker serialized its log read behind `apply()` before it read ahead (#2320). A
-worker-style read-ahead is not needed on the replication path.
+Whether the replication path would gain from a worker-style read-ahead, like the
+state-machine worker's (#2320), needs a separate measurement: these rows show the read adding
+to the network delay, but not where the time goes.
 
 What these numbers do not show:
 
 - Network bandwidth. The delay is the same for an entry-less request and one of 1,024 entries.
-- Network latency finer than the timer. Every delayed hop ends on a 1 ms timer tick.
 - A remote follower. Both followers share the leader's process and runtime.
 - The 256-client run without delays takes about 20 ms; its runs ranged from 0.7 to 1.46 million
   writes/s, so it only serves as a control.
