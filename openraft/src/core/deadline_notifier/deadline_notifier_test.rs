@@ -50,36 +50,48 @@ fn deadline_notifier_wakes_the_worker_only_when_it_could_sleep_past_the_deadline
 
         let now = C::now();
         let in_secs = |secs| Some(now + Duration::from_secs(secs));
+        let changed_with_wake = DeadlineUpdate {
+            changed: true,
+            woke: true,
+        };
+        let changed_without_wake = DeadlineUpdate {
+            changed: true,
+            woke: false,
+        };
 
         tracing::info!("a first deadline, and an earlier one, wake the worker");
         {
-            assert!(notifier.set_deadline(in_secs(60)));
+            assert_eq!(changed_with_wake, notifier.set_deadline(in_secs(60)));
             assert!(woken());
-            assert!(notifier.set_deadline(in_secs(30)));
+            assert_eq!(changed_with_wake, notifier.set_deadline(in_secs(30)));
             assert!(woken());
         }
 
         tracing::info!("a later deadline, or none, is stored without a wake");
         {
-            assert!(notifier.set_deadline(in_secs(120)));
+            assert_eq!(changed_without_wake, notifier.set_deadline(in_secs(120)));
             assert!(!woken());
             assert_eq!(in_secs(120), *notifier.deadline_tx.borrow_watched());
-            assert!(notifier.set_deadline(None));
+            assert_eq!(changed_without_wake, notifier.set_deadline(None));
             assert!(!woken());
         }
 
         tracing::info!("once the stored deadline has passed, even a later deadline wakes the worker");
         {
             let passed = Some(now - Duration::from_secs(1));
-            assert!(notifier.set_deadline(passed));
+            assert_eq!(changed_with_wake, notifier.set_deadline(passed));
             assert!(woken());
-            assert!(notifier.set_deadline(in_secs(120)));
+            assert_eq!(changed_with_wake, notifier.set_deadline(in_secs(120)));
             assert!(woken());
         }
 
         tracing::info!("an unchanged deadline changes nothing");
         {
-            assert!(!notifier.set_deadline(in_secs(120)));
+            let unchanged = DeadlineUpdate {
+                changed: false,
+                woke: false,
+            };
+            assert_eq!(unchanged, notifier.set_deadline(in_secs(120)));
             assert!(!woken());
         }
     });

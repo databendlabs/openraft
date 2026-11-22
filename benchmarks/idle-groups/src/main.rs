@@ -1,6 +1,7 @@
 //! Measure the idle cost of many Raft groups in one process, in the setup of
 //! [#2304](https://github.com/databendlabs/openraft/issues/2304).
 
+mod core_counts;
 mod counting_alloc;
 mod followers;
 mod group_network;
@@ -27,6 +28,7 @@ use openraft_memstore::MemStateMachine;
 use openraft_memstore::new_mem_store;
 use openraft_multi::GroupRouter;
 
+use crate::core_counts::CoreCounts;
 use crate::counting_alloc::CountingAlloc;
 use crate::followers::Followers;
 use crate::group_network::GroupNetwork;
@@ -128,6 +130,8 @@ async fn measure(args: &Args) -> Report {
 
     tokio::time::sleep(Duration::from_secs(args.settle_secs)).await;
 
+    // Read the counters outside the CPU window, so that reading them adds no CPU to it.
+    let counts_before = CoreCounts::read(&groups).await;
     let appends_before = appends.load(Ordering::Relaxed);
     let terms_before = highest_terms(&groups);
     let allocs_before = ALLOC.allocs();
@@ -139,6 +143,10 @@ async fn measure(args: &Args) -> Report {
     let elapsed = started.elapsed().as_secs_f64();
     let cpu_after = process_usage::cpu_secs();
     let allocs_after = ALLOC.allocs();
+    let counts_after = CoreCounts::read(&groups).await;
+
+    let counts = counts_before.zip(counts_after).map(|(before, after)| after.since(&before));
+    let per_sec = |count: u64| count as f64 / elapsed;
 
     Report {
         groups: args.groups,
@@ -151,6 +159,11 @@ async fn measure(args: &Args) -> Report {
         allocs_per_sec: allocs_before.zip(allocs_after).map(|(before, after)| (after - before) as f64 / elapsed),
         appends_per_sec: (appends.load(Ordering::Relaxed) - appends_before) as f64 / elapsed,
         elections: highest_terms(&groups) - terms_before,
+        fires_per_sec: counts.map(|c| per_sec(c.fires)),
+        rearms_per_sec: counts.map(|c| per_sec(c.rearms)),
+        metrics_per_sec: counts.map(|c| per_sec(c.metrics)),
+        data_metrics_per_sec: counts.map(|c| per_sec(c.data_metrics)),
+        server_metrics_per_sec: counts.map(|c| per_sec(c.server_metrics)),
     }
 }
 
@@ -215,6 +228,19 @@ mod tests {
         assert!(report.tasks >= 3, "got: {report}");
         assert!(report.heap_kib > Some(0), "got: {report}");
         assert!(report.allocs_per_sec > Some(0.0), "got: {report}");
+
+        // Each heartbeat fires the heartbeat timer, re-arms it for the next one, and changes the
+        // quorum-acknowledged time of the data metrics.
+        #[cfg(feature = "runtime-stats")]
+        {
+            assert!(report.fires_per_sec > Some(0.0), "got: {report}");
+            assert!(report.rearms_per_sec > Some(0.0), "got: {report}");
+            assert!(report.metrics_per_sec > Some(0.0), "got: {report}");
+            assert!(report.data_metrics_per_sec > Some(0.0), "got: {report}");
+        }
+
+        #[cfg(not(feature = "runtime-stats"))]
+        assert_eq!(None, report.fires_per_sec, "got: {report}");
     }
 
     #[test]
@@ -223,6 +249,11 @@ mod tests {
 
         assert!(report.appends_per_sec > 0.0, "got: {report}");
         assert_eq!(0, report.elections, "got: {report}");
+
+        // Each heartbeat a follower receives changes the last leader contact of its server
+        // metrics.
+        #[cfg(feature = "runtime-stats")]
+        assert!(report.server_metrics_per_sec > Some(0.0), "got: {report}");
     }
 
     #[test]

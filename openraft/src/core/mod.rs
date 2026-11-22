@@ -38,6 +38,7 @@ pub(crate) mod stage;
 
 mod client_responder_queue;
 mod deadline_notifier;
+mod deadline_update;
 mod lease_read_state_publisher;
 mod linearizable_read;
 mod metrics_channels;
@@ -50,6 +51,7 @@ mod step_down_watcher;
 
 pub(crate) use client_responder_queue::ClientResponderQueue;
 pub(crate) use deadline_notifier::DeadlineNotifier;
+pub(crate) use deadline_update::DeadlineUpdate;
 pub(crate) use io_broadcast::IoBroadcast;
 pub(crate) use lease_read_state_publisher::LeaseReadStatePublisher;
 pub(crate) use linearizable_read::PendingRead;

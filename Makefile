@@ -460,4 +460,6 @@ verify-bench-durable-rocks:
 verify-bench-idle-groups:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s benchmarks/idle-groups/scripts -p '*_test.py'
 	cargo test --manifest-path benchmarks/idle-groups/Cargo.toml --all-targets
+	cargo test --manifest-path benchmarks/idle-groups/Cargo.toml --all-targets --features runtime-stats
 	cargo clippy --no-deps --manifest-path benchmarks/idle-groups/Cargo.toml --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path benchmarks/idle-groups/Cargo.toml --all-targets --features runtime-stats -- -D warnings

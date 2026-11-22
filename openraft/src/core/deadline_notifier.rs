@@ -7,6 +7,7 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::MpscSender;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::async_runtime::watch::WatchSender;
+use crate::core::DeadlineUpdate;
 use crate::core::notification::Notification;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::CancelHandleOf;
@@ -59,7 +60,8 @@ where C: RaftTypeConfig
         }
     }
 
-    /// Set the deadline to fire at; `None` sends nothing. Return whether the deadline changed.
+    /// Set the deadline to fire at; `None` sends nothing. Return whether the deadline changed and
+    /// whether the worker was woken.
     ///
     /// It wakes the worker only if the worker could otherwise sleep past the new deadline: when the
     /// new deadline is earlier than the stored one, or the stored one is `None` or has passed. It
@@ -71,9 +73,9 @@ where C: RaftTypeConfig
     /// read also finds it passed, and wakes the worker. In the other order, a later deadline stored
     /// just after the worker found the old one due could be stored without a wake while the worker
     /// waits on `changed()`, and the worker would never arm it.
-    pub(crate) fn set_deadline(&self, deadline: Option<InstantOf<C>>) -> bool {
+    pub(crate) fn set_deadline(&self, deadline: Option<InstantOf<C>>) -> DeadlineUpdate {
         let mut changed = false;
-        self.deadline_tx.send_if_modified(|stored| {
+        let woke = self.deadline_tx.send_if_modified(|stored| {
             if *stored == deadline {
                 return false;
             }
@@ -88,7 +90,7 @@ where C: RaftTypeConfig
             *stored = deadline;
             wake
         });
-        changed
+        DeadlineUpdate { changed, woke }
     }
 
     fn run(

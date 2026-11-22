@@ -953,23 +953,30 @@ where
         // but not `RaftDataMetrics` and `RaftServerMetrics`.
         // Thus if `RaftMetrics` change is perceived, the other two should have been updated.
 
-        self.metrics.data.send_if_modified(|metrics| {
+        let data_sent = self.metrics.data.send_if_modified(|metrics| {
             if data_metrics.ne(metrics) {
                 *metrics = data_metrics.clone();
                 return true;
             }
             false
         });
+        if data_sent {
+            self.runtime_stats.data_metrics_sends += 1;
+        }
 
-        self.metrics.server.send_if_modified(|metrics| {
+        let server_sent = self.metrics.server.send_if_modified(|metrics| {
             if server_metrics.ne(metrics) {
                 *metrics = server_metrics.clone();
                 return true;
             }
             false
         });
+        if server_sent {
+            self.runtime_stats.server_metrics_sends += 1;
+        }
 
         tracing::debug!("report metrics: {}", m);
+        self.runtime_stats.metrics_sends += 1;
         let res = self.metrics.all.send(m);
 
         if let Err(err) = res {
@@ -1131,9 +1138,12 @@ where
         self.reschedule_pending_read_check();
     }
 
-    fn reschedule_pending_read_check(&self) {
+    fn reschedule_pending_read_check(&mut self) {
         let deadline = self.pending_reads.earliest_deadline();
-        self.pending_read_deadline_notifier.set_deadline(deadline);
+        let update = self.pending_read_deadline_notifier.set_deadline(deadline);
+        if update.woke {
+            self.runtime_stats.pending_read_rearm_wakes += 1;
+        }
     }
 
     /// Return the current leader node ID based on the committed vote.
@@ -2267,7 +2277,11 @@ where
     /// the deadline changes and the notifier re-arms for the next one.
     fn refresh_heartbeat_deadline(&mut self) {
         let wake_at = self.heartbeat_wake_at();
-        if self.heartbeat_deadline_notifier.set_deadline(wake_at) {
+        let update = self.heartbeat_deadline_notifier.set_deadline(wake_at);
+        if update.woke {
+            self.runtime_stats.heartbeat_rearm_wakes += 1;
+        }
+        if update.changed {
             tracing::debug!(
                 "heartbeat deadline: {}",
                 wake_at.as_ref().map(|t| t.display()).display()
@@ -2297,7 +2311,11 @@ where
     /// [`Notification::ElectionDeadlineReached`] is sent while the leader is alive.
     fn refresh_election_deadline(&mut self) {
         let wake_at = self.election_wake_at();
-        if self.election_deadline_notifier.set_deadline(wake_at) {
+        let update = self.election_deadline_notifier.set_deadline(wake_at);
+        if update.woke {
+            self.runtime_stats.election_rearm_wakes += 1;
+        }
+        if update.changed {
             tracing::debug!("election deadline: {}", wake_at.as_ref().map(|t| t.display()).display());
         }
     }
