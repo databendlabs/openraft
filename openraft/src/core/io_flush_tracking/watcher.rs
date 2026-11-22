@@ -22,7 +22,9 @@ use crate::type_config::alias::WatchReceiverOf;
 /// - **Vote progress**: Tracks only vote changes. Updated when the vote value changes (new term or
 ///   leader), not on every log append.
 ///
-/// - **Commit progress**: Tracks when committed logs are submitted to the state machine.
+/// - **Commit progress**: Tracks the local committed log id, the last log id that is safe to apply
+///   to the local state machine, as [`RaftState::local_committed()`] returns it. It can be ahead of
+///   the entries submitted to the state machine.
 ///
 /// - **Snapshot progress**: Tracks snapshot persistence. Updated when snapshots are built or
 ///   installed and persisted.
@@ -33,6 +35,8 @@ use crate::type_config::alias::WatchReceiverOf;
 /// The separation allows applications to efficiently wait for different kinds of progress:
 /// - Use log progress to wait for specific log entries to be durable
 /// - Use vote progress to wait for leadership changes to be persisted
+///
+/// [`RaftState::local_committed()`]: crate::RaftState::local_committed
 pub(crate) struct IoProgressWatcher<C>
 where C: RaftTypeConfig
 {
@@ -42,7 +46,7 @@ where C: RaftTypeConfig
     /// Receiver for vote I/O progress (vote saves only, or implied by log appends).
     vote: WatchReceiverOf<C, Option<Vote<C::LeaderId>>>,
 
-    /// Receiver for commit log progress (state machine submission).
+    /// Receiver for commit progress: the local committed log id, safe to apply locally.
     commit: WatchReceiverOf<C, Option<LogIdOf<C>>>,
 
     /// Receiver for snapshot persistence progress.

@@ -11,15 +11,23 @@ use crate::type_config::alias::WatchReceiverOf;
 
 /// Handle for tracking log I/O flush progress.
 ///
-/// Returns `None` if no I/O has completed yet (e.g., on a newly started node before any writes).
-/// Returns `Some(FlushPoint)` containing the vote and last log ID after the first flush
-/// completes.
+/// The value is `None` until the node starts running, in [`Raft::new`], or in [`Raft::run`] after
+/// [`Raft::build`]. It then publishes the flush point it recovered from storage, which holds no log
+/// id: the stored vote, or the default vote when storage holds none. So `Some` alone does not mean
+/// that the node wrote anything to storage. Later values follow the votes and logs that storage
+/// reports as flushed.
+///
+/// [`Raft::new`]: crate::Raft::new
+/// [`Raft::run`]: crate::Raft::run
+/// [`Raft::build`]: crate::Raft::build
 pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 
 /// Handle for tracking vote I/O flush progress.
 ///
-/// Returns `None` if no vote has been flushed yet.
-/// Returns `Some(Vote)` containing the last flushed vote.
+/// The value is `None` until the node starts running, as for [`LogProgress`]. It then publishes
+/// the vote it recovered from storage, or the default vote when storage holds none, so `Some`
+/// alone does not mean that a vote was saved. Later values are the votes that storage reports as
+/// flushed.
 pub type VoteProgress<C> = WatchProgress<C, Option<Vote<LeaderIdOf<C>>>>;
 
 /// Handle for tracking commit log progress.
