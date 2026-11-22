@@ -61,6 +61,10 @@ pub use errors::SnapshotSegmentId;
 pub use message::InstallSnapshotRequest;
 pub use message::InstallSnapshotResponse;
 pub use message::SnapshotMeta;
+// Defined in `openraft`, so that the deprecated `openraft::raft::AppendEntriesResponse` can be an
+// alias of the same type, and v1 networks that still name the old path keep compiling.
+#[doc(inline)]
+pub use openraft::legacy_internals::AppendEntriesResponse;
 pub use raft_network::RaftNetwork;
 pub use receiver::ChunkedSnapshotReceiver;
 pub use snapshot_receiver_factory::SnapshotReceiverFactory;

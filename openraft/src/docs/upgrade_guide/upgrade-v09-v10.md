@@ -185,7 +185,7 @@ Wait<NID, N, A>              --> Wait<C>
 RaftState<NID, N, I>         --> RaftState<C>
 VoteRequest<NID>             --> VoteRequest<C>
 VoteResponse<NID>            --> VoteResponse<C>
-AppendEntriesResponse<NID>   --> AppendEntriesResponse<C>
+AppendEntriesResponse<NID>   --> openraft_legacy::network_v1::AppendEntriesResponse<C>
 SnapshotResponse<NID>        --> SnapshotResponse<C>
 InitializeError<NID, N>      --> InitializeError<C>
 NotInMembers<NID, N>         --> NotInMembers<C>
@@ -544,10 +544,16 @@ and [server](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv
 
 `Raft::append_entries()`, `RaftNetworkV2::append_entries()` and
 `stream_append()` return an `AppendResult`: `Ok` with the last log id the
-follower accepted, or an `AppendError`. A transport that keeps the
-`AppendEntriesResponse` wire format converts at both ends:
+follower accepted, or an `AppendError`. The 0.9 reply,
+`AppendEntriesResponse`, is what the v1 `RaftNetwork::append_entries()`
+returns, and it keeps the 0.9 wire format. Since 0.10.2, import it from
+`openraft_legacy::network_v1`: `openraft::raft::AppendEntriesResponse` is a
+deprecated alias of it. A transport that keeps that format converts at
+both ends:
 
 ```ignore
+use openraft_legacy::network_v1::AppendEntriesResponse;
+
 // Follower:
 let reply = raft.append_entries(req).await.map(AppendEntriesResponse::from);
 
@@ -849,6 +855,7 @@ These items still compile, with a deprecation warning:
 | `RaftMetrics::millis_since_quorum_ack`, `RaftDataMetrics::millis_since_quorum_ack` | `last_quorum_acked` |
 | `openraft::TokioRuntime`, `openraft::impls::TokioRuntime`, `openraft::TokioInstant` | `openraft_rt_tokio::TokioRuntime`, `openraft_rt_tokio::TokioInstant` |
 | `RaftNetwork`, `InstallSnapshotRequest`, `InstallSnapshotResponse`, `InstallSnapshotError`, `SnapshotMismatch` and `SnapshotSegmentId` in `openraft` | the same names in `openraft_legacy::network_v1` |
+| `openraft::raft::AppendEntriesResponse`, since 0.10.2 | `openraft_legacy::network_v1::AppendEntriesResponse` |
 
 ## Behavior changes
 

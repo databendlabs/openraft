@@ -211,7 +211,8 @@ use openraft::network::v2::RaftNetworkV2;
 // raft module exports
 // =============================================================================
 use openraft::raft::AppendEntriesRequest;
-use openraft::raft::AppendEntriesResponse;
+#[allow(deprecated)]
+use openraft::raft::AppendEntriesResponse as DeprecatedAppendEntriesResponse;
 use openraft::raft::AppendError;
 use openraft::raft::AppendResult;
 use openraft::raft::ClientWriteResponse;
@@ -292,6 +293,7 @@ use openraft::vote::Vote as VoteModule;
 // =============================================================================
 // openraft-legacy crate exports
 // =============================================================================
+use openraft_legacy::network_v1::AppendEntriesResponse;
 use openraft_legacy::network_v1::InstallSnapshotError;
 use openraft_legacy::network_v1::InstallSnapshotRequest;
 use openraft_legacy::network_v1::InstallSnapshotResponse;
@@ -389,6 +391,17 @@ mod compatible_edit {
         let payload = <Config as RaftTypeConfig>::Payload::blank();
         raft.append_membership(response.membership.unwrap(), payload, []).await.unwrap();
     }
+}
+
+/// The deprecated `openraft::raft::AppendEntriesResponse` names the same type as
+/// `openraft_legacy::network_v1::AppendEntriesResponse`, so a v1 `RaftNetwork` whose
+/// `append_entries()` still returns the old path keeps implementing the trait.
+#[allow(deprecated)]
+fn deprecated_append_entries_response_is_the_legacy_type<C>(
+    response: DeprecatedAppendEntriesResponse<C>,
+) -> AppendEntriesResponse<C>
+where C: RaftTypeConfig {
+    response
 }
 
 #[test]

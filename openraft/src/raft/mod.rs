@@ -41,7 +41,6 @@ use linearizable_read::Linearizer;
 use linearizable_read::LinearizerOption;
 use linearizable_read::ReadLogId;
 pub use message::AppendEntriesRequest;
-pub use message::AppendEntriesResponse;
 pub use message::AppendError;
 pub use message::AppendResult;
 pub use message::ChangeMembershipOutcome;
@@ -164,6 +163,37 @@ use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::non_committed::UncommittedVote;
 use crate::vote::raft_vote::RaftVote;
 use crate::vote::raft_vote::RaftVoteExt;
+
+/// **DEPRECATED**: Use `openraft_legacy::network_v1::AppendEntriesResponse` instead.
+///
+/// The reply of the v1 `RaftNetwork::append_entries()` has moved to the `openraft-legacy` crate,
+/// next to the v1 `RaftNetwork` that returns it. This alias names the same type, so code that
+/// still uses this path keeps compiling, with a deprecation warning. A `use` cannot import the
+/// variants through an alias: import them from the new path.
+///
+/// # Migration
+///
+/// Add to `Cargo.toml`:
+/// ```toml
+/// [dependencies]
+/// openraft-legacy = "0.10.2"
+/// ```
+///
+/// Update imports:
+/// ```ignore
+/// use openraft_legacy::network_v1::AppendEntriesResponse;
+/// ```
+#[since(
+    version = "0.10.2",
+    change = "deprecated: an alias of `openraft_legacy::network_v1::AppendEntriesResponse`"
+)]
+#[deprecated(
+    since = "0.10.2",
+    note = "AppendEntriesResponse has moved to the `openraft-legacy` crate. \
+            Add `openraft-legacy` to your dependencies and use \
+            `openraft_legacy::network_v1::AppendEntriesResponse` instead."
+)]
+pub type AppendEntriesResponse<C> = message::AppendEntriesResponse<C>;
 
 /// Define types for a Raft type configuration.
 ///

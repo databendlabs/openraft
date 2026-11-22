@@ -19,10 +19,18 @@ use crate::type_config::alias::VoteOf;
 /// own wire format, such as [`StreamAppendResult`].
 ///
 /// A transport that keeps sending this format converts with `AppendEntriesResponse::from(result)`
-/// on the follower, and with [`Self::into_append_result()`] on the leader.
+/// on the follower, and with [`Self::into_append_result()`] on the leader. Its serde encoding is
+/// the one Openraft 0.9 uses.
+///
+/// Import it as `openraft_legacy::network_v1::AppendEntriesResponse`. The old path,
+/// `openraft::raft::AppendEntriesResponse`, is a deprecated alias of this type.
 ///
 /// [`Raft::append_entries()`]: crate::raft::Raft::append_entries
 /// [`RaftNetworkV2::append_entries()`]: crate::network::RaftNetworkV2::append_entries
+#[since(
+    version = "0.10.2",
+    change = "exported by `openraft_legacy::network_v1`; the `openraft::raft` path is deprecated"
+)]
 #[derive(Debug, Clone)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
@@ -88,10 +96,11 @@ where C: RaftTypeConfig
     /// use openraft::entry::RaftEntry;
     /// use openraft::impls::leader_id_adv::LeaderId;
     /// use openraft::raft::AppendEntriesRequest;
-    /// use openraft::raft::AppendEntriesResponse;
     /// use openraft::type_config::alias::EntryOf;
     /// use openraft::type_config::alias::LogIdOf;
     /// use openraft::vote::RaftLeaderId;
+    /// // An application imports the type from `openraft_legacy::network_v1`.
+    /// # use openraft::legacy_internals::AppendEntriesResponse;
     ///
     /// openraft::declare_raft_types!(TypeConfig);
     ///
@@ -196,10 +205,10 @@ where C: RaftTypeConfig
 
 #[cfg(test)]
 mod tests {
+    use super::AppendEntriesResponse;
     use crate::Vote;
     use crate::engine::testing::UTConfig;
     use crate::engine::testing::log_id;
-    use crate::raft::AppendEntriesResponse;
     use crate::raft::AppendError;
     use crate::raft::AppendResult;
 

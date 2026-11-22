@@ -81,6 +81,8 @@ pub mod batch;
 pub mod bench_internals;
 #[cfg(test)]
 mod feature_serde_test;
+#[doc(hidden)]
+pub mod legacy_internals;
 
 use std::fmt;
 
