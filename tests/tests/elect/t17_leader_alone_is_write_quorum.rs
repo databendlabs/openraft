@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::Config;
 use openraft::RaftTypeConfig;
 use openraft::ReadPolicy;
 use openraft::ServerState;
@@ -71,12 +72,7 @@ where
     C: TestConfig + RaftTypeConfig<D = String, Membership = MinimalQuorumsMembership>,
     EntryOf<C>: Clone + PartialEq + fmt::Debug,
 {
-    let cluster = TestCluster::<C>::start(
-        cluster_config(SnapshotPolicy::Never),
-        btreeset! {1, 2, 3},
-        every_node_is_a_write_quorum(),
-    )
-    .await?;
+    let cluster = TestCluster::<C>::start(config(), btreeset! {1, 2, 3}, every_node_is_a_write_quorum()).await?;
 
     tracing::info!("--- node 1 wins the votes of all three nodes and commits its blank entry");
     {
@@ -139,12 +135,7 @@ where
     C: TestConfig + RaftTypeConfig<D = String, Membership = MinimalQuorumsMembership>,
     EntryOf<C>: Clone + PartialEq + fmt::Debug,
 {
-    let cluster = TestCluster::<C>::start(
-        cluster_config(SnapshotPolicy::Never),
-        btreeset! {1, 2, 3},
-        every_node_is_a_write_quorum(),
-    )
-    .await?;
+    let cluster = TestCluster::<C>::start(config(), btreeset! {1, 2, 3}, every_node_is_a_write_quorum()).await?;
 
     tracing::info!("--- node 1 wins term 1, and every node stores its blank entry");
     {
@@ -172,6 +163,21 @@ where
     }
 
     Ok(())
+}
+
+/// The cluster config of these tests, with a vote RPC deadline that a loaded machine can meet.
+///
+/// Each election here is triggered once, because ticks and elections are off, and the only read
+/// quorum needs the vote of every node: one vote request that times out leaves the candidate
+/// without a quorum for good. A vote RPC times out after `election_timeout_min`, 150 ms by
+/// default. `election_timeout_max` only has to be larger: it sets the leader lease that the tests
+/// sleep through.
+fn config() -> Config {
+    Config {
+        election_timeout_min: 1_000,
+        election_timeout_max: 1_001,
+        ..cluster_config(SnapshotPolicy::Never)
+    }
 }
 
 fn timeout() -> Option<Duration> {
