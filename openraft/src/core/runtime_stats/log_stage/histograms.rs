@@ -1,8 +1,10 @@
 use std::fmt;
 
+#[cfg(feature = "runtime-stats")]
 use base2histogram::AsciiChart;
-use base2histogram::Histogram;
 use base2histogram::PercentileStats;
+
+use crate::core::runtime_stats::Histogram;
 
 /// Log lifecycle latency histograms in microseconds.
 ///
@@ -64,6 +66,7 @@ impl LogStageHistograms {
     }
 
     /// Build a stacked ASCII chart of all stage-to-stage latency histograms.
+    #[cfg(feature = "runtime-stats")]
     pub(crate) fn ascii_chart(&self) -> AsciiChart {
         AsciiChart::new()
             .add("1:proposed→received", self.proposed_to_received.clone())

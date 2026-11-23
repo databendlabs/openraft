@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use base2histogram::Histogram;
 use openraft_macros::since;
 
 use crate::Config;
@@ -11,6 +10,7 @@ use crate::RaftTypeConfig;
 use crate::core::NotificationName;
 use crate::core::raft_msg::RaftMsgName;
 use crate::core::runtime_stats::DisplayMode;
+use crate::core::runtime_stats::Histogram;
 use crate::core::runtime_stats::RuntimeStatsDisplay;
 use crate::core::runtime_stats::log_stage::LogStageHistograms;
 use crate::core::runtime_stats::log_stage::LogStages;
@@ -200,16 +200,16 @@ where C: RaftTypeConfig
         let _ = config;
         Self {
             core_busy_duration: Duration::ZERO,
-            core_busy_histogram: Histogram::<()>::new(),
-            apply_batch: Histogram::<()>::new(),
-            append_batch: Histogram::<()>::new(),
-            replicate_batch: Histogram::<()>::new(),
-            raft_msg_per_run: Histogram::<()>::new(),
-            write_batch: Histogram::<()>::new(),
-            raft_msg_budget: Histogram::<()>::new(),
-            notification_budget: Histogram::<()>::new(),
-            raft_msg_usage_permille: Histogram::<()>::new(),
-            notification_usage_permille: Histogram::<()>::new(),
+            core_busy_histogram: Histogram::new(),
+            apply_batch: Histogram::new(),
+            append_batch: Histogram::new(),
+            replicate_batch: Histogram::new(),
+            raft_msg_per_run: Histogram::new(),
+            write_batch: Histogram::new(),
+            raft_msg_budget: Histogram::new(),
+            notification_budget: Histogram::new(),
+            raft_msg_usage_permille: Histogram::new(),
+            notification_usage_permille: Histogram::new(),
             command_counts: vec![0; CommandName::COUNT],
             raft_msg_counts: vec![0; RaftMsgName::COUNT],
             notification_counts: vec![0; NotificationName::COUNT],

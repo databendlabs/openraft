@@ -85,6 +85,10 @@ to avoid overhead in production builds.
 Exposes the `stats` module and adds the `Raft::runtime_stats()` method
 for accessing runtime statistics.
 
+Without this feature, openraft keeps no histograms. With it, each node allocates
+about 36 KiB for its histograms, and a process builds the scale tables of
+`base2histogram`, about 25.6 MiB, when it creates its first node.
+
 When enabled, the `stats` module provides:
 - `Histogram`: Tracks distribution of values in logarithmic buckets
 - `RuntimeStats`: Contains histograms for apply and append batch sizes, plus
