@@ -60,7 +60,7 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     // Snapshot will not be installed because new `last_log_id` is less or equal current
     // `snapshot_meta.last_log_id`.
     //
-    // It should respond at once.
+    // It responds once the log IO of the current leader up to the snapshot is flushed.
 
     let mut eng = eng();
 
@@ -91,7 +91,9 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     let (dummy_tx, _rx) = UTConfig::<()>::oneshot();
     assert_eq!(
         vec![Command::FailPendingReads, Command::Respond {
-            when: None,
+            when: Some(Condition::IOFlushed {
+                io_id: LogIOId::new(Vote::new(4, 1).to_committed(), Some(log_id(1, 1, 2))).to_io_id(),
+            }),
             resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),
         },],
         eng.output.take_commands()

@@ -2449,19 +2449,17 @@ where
             sm::Response::InstallSnapshot((log_io_id, meta)) => {
                 tracing::info!(
                     "sm::StateMachine command done: InstallSnapshot: {}, log_io_id: {}: {}",
-                    meta.display(),
+                    meta,
                     log_io_id,
                     func_name!()
                 );
 
                 self.engine.state.log_progress_mut().try_flush(IOId::Log(log_io_id));
 
-                if let Some(meta) = meta {
-                    let st = self.engine.state.io_state_mut();
-                    if let Some(last) = &meta.last_log_id {
-                        st.apply_progress.try_flush(last.clone());
-                        st.snapshot.try_flush(last.clone());
-                    }
+                let st = self.engine.state.io_state_mut();
+                if let Some(last) = &meta.last_log_id {
+                    st.apply_progress.try_flush(last.clone());
+                    st.snapshot.try_flush(last.clone());
                 }
             }
             sm::Response::Apply(res) => {

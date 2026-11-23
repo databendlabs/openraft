@@ -264,6 +264,9 @@ where
     /// - `Some(Condition::Snapshot { log_id })` if the snapshot will be installed. Further commands
     ///   that depend on the snapshot state should use this condition so that these commands block
     ///   until the condition is satisfied (`RaftCore` receives a `Notification`).
+    /// - `Some(Condition::IOFlushed { .. })` if this node has already committed the logs up to the
+    ///   snapshot, so it does not install it. Its committed logs may not be flushed yet, and the
+    ///   reply to the leader must wait until they are, see below.
     /// - Otherwise `None` if the snapshot will not be installed (e.g., if it is not newer than the
     ///   current state).
     #[tracing::instrument(level = "debug", skip_all)]
@@ -279,7 +282,14 @@ where
                 snap_last_log_id.display(),
                 self.state.local_committed().display()
             );
-            return None;
+            // `local_committed` follows the accepted log IO, not the flushed one: the logs up to the
+            // snapshot may still be on their way to storage, or a snapshot that covers them may
+            // still be installing. A reply tells the leader that this node stores them, so it waits
+            // until the IO of this leader up to the snapshot, or a later IO, is flushed: IOs are
+            // flushed in the order they are submitted.
+            return snap_last_log_id.map(|last| Condition::IOFlushed {
+                io_id: LogIOId::new(self.leader_vote.to_committed(), Some(last)).to_io_id(),
+            });
         }
 
         // snapshot_last_log_id cannot be None

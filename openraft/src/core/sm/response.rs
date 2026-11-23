@@ -27,7 +27,7 @@ where C: RaftTypeConfig
     /// metadata. RaftCore flushes log progress up to that id, and apply and snapshot progress up to
     /// the snapshot's last log id, which releases the reply to the installation request and lets
     /// the logs the snapshot covers be purged.
-    InstallSnapshot((LogIOId<C>, Option<SnapshotMetaOf<C>>)),
+    InstallSnapshot((LogIOId<C>, SnapshotMetaOf<C>)),
 
     /// Send back applied result to RaftCore.
     Apply(ApplyResult<C>),
@@ -42,7 +42,7 @@ where C: RaftTypeConfig
                 write!(f, "BuildSnapshotDone({})", meta.display())
             }
             Self::InstallSnapshot((io_id, meta)) => {
-                write!(f, "InstallSnapshot(io_id:{}, meta:{})", io_id, meta.display())
+                write!(f, "InstallSnapshot(io_id:{}, meta:{})", io_id, meta)
             }
             Self::Apply(result) => {
                 write!(f, "{}", result)

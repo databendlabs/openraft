@@ -11,6 +11,7 @@ mod t31_snapshot_overrides_membership;
 mod t32_snapshot_uses_prev_snap_membership;
 mod t33_snapshot_delete_conflict_logs;
 mod t34_replication_does_not_block_purge;
+mod t35_skipped_snapshot_waits_for_flush;
 mod t50_snapshot_line_rate_to_snapshot;
 mod t50_snapshot_when_lacking_log;
 mod t51_after_snapshot_add_learner_and_request_a_log;

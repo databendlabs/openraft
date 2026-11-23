@@ -148,7 +148,7 @@ where
 
                 tracing::info!("Done install complete snapshot, meta: {}", meta);
 
-                let res = CommandResult::new(Ok(Response::InstallSnapshot((io_id, Some(meta)))));
+                let res = CommandResult::new(Ok(Response::InstallSnapshot((io_id, meta))));
                 self.resp_tx.send(Notification::sm(res)).await.ok();
             }
             Command::Apply { .. } => {

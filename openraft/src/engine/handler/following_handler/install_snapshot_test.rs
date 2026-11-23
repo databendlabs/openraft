@@ -58,7 +58,7 @@ fn eng() -> Engine<UTConfig> {
 #[test]
 fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     // Snapshot will not be installed because new `last_log_id` is less or equal current
-    // `snapshot_meta.last_log_id`.
+    // `snapshot_meta.last_log_id`. The reply waits for the flush of the logs it covers.
     let mut eng = eng();
 
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
@@ -69,7 +69,8 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         snapshot: (),
     });
 
-    assert_eq!(None, cond);
+    let io_id = LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(2, 1, 2))).to_io_id();
+    assert_eq!(Some(Condition::IOFlushed { io_id }), cond);
 
     assert_eq!(
         SnapshotMetaOf::<UTConfig> {
@@ -89,6 +90,7 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
     // `committed`. TODO: The snapshot should be able to be updated if
     // `new_snapshot.last_log_id > engine.snapshot_meta.last_log_id`.
     // Although in this case the state machine is not affected.
+    // The reply waits for the flush of the logs it covers.
     let mut eng = eng();
 
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
@@ -99,7 +101,8 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         snapshot: (),
     });
 
-    assert_eq!(None, cond);
+    let io_id = LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(4, 1, 5))).to_io_id();
+    assert_eq!(Some(Condition::IOFlushed { io_id }), cond);
 
     assert_eq!(
         SnapshotMetaOf::<UTConfig> {
@@ -109,6 +112,123 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
     assert!(eng.output.take_commands().is_empty());
+
+    Ok(())
+}
+
+/// A snapshot whose logs this node has committed is not installed, and the reply waits until
+/// they are flushed: `local_committed` follows the accepted log IO. The flush of the leader's IO
+/// up to the snapshot meets the condition, and so does the flush of any later IO, such as a vote.
+#[test]
+fn test_install_committed_snapshot_waits_for_flush() -> anyhow::Result<()> {
+    let leader = Vote::new(4, 1).to_committed();
+    let io = |index| IOId::new_log_io(leader.clone(), Some(log_id(4, 1, index)));
+    let snapshot = SnapshotOf::<UTConfig, ()> {
+        meta: SnapshotMetaOf::<UTConfig> {
+            last_log_id: Some(log_id(4, 1, 5)),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
+        },
+        snapshot: (),
+    };
+    let eng_with_flushed = |flushed: IOId<UTConfig>| {
+        let mut eng = eng();
+        eng.state.vote.update(
+            UTConfig::<()>::now(),
+            Duration::from_millis(500),
+            Vote::new_committed(4, 1),
+        );
+        eng.state.log_progress_mut().accept(io(8));
+        eng.state.log_progress_mut().submit(io(8));
+        eng.state.log_progress_mut().flush(flushed);
+        eng
+    };
+
+    tracing::info!("--- logs accepted up to 8 and flushed up to 3: the reply waits for the flush up to 5");
+    {
+        let mut eng = eng_with_flushed(io(3));
+        let cond = eng.following_handler().install_full_snapshot(snapshot.clone()).unwrap();
+
+        assert_eq!(Condition::IOFlushed { io_id: io(5) }, cond);
+        assert!(!cond.is_met(eng.state.io_state()));
+        assert!(eng.output.take_commands().is_empty());
+
+        eng.state.log_progress_mut().flush(io(8));
+        assert!(cond.is_met(eng.state.io_state()));
+    }
+
+    tracing::info!("--- logs already flushed up to 8: the reply is sent at once");
+    {
+        let mut eng = eng_with_flushed(io(8));
+        let cond = eng.following_handler().install_full_snapshot(snapshot.clone()).unwrap();
+        assert!(cond.is_met(eng.state.io_state()));
+    }
+
+    tracing::info!("--- a later vote flushed after the logs meets the condition too");
+    {
+        let mut eng = eng_with_flushed(io(3));
+        let cond = eng.following_handler().install_full_snapshot(snapshot.clone()).unwrap();
+
+        let later_vote = IOId::new(&Vote::new(5, 2));
+        eng.state.log_progress_mut().accept(later_vote.clone());
+        eng.state.log_progress_mut().submit(later_vote.clone());
+        eng.state.log_progress_mut().flush(later_vote);
+        assert!(cond.is_met(eng.state.io_state()));
+    }
+
+    Ok(())
+}
+
+/// A duplicate of a snapshot whose install is in flight is not installed again, and its reply
+/// waits until the install completes: until then, no log IO covers the snapshot.
+#[test]
+fn test_duplicate_snapshot_waits_for_the_install_in_flight() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.vote.update(
+        UTConfig::<()>::now(),
+        Duration::from_millis(500),
+        Vote::new_committed(4, 1),
+    );
+    let snapshot = SnapshotOf::<UTConfig, ()> {
+        meta: SnapshotMetaOf::<UTConfig> {
+            last_log_id: Some(log_id(4, 1, 6)),
+            last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
+        },
+        snapshot: (),
+    };
+    let install_io = LogIOId::new(Vote::new(4, 1).to_committed(), Some(log_id(4, 1, 6)));
+
+    tracing::info!("--- the first copy starts the install");
+    {
+        let cond = eng.following_handler().install_full_snapshot(snapshot.clone());
+        assert_eq!(
+            Some(Condition::Snapshot {
+                log_id: log_id(4, 1, 6)
+            }),
+            cond
+        );
+        eng.output.take_commands();
+    }
+
+    tracing::info!("--- the duplicate waits for the install's log IO, which completes the install");
+    {
+        let cond = eng.following_handler().install_full_snapshot(snapshot).unwrap();
+
+        assert_eq!(
+            Condition::IOFlushed {
+                io_id: install_io.to_io_id()
+            },
+            cond
+        );
+        assert!(eng.output.take_commands().is_empty());
+        assert!(!cond.is_met(eng.state.io_state()));
+
+        // As RaftCore does when it submits the install, and when the state machine reports it
+        // done.
+        eng.state.log_progress_mut().submit(install_io.to_io_id());
+        assert!(!cond.is_met(eng.state.io_state()));
+        eng.state.log_progress_mut().try_flush(install_io.to_io_id());
+        assert!(cond.is_met(eng.state.io_state()));
+    }
 
     Ok(())
 }
