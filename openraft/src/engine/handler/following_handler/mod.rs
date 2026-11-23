@@ -376,6 +376,6 @@ where
     }
 
     fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler::new(self.config, self.state)
+        ServerStateHandler::new(&self.config.id, self.state)
     }
 }

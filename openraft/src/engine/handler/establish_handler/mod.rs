@@ -1,5 +1,4 @@
 use crate::RaftTypeConfig;
-use crate::engine::EngineConfig;
 use crate::proposer::Candidate;
 use crate::proposer::ElectionQuorumSet;
 use crate::proposer::Leader;
@@ -11,7 +10,8 @@ use crate::vote::raft_vote::RaftVoteExt;
 pub(crate) struct EstablishHandler<'x, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'x mut EngineConfig<C>,
+    /// The ID of this node, which can only establish its own vote.
+    pub(crate) node_id: &'x C::NodeId,
     pub(crate) leader: &'x mut LeaderState<C>,
 }
 
@@ -25,11 +25,7 @@ where C: RaftTypeConfig
     ) -> Option<&'x mut Leader<C, WriteQuorumSet<C>>> {
         let vote = candidate.vote_ref().clone();
 
-        debug_assert_eq!(
-            vote.leader_node_id(),
-            &self.config.id,
-            "it can only commit its own vote"
-        );
+        debug_assert_eq!(vote.leader_node_id(), self.node_id, "it can only commit its own vote");
 
         if let Some(l) = self.leader.as_ref() {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]

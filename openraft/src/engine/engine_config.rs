@@ -21,9 +21,6 @@ pub(crate) struct EngineConfig<C: RaftTypeConfig> {
     /// The minimal number of applied logs to purge in a batch.
     pub(crate) purge_batch_size: u64,
 
-    /// The maximum number of entries per payload allowed to be transmitted during replication
-    pub(crate) max_payload_entries: u64,
-
     pub(crate) allow_log_reversion: bool,
 
     /// Inclusive lower bound for a sampled election timeout, in milliseconds.
@@ -52,7 +49,6 @@ where C: RaftTypeConfig
             id,
             max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
             purge_batch_size: config.purge_batch_size,
-            max_payload_entries: config.max_payload_entries,
             allow_log_reversion: config.get_allow_log_reversion(),
             election_timeout_min: config.election_timeout_min,
             election_timeout_max: config.election_timeout_max,
@@ -78,7 +74,6 @@ where C: RaftTypeConfig
             id,
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
-            max_payload_entries: 300,
             allow_log_reversion: false,
             election_timeout_min: 150,
             election_timeout_max: 300,

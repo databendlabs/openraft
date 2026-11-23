@@ -2558,11 +2558,7 @@ where
             return;
         };
 
-        let committed_vote = lh.leader.committed_vote.clone();
-        let membership_log_id = lh.state.membership_state.effective().log_id();
-        let current_session_id = ReplicationSessionId::new(committed_vote, membership_log_id.clone());
-
-        if current_session_id != session_id {
+        if lh.replication_session_id() != session_id {
             // Session changed, skip heartbeat
             return;
         }

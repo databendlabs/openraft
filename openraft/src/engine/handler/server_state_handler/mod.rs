@@ -1,7 +1,6 @@
 use crate::RaftState;
 use crate::RaftTypeConfig;
 use crate::ServerState;
-use crate::engine::EngineConfig;
 
 #[cfg(test)]
 mod update_server_state_test;
@@ -10,15 +9,16 @@ mod update_server_state_test;
 pub(crate) struct ServerStateHandler<'st, C>
 where C: RaftTypeConfig
 {
-    pub(crate) config: &'st EngineConfig<C>,
+    /// The ID of this node, whose role it calculates.
+    pub(crate) node_id: &'st C::NodeId,
     pub(crate) state: &'st mut RaftState<C>,
 }
 
 impl<'st, C> ServerStateHandler<'st, C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(config: &'st EngineConfig<C>, state: &'st mut RaftState<C>) -> Self {
-        Self { config, state }
+    pub(crate) fn new(node_id: &'st C::NodeId, state: &'st mut RaftState<C>) -> Self {
+        Self { node_id, state }
     }
 
     /// Recalculate the server state from the vote and the membership, and store it in the
@@ -30,11 +30,11 @@ where C: RaftTypeConfig
     ///
     /// [`VoteHandler::become_leader()`]: crate::engine::handler::vote_handler::VoteHandler::become_leader
     pub(crate) fn update_server_state_if_changed(&mut self) {
-        let server_state = self.state.calc_server_state(&self.config.id);
+        let server_state = self.state.calc_server_state(self.node_id);
 
         tracing::debug!(
             "check server state: id: {}, prev: {:?}, curr: {:?}",
-            self.config.id,
+            self.node_id,
             self.state.server_state,
             server_state
         );
@@ -47,9 +47,9 @@ where C: RaftTypeConfig
         let is_leader = server_state == ServerState::Leader;
 
         if !was_leader && is_leader {
-            tracing::info!("id={} becomes leader", &self.config.id);
+            tracing::info!("id={} becomes leader", self.node_id);
         } else if was_leader && !is_leader {
-            tracing::info!("id={} steps down from leader", &self.config.id);
+            tracing::info!("id={} steps down from leader", self.node_id);
         } else {
             // nothing to do
         }

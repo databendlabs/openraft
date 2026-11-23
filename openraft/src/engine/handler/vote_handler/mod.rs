@@ -250,7 +250,7 @@ where
     }
 
     pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<'_, C> {
-        ServerStateHandler::new(self.config, self.state)
+        ServerStateHandler::new(&self.config.id, self.state)
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<'_, C, SM> {
