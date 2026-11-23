@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use openraft_macros::since;
 use peel_off::Peel;
 
@@ -34,6 +32,10 @@ use crate::try_as_ref::TryAsRef;
 ///
 /// [`ClientWriteError`]: crate::errors::ClientWriteError
 /// [`LinearizableReadError`]: crate::errors::LinearizableReadError
+#[since(
+    version = "0.10.2",
+    change = "the accessors, `TryAsRef` and `Peel` no longer require `E: Debug`"
+)]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum RaftError<C, E = Infallible>
@@ -65,9 +67,7 @@ where C: RaftTypeConfig
 }
 
 impl<C, E> RaftError<C, E>
-where
-    C: RaftTypeConfig,
-    E: Debug,
+where C: RaftTypeConfig
 {
     /// Return a reference to Self::APIError.
     pub fn api_error(&self) -> Option<&E> {
@@ -143,7 +143,7 @@ where
 impl<C, E> TryAsRef<ForwardToLeader<C>> for RaftError<C, E>
 where
     C: RaftTypeConfig,
-    E: Debug + TryAsRef<ForwardToLeader<C>>,
+    E: TryAsRef<ForwardToLeader<C>>,
 {
     fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
         self.forward_to_leader()
@@ -160,9 +160,7 @@ where C: RaftTypeConfig
 
 /// Peel off `Fatal`, leaving the API error `E` as the residual.
 impl<C, E> Peel for RaftError<C, E>
-where
-    C: RaftTypeConfig,
-    E: Debug,
+where C: RaftTypeConfig
 {
     type Peeled = Fatal<C>;
     type Residual = E;
@@ -172,5 +170,101 @@ where
             RaftError::APIError(e) => Ok(e),
             RaftError::Fatal(f) => Err(f),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use peel_off::Peel;
+
+    use crate::engine::testing::UTConfig;
+    use crate::errors::Fatal;
+    use crate::errors::ForwardToLeader;
+    use crate::errors::RaftError;
+    use crate::try_as_ref::TryAsRef;
+
+    type C = UTConfig;
+
+    /// An API error that implements no `Debug`.
+    struct NoDebug(u64);
+
+    /// A non-`Debug` API error with a leader hint, like `ClientWriteError`: both variants have a
+    /// hint, and only `Forward` converts into a [`ForwardToLeader`].
+    enum NoDebugHint {
+        Forward(ForwardToLeader<C>),
+        Discarded(ForwardToLeader<C>),
+    }
+
+    impl TryAsRef<ForwardToLeader<C>> for NoDebugHint {
+        fn try_as_ref(&self) -> Option<&ForwardToLeader<C>> {
+            match self {
+                NoDebugHint::Forward(f) | NoDebugHint::Discarded(f) => Some(f),
+            }
+        }
+    }
+
+    impl TryFrom<NoDebugHint> for ForwardToLeader<C> {
+        type Error = NoDebugHint;
+
+        fn try_from(e: NoDebugHint) -> Result<Self, NoDebugHint> {
+            match e {
+                NoDebugHint::Forward(f) => Ok(f),
+                discarded => Err(discarded),
+            }
+        }
+    }
+
+    /// The accessors return the payload they hold when the API error implements no `Debug`.
+    #[test]
+    fn test_accessors_without_debug() {
+        let api = || RaftError::<C, NoDebug>::APIError(NoDebug(3));
+        assert_eq!(Some(3), api().api_error().map(|e| e.0));
+        assert_eq!(Some(3), api().into_api_error().map(|e| e.0));
+        assert_eq!(None, api().fatal());
+        assert_eq!(None, api().into_fatal());
+
+        let fatal = || RaftError::<C, NoDebug>::Fatal(Fatal::Panicked);
+        assert_eq!(None, fatal().api_error().map(|e| e.0));
+        assert_eq!(None, fatal().into_api_error().map(|e| e.0));
+        assert_eq!(Some(&Fatal::Panicked), fatal().fatal());
+        assert_eq!(Some(Fatal::Panicked), fatal().into_fatal());
+    }
+
+    /// `Peel` separates the fatal error from a non-`Debug` API error, also when `peel_off` peels a
+    /// `Result` that holds the error.
+    #[test]
+    fn test_peel_without_debug() {
+        let api = RaftError::<C, NoDebug>::APIError(NoDebug(3));
+        assert_eq!(Ok(3), api.peel().map(|e| e.0));
+        let fatal = RaftError::<C, NoDebug>::Fatal(Fatal::Panicked);
+        assert_eq!(Err(Fatal::Panicked), fatal.peel().map(|e| e.0));
+
+        let ok: Result<u64, RaftError<C, NoDebug>> = Ok(5);
+        assert_eq!(Ok(Ok(5)), ok.peel().map(|r| r.map_err(|e| e.0)));
+        let api: Result<u64, RaftError<C, NoDebug>> = Err(RaftError::APIError(NoDebug(3)));
+        assert_eq!(Ok(Err(3)), api.peel().map(|r| r.map_err(|e| e.0)));
+        let fatal: Result<u64, RaftError<C, NoDebug>> = Err(RaftError::Fatal(Fatal::Panicked));
+        assert_eq!(Err(Fatal::Panicked), fatal.peel().map(|r| r.map_err(|e| e.0)));
+    }
+
+    /// A non-`Debug` API error keeps the forwarding distinction: both variants lend their hint,
+    /// and only `Forward` converts into one.
+    #[test]
+    fn test_forward_to_leader_without_debug() {
+        let hint = ForwardToLeader::<C>::new(2, ());
+        let forward = || RaftError::<C, NoDebugHint>::APIError(NoDebugHint::Forward(hint.clone()));
+        let discarded = || RaftError::<C, NoDebugHint>::APIError(NoDebugHint::Discarded(hint.clone()));
+
+        assert_eq!(Some(&hint), forward().forward_to_leader());
+        assert_eq!(Some(&hint), forward().try_as_ref());
+        assert_eq!(Some(hint.clone()), forward().into_forward_to_leader());
+
+        assert_eq!(Some(&hint), discarded().forward_to_leader());
+        assert_eq!(Some(&hint), discarded().try_as_ref());
+        assert_eq!(None, discarded().into_forward_to_leader());
+
+        let fatal = || RaftError::<C, NoDebugHint>::Fatal(Fatal::Panicked);
+        assert_eq!(None, fatal().forward_to_leader());
+        assert_eq!(None, fatal().into_forward_to_leader());
     }
 }
