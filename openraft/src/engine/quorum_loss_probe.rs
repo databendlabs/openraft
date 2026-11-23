@@ -46,57 +46,16 @@ where I: Instant
         let slot = elapsed.as_nanos() / interval;
         let is_quiet = slot.is_multiple_of(2);
 
-        let into_slot = u64::try_from(elapsed.as_nanos() % interval).unwrap_or(u64::MAX);
-        let remaining = self.interval.saturating_sub(Duration::from_nanos(into_slot));
+        // The offset into the slot can exceed `u64::MAX` nanoseconds, so build it from seconds and
+        // nanoseconds. It is less than `interval`, so its seconds fit in `u64`.
+        let into_slot = elapsed.as_nanos() % interval;
+        let into_slot_secs = (into_slot / 1_000_000_000) as u64;
+        let into_slot_nanos = (into_slot % 1_000_000_000) as u32;
+        let into_slot = Duration::new(into_slot_secs, into_slot_nanos);
+        let remaining = self.interval.saturating_sub(into_slot);
         (is_quiet, remaining)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::QuorumLossProbe;
-    use crate::engine::testing::UTConfig;
-    use crate::type_config::TypeConfigExt;
-
-    #[test]
-    fn test_quiet_for() {
-        let ms = Duration::from_millis;
-        let t = UTConfig::<()>::now();
-        let probe = QuorumLossProbe {
-            quorum_acked_at: t,
-            leader_lease: ms(300),
-            interval: ms(600),
-        };
-
-        assert_eq!(None, probe.quiet_for(t));
-        assert_eq!(None, probe.quiet_for(t + ms(299)));
-        assert_eq!(Some(ms(600)), probe.quiet_for(t + ms(300)));
-        assert_eq!(Some(ms(1)), probe.quiet_for(t + ms(899)));
-        assert_eq!(None, probe.quiet_for(t + ms(900)));
-        assert_eq!(None, probe.quiet_for(t + ms(1_499)));
-        assert_eq!(Some(ms(400)), probe.quiet_for(t + ms(1_700)));
-    }
-
-    #[test]
-    fn test_phase() {
-        let ms = Duration::from_millis;
-        let t = UTConfig::<()>::now();
-        let probe = QuorumLossProbe {
-            quorum_acked_at: t,
-            leader_lease: ms(300),
-            interval: ms(600),
-        };
-        for (elapsed, expected) in [
-            (0, (false, ms(300))),
-            (300, (true, ms(600))),
-            (900, (false, ms(600))),
-            (1_499, (false, ms(1))),
-        ] {
-            let now = t + ms(elapsed);
-            let actual = probe.phase(now);
-            assert_eq!(expected, actual);
-        }
-    }
-}
+mod quorum_loss_probe_test;
