@@ -470,7 +470,8 @@ pub struct RaftServerMetrics<C: RaftTypeConfig> {
     pub id: C::NodeId,
     /// The current vote state.
     pub vote: VoteOf<C>,
-    /// The current server state (Leader, Follower, Candidate, etc.).
+    /// The current server state (Leader, Follower, Candidate, etc.), or `Shutdown` once the node
+    /// has stopped.
     pub state: ServerState,
     /// The ID of the current leader, if known.
     pub current_leader: Option<C::NodeId>,

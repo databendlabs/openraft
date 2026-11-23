@@ -12,6 +12,7 @@ mod t10_metrics_recorder;
 mod t10_purged;
 mod t10_server_metrics_and_data_metrics;
 mod t20_metrics_state_machine_consistency;
+mod t20_shutdown_metrics;
 mod t30_leader_metrics;
 mod t40_metrics_wait;
 mod t50_apply_progress_api;

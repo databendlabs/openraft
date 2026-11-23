@@ -375,6 +375,23 @@ where
             curr.state = ServerState::Shutdown;
             curr.running_state = Err(err.clone());
 
+            // The server metrics and the recorder report the server state too. Like
+            // `report_metrics()`, send the full metrics last: `Wait` examines only them, so a
+            // waiter that sees `Shutdown` there finds it in the other two as well.
+            let server_sent = self.metrics.server.send_if_modified(|server| {
+                if server.state == ServerState::Shutdown {
+                    return false;
+                }
+                server.state = ServerState::Shutdown;
+                true
+            });
+            if server_sent {
+                self.runtime_stats.server_metrics_sends += 1;
+            }
+            if let Some(r) = &self.metrics_recorder {
+                crate::metrics::forward_metrics(&curr, r.as_ref());
+            }
+
             self.metrics.all.send(curr).ok();
         }
 

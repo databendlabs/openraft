@@ -1838,6 +1838,12 @@ where
     }
 
     /// Get a handle to the server metrics channel.
+    ///
+    /// When the node stops, the channel reports [`ServerState::Shutdown`] before it closes, as
+    /// [`Self::metrics`] does.
+    ///
+    /// [`ServerState::Shutdown`]: crate::ServerState::Shutdown
+    #[since(version = "0.10.2", change = "reports `Shutdown` when the node stops")]
     pub fn server_metrics(&self) -> WatchReceiverOf<C, RaftServerMetrics<C>> {
         self.inner.rx_server_metrics.clone()
     }

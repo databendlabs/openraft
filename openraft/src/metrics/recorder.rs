@@ -88,7 +88,9 @@ pub trait MetricsRecorder: Send + Sync + std::fmt::Debug {
 
     /// Set the server state.
     ///
-    /// States: 0=Learner, 1=Follower, 2=Candidate, 3=Leader, 4=Shutdown
+    /// States: 0=Learner, 1=Follower, 2=Candidate, 3=Leader, 4=Shutdown. When the node stops, the
+    /// last call sets 4.
+    #[since(version = "0.10.2", change = "called with 4, `Shutdown`, when the node stops")]
     fn set_server_state(&self, state: u8);
 
     // --- Counters (operations) ---
