@@ -2,6 +2,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use futures::SinkExt;
 use futures::Stream;
 use futures::StreamExt;
 use openraft::OptionalSend;
@@ -76,6 +77,19 @@ impl RaftNetworkV2<MemConfig> for RaftRouterNetwork {
     where
         S: Stream<Item = AppendEntriesRequest<MemConfig>> + OptionalSend + Unpin + 'static,
     {
+        if self.owner.pulled_append {
+            let (mut pulled, requests) = futures::channel::mpsc::channel(0);
+            #[allow(clippy::let_underscore_future)]
+            let _ = MemConfig::spawn(async move {
+                let mut input = input;
+                while let Some(request) = input.next().await {
+                    if pulled.send(request).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            return stream_append_sequential(self, requests, option);
+        }
         if !self.owner.pipelined_append {
             return stream_append_sequential(self, input, option);
         }

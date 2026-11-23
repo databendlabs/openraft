@@ -8,6 +8,7 @@ use openraft_macros::since;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(VariantName)]
 #[variant_name(prefix = "Notify::")]
+#[since(version = "0.10.2", change = "Added `ReplicationStopped`")]
 #[since(version = "0.10.2", change = "Added `ReplicateCleared`")]
 #[since(version = "0.10.1", change = "`Tick` comes from the heartbeat timer of a leader")]
 #[since(version = "0.10.1", change = "Added `ElectionDeadlineReached`")]
@@ -46,6 +47,8 @@ pub enum NotificationName {
     ElectionDeadlineReached,
     /// A replication worker stopped reading the log for a plan the leader dropped.
     ReplicateCleared,
+    /// A replication worker that `RaftCore` closed has ended, and reads the log no more.
+    ReplicationStopped,
 }
 
 #[cfg(test)]

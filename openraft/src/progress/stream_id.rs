@@ -17,7 +17,7 @@ use std::ops::Deref;
 ///
 /// [`InflightId`]: crate::progress::inflight_id::InflightId
 /// [`Leader::is_replication_stream_valid`]: crate::proposer::Leader::is_replication_stream_valid
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct StreamId {
     id: u64,
 }

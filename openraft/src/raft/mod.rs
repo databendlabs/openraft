@@ -672,6 +672,7 @@ where
                     election_deadline_notifier,
                     heartbeat_deadline_notifier,
                     replications: Default::default(),
+                    closed_replication_streams: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
                     tx_api: tx_api.clone(),

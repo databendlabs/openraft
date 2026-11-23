@@ -288,13 +288,11 @@ where
             // limited_get_log_entries will return logs smaller than the range [start, end).
             let logs = self.log_reader.limited_get_log_entries(start, end).await.sto_read_logs()?;
 
-            // RaftCore keeps the entries of a plan it dropped until this task confirms the clear,
-            // which waits for this read. Once it closes the stream, as when it removes the target
-            // or stops leading, it may purge without waiting, so a read that overlapped the close
-            // may have been cut short by a purge. Its entries may not follow `prev`, and a follower
-            // checks that only with a `debug_assert!`: a release build would append them after
-            // `prev` and could leave a hole in its log. A read whose plan RaftCore dropped or
-            // replaced meanwhile is stale and is not sent either.
+            // RaftCore purges no log this read covers while it runs: it keeps the entries of a
+            // plan it dropped until this task confirms the clear, and purges nothing while a stream
+            // it closed, as when it removes the target or stops leading, has a task that has not
+            // ended. Both wait for this read. But a read whose plan RaftCore dropped, replaced or
+            // closed meanwhile is stale and is not sent.
             if !self.is_plan_current() {
                 return Ok(None);
             }

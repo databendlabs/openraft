@@ -106,6 +106,15 @@ where C: RaftTypeConfig
         inflight_id: InflightId,
     },
 
+    /// The task of the replication stream `stream_id`, which RaftCore closed, has ended.
+    ///
+    /// The task leaves its request stream nothing to read before it ends, so no read of the log
+    /// for the stream is running or can start. RaftCore purges no log until every stream it closed
+    /// reports this; see [`RaftCore::closed_replication_streams`].
+    ///
+    /// [`RaftCore::closed_replication_streams`]: crate::core::RaftCore::closed_replication_streams
+    ReplicationStopped { stream_id: StreamId },
+
     HeartbeatProgress {
         stream_id: StreamId,
         sending_time: SendStamp<InstantOf<C>>,
@@ -146,6 +155,7 @@ where C: RaftTypeConfig
             Self::LogPurged { .. } => NotificationName::LogPurged,
             Self::ReplicationProgress { .. } => NotificationName::ReplicationProgress,
             Self::ReplicateCleared { .. } => NotificationName::ReplicateCleared,
+            Self::ReplicationStopped { .. } => NotificationName::ReplicationStopped,
             Self::HeartbeatProgress { .. } => NotificationName::HeartbeatProgress,
             Self::StateMachine { .. } => NotificationName::StateMachine,
             Self::Tick { .. } => NotificationName::Tick,
@@ -231,6 +241,7 @@ where C: RaftTypeConfig
                     target, stream_id, inflight_id
                 )
             }
+            Self::ReplicationStopped { stream_id } => write!(f, "ReplicationStopped: stream_id: {}", stream_id),
             Self::StateMachine { command_result } => {
                 write!(f, "{}", command_result)
             }

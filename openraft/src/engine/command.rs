@@ -164,6 +164,12 @@ where
     SendPreVote { vote_req: VoteRequest<C> },
 
     /// Purge log from the beginning to `upto`, inclusive.
+    ///
+    /// It runs once the snapshot covers `upto`, and once every replication task that RaftCore
+    /// closed has ended, because a closed task may still read the log; until then it waits at the
+    /// head of the queue. See [`RaftCore::closed_replication_streams`].
+    ///
+    /// [`RaftCore::closed_replication_streams`]: crate::core::RaftCore::closed_replication_streams
     PurgeLog { upto: LogIdOf<C> },
 
     /// Delete logs that have conflicted with the leader from a follower/learner after log id

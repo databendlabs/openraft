@@ -214,8 +214,22 @@ where
         Some((req, stream_context))
     }
 
-    /// Main replication loop that sends AppendEntries requests and processes responses.
+    /// Run the replication loop, and once it ends, leave the request stream nothing to read.
+    ///
+    /// [`RaftCore`] purges no log while a replication task it has closed may still read, and it
+    /// learns that the task no longer reads only when the task ends; see
+    /// [`RaftCore::closed_replication_streams`].
+    ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    /// [`RaftCore::closed_replication_streams`]: crate::core::RaftCore::closed_replication_streams
     async fn main(mut self) -> Result<(), ReplicationClosed> {
+        let res = self.run_sessions().await;
+        self.stop_reading().await;
+        res
+    }
+
+    /// Main replication loop that sends AppendEntries requests and processes responses.
+    async fn run_sessions(&mut self) -> Result<(), ReplicationClosed> {
         // Avoid holding a mut ref to self during streaming.
         let mut network = self.network.take().unwrap();
 
@@ -328,20 +342,23 @@ where
     /// Confirm to [`RaftCore`], answering the clear request `inflight_id`, that this task no longer
     /// reads the log for the plan [`RaftCore`] dropped.
     ///
+    /// [`RaftCore`]: crate::core::RaftCore
+    async fn confirm_clear(&mut self, inflight_id: InflightId) {
+        self.stop_reading().await;
+
+        tracing::debug!("ReplicationCore cleared its plan; confirm inflight_id: {}", inflight_id);
+        self.replication_context.notify_cleared(inflight_id).await;
+    }
+
+    /// Leave the request stream nothing to read, once a read the stream has started has returned.
+    ///
     /// Only the request stream reads the log, and only while it holds the stream state. Taking the
     /// state waits for a read that the stream has started, which a transport that polls the stream
     /// on a task of its own may still run after the stream session ended. Dropping the payload then
     /// leaves the stream nothing to read.
-    ///
-    /// [`RaftCore`]: crate::core::RaftCore
-    async fn confirm_clear(&mut self, inflight_id: InflightId) {
-        {
-            let mut stream_state = self.stream_state.lock().await;
-            stream_state.payload = None;
-        }
-
-        tracing::debug!("ReplicationCore cleared its plan; confirm inflight_id: {}", inflight_id);
-        self.replication_context.notify_cleared(inflight_id).await;
+    async fn stop_reading(&mut self) {
+        let mut stream_state = self.stream_state.lock().await;
+        stream_state.payload = None;
     }
 
     /// Stream `payload` to the target and consume the responses.
@@ -375,7 +392,14 @@ where
         let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
         let option = RPCOption::new(rpc_timeout);
 
-        let resp_strm_res = network.stream_append(req_strm, option).await;
+        // RaftCore purges no log until this task ends after it closes the stream, so a transport
+        // that is still opening the stream must not hold the task.
+        let mut cancel_rx = self.replication_context.cancel_rx.clone();
+        let opening = network.stream_append(req_strm, option);
+        let Some(resp_strm_res) = C::cancellable_by(opening, cancel_rx.changed()).await else {
+            tracing::info!("ReplicationCore: canceled while opening a stream");
+            return Err(ReplicationClosed::new("canceled"));
+        };
         // A custom streaming transport may poll the request stream while establishing
         // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
         // because in that case there is no response stream for `handle_response_stream()` to

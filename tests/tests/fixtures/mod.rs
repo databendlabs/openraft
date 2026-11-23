@@ -165,6 +165,10 @@ pub struct RaftRouter {
     /// Whether AppendEntries requests may run concurrently within a stream.
     pipelined_append: bool,
 
+    /// Whether a task of its own pulls the AppendEntries requests of a stream, see
+    /// [`Builder::pulled_append`].
+    pulled_append: bool,
+
     /// Whether AppendEntries replies carry conflict hints.
     ///
     /// Without them, replies take the `StreamAppendError` format, which has no hint, to emulate
@@ -177,6 +181,7 @@ pub struct Builder {
     send_delay: u64,
     chunked_snapshots: bool,
     pipelined_append: bool,
+    pulled_append: bool,
     conflict_hints: bool,
 }
 
@@ -190,6 +195,16 @@ impl Builder {
     /// Send concurrent AppendEntries requests and yield their responses in order.
     pub fn pipelined_append(mut self) -> Self {
         self.pipelined_append = true;
+        self
+    }
+
+    /// Pull the AppendEntries requests of each stream on a task of its own, as a gRPC client
+    /// does, and send them one at a time.
+    ///
+    /// A request that the stream is still generating, such as one whose log read waits, then
+    /// outlives the replication session that opened the stream.
+    pub fn pulled_append(mut self) -> Self {
+        self.pulled_append = true;
         self
     }
 
@@ -228,6 +243,7 @@ impl Builder {
             rpc_post_hook: Arc::new(TypeConfig::mutex(HashMap::new())),
             snapshot_chunks,
             pipelined_append: self.pipelined_append,
+            pulled_append: self.pulled_append,
             conflict_hints: self.conflict_hints,
         }
     }
@@ -242,6 +258,7 @@ impl RaftRouter {
             send_delay: 0,
             chunked_snapshots: false,
             pipelined_append: false,
+            pulled_append: false,
             conflict_hints: false,
         })
     }

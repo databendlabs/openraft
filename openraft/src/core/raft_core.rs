@@ -252,6 +252,17 @@ where
     /// A mapping of node IDs the replication state of the target node.
     pub(crate) replications: BTreeMap<C::NodeId, ReplicationHandle<C>>,
 
+    /// The replication streams this core has closed whose tasks have not ended yet.
+    ///
+    /// A closed task may still read the log: a read it started goes on, and a transport that polls
+    /// the request stream on a task of its own may still poll it. So no [`Command::PurgeLog`] runs
+    /// while this is not empty, on a leader that removed a target as on a node that stopped
+    /// leading. The purge waits at the head of the command queue, and later commands wait behind
+    /// it: after a snapshot install, the purge must reach storage before the appends that follow
+    /// it, or the log would have a hole. A task removes its stream from here with
+    /// [`Notification::ReplicationStopped`] once it reads no more.
+    pub(crate) closed_replication_streams: BTreeSet<StreamId>,
+
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
 
     #[allow(dead_code)]
@@ -2238,6 +2249,11 @@ where
                 }
             }
 
+            // A purge that waits for closed streams runs with the queued commands after this.
+            Notification::ReplicationStopped { stream_id } => {
+                self.closed_replication_streams.remove(&stream_id);
+            }
+
             Notification::HeartbeatProgress {
                 stream_id,
                 sending_time,
@@ -2582,7 +2598,12 @@ where
         (ctx, cancel_tx)
     }
 
-    fn close_replication(target: &C::NodeId, mut s: ReplicationHandle<C>) {
+    /// Close the replication stream `s` to `target`.
+    ///
+    /// Its task may read the log until it ends, so the stream stays in
+    /// [`Self::closed_replication_streams`] until the task has ended and a
+    /// [`Notification::ReplicationStopped`] reports it.
+    fn close_replication(&mut self, target: &C::NodeId, mut s: ReplicationHandle<C>) {
         let Some(handle) = s.join_handle.take() else {
             return;
         };
@@ -2592,12 +2613,18 @@ where
         drop(s.cancel_tx);
         drop(s.backoff_reset_tx);
 
+        let stream_id = s.stream_id;
+        let inserted = self.closed_replication_streams.insert(stream_id);
+        debug_assert!(inserted, "replication stream {} is closed only once", stream_id);
+        let tx_notify = self.notifications.sender();
+
         let target = target.clone();
         #[allow(clippy::let_underscore_future)]
         let _ = C::spawn(async move {
             tracing::debug!("joining removed replication: {}", target);
             let _x = handle.await;
             tracing::info!("done joining removed replication: {}", target);
+            tx_notify.send(Notification::ReplicationStopped { stream_id }).await.ok();
         });
     }
 
@@ -2796,7 +2823,7 @@ where
 
         let left = std::mem::take(&mut self.replications);
         for (target, s) in left {
-            Self::close_replication(&target, s);
+            self.close_replication(&target, s);
         }
     }
 
@@ -2832,7 +2859,7 @@ where
 
             let handle = if let Some(removed) = removed {
                 if close_old_streams {
-                    Self::close_replication(&prog.target, removed);
+                    self.close_replication(&prog.target, removed);
                     None
                 } else {
                     Some(removed)
@@ -2855,7 +2882,7 @@ where
         let left = std::mem::replace(&mut self.replications, new_replications);
 
         for (target, s) in left {
-            Self::close_replication(&target, s);
+            self.close_replication(&target, s);
         }
     }
 
@@ -2948,6 +2975,15 @@ where
                 tracing::debug!("{} is not yet met, postpone cmd: {}", condition, cmd);
                 return Ok(Some(cmd));
             }
+        }
+
+        if matches!(cmd, Command::PurgeLog { .. }) && !self.closed_replication_streams.is_empty() {
+            tracing::debug!(
+                "{} closed replication streams may still read the log; postpone cmd: {}",
+                self.closed_replication_streams.len(),
+                cmd
+            );
+            return Ok(Some(cmd));
         }
 
         tracing::debug!("RAFT_event id={:<2}    cmd: {}", self.id, cmd);
