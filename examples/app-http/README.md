@@ -136,3 +136,9 @@ node did not append it. After `LogEntryDiscarded`, the node had appended the
 write, and the write may still commit through another leader, so `write()`
 returns the error without resending; the next request goes to the leader the
 error names.
+
+`Client::write_with_retries()` also resends after `LogEntryDiscarded` and after a
+response that fails or does not arrive within two seconds, until the ten-second
+budget runs out. Use it only for writes that the state machine applies at most
+once per request ID, as
+[`raft-kv-memstore-dedup`](../raft-kv-memstore-dedup/) does.

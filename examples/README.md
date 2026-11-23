@@ -31,6 +31,7 @@ or runtime.
 | [raft-kv-memstore-single-threaded] | in-memory | in-memory | in-process channel | RaftNetworkV2 | channel | in-memory | Single-threaded runtime |
 | [raft-kv-memstore-opendal-snapshot-data] | [log-mem] | in-memory+OpenDAL | in-process channel | RaftNetworkV2 | channel | in-memory | OpenDAL snapshot storage |
 | [raft-kv-memstore-weighted-membership] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | `WeightedMembership`; `/init` and `/change-membership` take weights |
+| [raft-kv-memstore-dedup] | [log-mem] | [sm-mem] | HTTP/reqwest([network-v2]) | RaftNetworkV2 | [app-http] | [app-http] | Writes carry request IDs; a resent write gets its first outcome |
 
 ## Focused Examples
 
@@ -94,6 +95,7 @@ The following symbolic links are provided for backward compatibility:
 [raft-kv-memstore-single-threaded]: raft-kv-memstore-single-threaded/
 [raft-kv-memstore-opendal-snapshot-data]: raft-kv-memstore-opendal-snapshot-data/
 [raft-kv-memstore-weighted-membership]: raft-kv-memstore-weighted-membership/
+[raft-kv-memstore-dedup]: raft-kv-memstore-dedup/
 [multi-raft-kv]: multi-raft-kv/
 [log-mem]: log-mem/
 [log-rocks]: log-rocks/

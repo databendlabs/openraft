@@ -100,6 +100,15 @@ decides the retry:
 | `ForwardToLeader`, `LeaseExpired` | The node leads but no quorum has acknowledged it recently. `leader_id` is `None`. | Retry on the same node after a short delay; it is not a redirect. |
 | `LogEntryDiscarded` | The node accepted the write, then dropped its entry when it followed another leader. The entry may still commit through that leader. | Retry only a write that the application can deduplicate or that is idempotent. |
 
+A write whose response is lost is as uncertain as one that ends with
+`LogEntryDiscarded`: it may have committed. To resend either one safely, give
+each write a request ID, a client ID and a serial that a resent copy keeps, and
+have the state machine apply each ID at most once: it answers a repeated ID with
+the response of the first application. The
+[raft-kv-memstore-dedup example] keeps the serial and the response of the latest
+write of each client in its replicated state and its snapshots, and its tests
+resend writes after a lost response and after `LogEntryDiscarded`.
+
 `ChangeMembershipError::InProgress` and `UncommittedLeaderLog` are also
 temporary; see
 [membership changes that involve the leader](crate::docs::cluster_control::leadership#membership-changes-that-involve-the-leader).
@@ -137,6 +146,7 @@ isolated former leader that reports itself ready while it refuses a linearizable
 [`Raft::as_leader()`]: `crate::Raft::as_leader`
 [`Raft::wait_for_recovery()`]: `crate::Raft::wait_for_recovery`
 [raft-kv-memstore example]: https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore
+[raft-kv-memstore-dedup example]: https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore-dedup
 [`ForwardToLeader`]: `crate::errors::ForwardToLeader`
 [`ForwardReason`]: `crate::errors::ForwardReason`
 [`Precondition`]: `crate::raft::Precondition`

@@ -75,6 +75,7 @@ test-examples:
 	cargo test --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	cargo test --manifest-path examples/raft-kv-memstore-dedup/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rkyv/Cargo.toml
@@ -285,6 +286,7 @@ fmt:
 	cargo fmt --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path examples/raft-kv-memstore-dedup/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml $(FMT_ARGS)
@@ -326,6 +328,7 @@ clippy: clippy-basic
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml            --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml       --all-targets -- -D warnings
+	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-dedup/Cargo.toml                 --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml   --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-memstore/Cargo.toml                       --all-targets -- -D warnings
 	cargo clippy --no-deps --manifest-path examples/raft-kv-rocksdb/Cargo.toml                        --all-targets -- -D warnings
@@ -356,6 +359,7 @@ unused_dep:
 	cargo machete examples/raft-kv-memstore-single-threaded
 	cargo machete examples/raft-kv-memstore-opendal-snapshot-data
 	cargo machete examples/raft-kv-memstore-network-v1
+	cargo machete examples/raft-kv-memstore-dedup
 	cargo machete examples/raft-kv-memstore-weighted-membership
 	cargo machete examples/raft-kv-rkyv
 	cargo machete examples/multi-raft-kv
@@ -401,6 +405,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-dedup/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-memstore/Cargo.toml
 	RUSTFLAGS="-D warnings" cargo check --manifest-path examples/raft-kv-rocksdb/Cargo.toml
@@ -432,6 +437,7 @@ clean:
 	cargo clean --manifest-path examples/raft-kv-memstore-network-v1/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-opendal-snapshot-data/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-single-threaded/Cargo.toml
+	cargo clean --manifest-path examples/raft-kv-memstore-dedup/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore-weighted-membership/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo clean --manifest-path examples/raft-kv-rocksdb/Cargo.toml

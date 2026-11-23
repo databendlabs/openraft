@@ -283,3 +283,84 @@ async fn write_returns_a_discarded_write_without_resending_it() {
     first_task.abort();
     second_task.abort();
 }
+
+/// Answer the `n`th request with the `n`th of `answers`, a status code and a body, and every later
+/// request with the last one.
+fn serve_in_order(listener: TcpListener, answers: Vec<(u16, String)>, calls: Arc<AtomicUsize>) -> JoinHandle<()> {
+    let answers = Arc::new(answers);
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let answers = answers.clone();
+            let calls = calls.clone();
+            tokio::spawn(async move {
+                let service = service_fn(move |_| {
+                    let call = calls.fetch_add(1, Ordering::SeqCst);
+                    let (status, body) = answers[call.min(answers.len() - 1)].clone();
+                    async move {
+                        let response = Response::builder().status(status).body(Full::new(Bytes::from(body))).unwrap();
+                        Ok::<_, HttpInfallible>(response)
+                    }
+                });
+                let io = TokioIo::new(stream);
+                let _connection = http1::Builder::new().serve_connection(io, service).await;
+            });
+        }
+    })
+}
+
+#[tokio::test]
+async fn write_with_retries_resends_a_discarded_write_to_the_named_leader() {
+    let first = listener().await;
+    let second = listener().await;
+    let first_addr = first.local_addr().unwrap().to_string();
+    let second_addr = second.local_addr().unwrap().to_string();
+    let first_calls = Arc::new(AtomicUsize::new(0));
+    let second_calls = Arc::new(AtomicUsize::new(0));
+    let first_task = serve(first, discarded(2, &second_addr), Duration::ZERO, first_calls.clone());
+    let second_task = serve(second, written(), Duration::ZERO, second_calls.clone());
+    let client = Client::<C>::new(1, first_addr);
+    let response = client.write_with_retries(&"value".to_string()).await.unwrap().unwrap();
+    assert_eq!("applied", response.data);
+    let calls = first_calls.load(Ordering::SeqCst);
+    assert_eq!(1, calls);
+    let calls = second_calls.load(Ordering::SeqCst);
+    assert_eq!(1, calls);
+    first_task.abort();
+    second_task.abort();
+}
+
+#[tokio::test]
+async fn write_with_retries_resends_a_write_whose_response_failed() {
+    let listener = listener().await;
+    let addr = listener.local_addr().unwrap().to_string();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let answers = vec![(500, "lost".to_string()), (200, written())];
+    let server = serve_in_order(listener, answers, calls.clone());
+    let client = Client::<C>::new(1, addr);
+    let response = client.write_with_retries(&"value".to_string()).await.unwrap().unwrap();
+    assert_eq!("applied", response.data);
+    let calls = calls.load(Ordering::SeqCst);
+    assert_eq!(2, calls);
+    server.abort();
+}
+
+#[tokio::test]
+async fn write_with_retries_returns_a_refused_write_at_once() {
+    let listener = listener().await;
+    let addr = listener.local_addr().unwrap().to_string();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let refused = openraft::errors::PreconditionFailed::<C>::LastLogIdMismatch {
+        expected: None,
+        actual: Some(openraft::testing::log_id::<C>(1, 1, 5)),
+    };
+    let result: WriteResult = Err(ClientWriteError::PreconditionFailed(refused));
+    let body = serde_json::to_string(&result).unwrap();
+    let server = serve(listener, body, Duration::ZERO, calls.clone());
+    let client = Client::<C>::new(1, addr);
+    let error = client.write_with_retries(&"value".to_string()).await.unwrap().unwrap_err();
+    assert!(matches!(error, ClientWriteError::PreconditionFailed(_)));
+    let calls = calls.load(Ordering::SeqCst);
+    assert_eq!(1, calls);
+    server.abort();
+}

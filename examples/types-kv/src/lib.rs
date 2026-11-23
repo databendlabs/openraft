@@ -1,7 +1,14 @@
 //! Shared KV request/response types for example crates.
 
+mod dedup_request;
+mod kv_command;
+mod request_id;
+
 use std::fmt;
 
+pub use dedup_request::DedupRequest;
+pub use kv_command::KvCommand;
+pub use request_id::RequestId;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -62,9 +69,11 @@ impl fmt::Display for Request {
 /// A response from the KV store.
 ///
 /// After a write that applies, `value` holds the written value and its new version. It is `None`
-/// after a [`Request::CompareAndSet`] whose version does not match, and after a blank or
-/// membership log entry, which carries no command. The examples' read endpoints reuse this type:
-/// `value` is the stored value, or `None` when the key is absent.
+/// after a [`Request::CompareAndSet`] whose version does not match, after a [`DedupRequest`] whose
+/// serial is below the latest applied one of its client, and after a blank or membership log
+/// entry, which carries no command. A resent [`DedupRequest`] gets the response of its first
+/// application again. The examples' read endpoints reuse this type: `value` is the stored value, or
+/// `None` when the key is absent.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Response {
     pub value: Option<VersionedValue>,

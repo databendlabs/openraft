@@ -269,6 +269,7 @@ jobs:
           - 'network-v2-http'
           - 'raft-kv-log-wal-sm-mem'
           - 'raft-kv-memstore'
+          - 'raft-kv-memstore-dedup'
           - 'raft-kv-memstore-grpc'
           - 'raft-kv-memstore-network-v1'
           - 'raft-kv-memstore-opendal-snapshot-data'

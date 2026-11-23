@@ -106,6 +106,7 @@ exclude = [
 
     "examples/raft-kv-log-wal-sm-mem",
     "examples/raft-kv-memstore",
+    "examples/raft-kv-memstore-dedup",
     "examples/raft-kv-memstore-grpc",
     "examples/raft-kv-memstore-single-threaded",
     "examples/raft-kv-memstore-network-v1",

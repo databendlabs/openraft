@@ -30,6 +30,12 @@ use crate::Readiness;
 
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long [`Client::write_with_retries`] waits for the response to one attempt.
+const WRITE_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long [`Client::write_with_retries`] waits before it resends a write.
+const WRITE_RETRY_DELAY: Duration = Duration::from_millis(100);
+
 /// Why a node did not serve a follower read.
 #[since(version = "0.10.2", change = "name the reason a follower read failed")]
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -118,7 +124,7 @@ where C: RaftTypeConfig<Node = NodeInfo>
     /// [`ClientWriteError::LogEntryDiscarded`] appended the write and then dropped it, but the
     /// write may still commit through another leader, and a resent copy would then apply twice.
     /// That error is returned without resending, and the next request goes to the leader it
-    /// names.
+    /// names. To resend a write whose outcome is unknown, see [`Self::write_with_retries`].
     #[since(version = "0.10.2", change = "return LogEntryDiscarded without resending the write")]
     pub async fn write(&self, req: &C::D) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, RPCError<C>> {
         let deadline = Instant::now() + OPERATION_TIMEOUT;
@@ -140,6 +146,47 @@ where C: RaftTypeConfig<Node = NodeInfo>
                 return Ok(res);
             }
             redirects -= 1;
+        }
+    }
+
+    /// Write `req`, and resend it until its outcome is known or the ten-second operation budget
+    /// runs out.
+    ///
+    /// A write whose response fails or does not arrive within two seconds, or that ends with
+    /// [`ClientWriteError::LogEntryDiscarded`], may have committed, so a resent copy may apply it
+    /// twice. Use this method only for a request that the state machine applies at most once per
+    /// request ID, such as `types_kv::DedupRequest`: a resent copy gets the response of the first
+    /// application. Each attempt goes to the leader named by the error of the previous one. A
+    /// write refused for any reason other than [`ClientWriteError::ForwardToLeader`] is returned
+    /// at once.
+    ///
+    /// When the budget runs out, the last result is returned and the outcome is still unknown.
+    /// Resend the same request to learn it.
+    #[since(version = "0.10.2")]
+    pub async fn write_with_retries(
+        &self,
+        req: &C::D,
+    ) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, RPCError<C>> {
+        let deadline = Instant::now() + OPERATION_TIMEOUT;
+
+        loop {
+            let attempt_deadline = deadline.min(Instant::now() + WRITE_ATTEMPT_TIMEOUT);
+            let res = self.send_until("write", Some(req), attempt_deadline).await;
+
+            match &res {
+                Ok(Ok(_)) => return res,
+                Ok(Err(ClientWriteError::ForwardToLeader(forward) | ClientWriteError::LogEntryDiscarded(forward))) => {
+                    self.follow_leader_hint(forward);
+                }
+                Ok(Err(_)) => return res,
+                // No response arrived: the write may have committed.
+                Err(_) => {}
+            }
+
+            if Instant::now() + WRITE_RETRY_DELAY >= deadline {
+                return res;
+            }
+            tokio::time::sleep(WRITE_RETRY_DELAY).await;
         }
     }
 
