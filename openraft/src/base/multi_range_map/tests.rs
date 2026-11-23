@@ -3,7 +3,7 @@ use super::MultiRangeMap;
 type M = MultiRangeMap<u64, u64, 3>;
 
 fn collect_segments(m: &M, begin: u64) -> Vec<(std::ops::Range<u64>, [u64; 3])> {
-    m.segments(begin).map(|s| (s.range, s.values)).collect()
+    m.segments(begin, &[]).map(|s| (s.range, s.values)).collect()
 }
 
 #[test]

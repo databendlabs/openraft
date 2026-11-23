@@ -18,6 +18,7 @@ pub use crate::base::range_values::RangeValues;
 pub use crate::core::NotificationName;
 pub use crate::core::raft_msg::ExternalCommandName;
 pub use crate::core::raft_msg::RaftMsgName;
+pub use crate::core::runtime_stats::DisplayMode;
 pub use crate::core::runtime_stats::RuntimeStats;
 pub use crate::core::runtime_stats::RuntimeStatsDisplay;
 pub use crate::core::runtime_stats::log_stage::LogStageHistograms;

@@ -109,6 +109,30 @@ where
         evicted
     }
 
+    /// Discard the ranges from `since` on, as a truncation of the keys does: a range that starts
+    /// at or after `since` is removed, and a range that starts before `since` and ends after it
+    /// keeps its part before `since`.
+    ///
+    /// `begin` is the left boundary of the first entry, which the caller tracks.
+    pub(crate) fn truncate(&mut self, begin: Bound, since: Bound) {
+        while let Some(&(right, _)) = self.entries.back() {
+            if right <= since {
+                return;
+            }
+
+            let len = self.entries.len();
+            let left = if len >= 2 { self.entries[len - 2].0 } else { begin };
+            if left < since {
+                if let Some(last) = self.entries.back_mut() {
+                    last.0 = since;
+                }
+                return;
+            }
+
+            self.entries.pop_back();
+        }
+    }
+
     /// Look up the value for the range containing `query`.
     ///
     /// Finds the smallest right boundary greater than `query`.

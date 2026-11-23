@@ -1603,7 +1603,6 @@ where
             if index.saturating_sub(last_log_index) >= run_command_threshold {
                 // After handling all the inputs, batch run all the commands for better performance
                 self.runtime_stats.raft_msg_per_run.record(processed);
-                self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
                 self.run_engine_commands().await?;
 
                 last_log_index = index;
@@ -1611,9 +1610,11 @@ where
             }
         }
 
+        // One utilization sample per drain, of every message it processed.
+        self.runtime_stats.raft_msg_usage_permille.record(total * 1000 / at_most);
+
         // After handling all the inputs, batch run all the commands for better performance
         self.runtime_stats.raft_msg_per_run.record(processed);
-        self.runtime_stats.raft_msg_usage_permille.record(processed * 1000 / at_most);
         self.run_engine_commands().await?;
 
         if total == at_most {
@@ -2425,7 +2426,11 @@ where
 
         match io_id {
             IOId::Log(log_io_id) => {
-                if let Some(ref log_id) = log_io_id.log_id {
+                // A flush of logs that a truncation discarded meanwhile records nothing: it would
+                // give their timestamps to the logs that replace them.
+                if let Some(ref log_id) = log_io_id.log_id
+                    && self.engine.state.has_log_id(log_id.clone())
+                {
                     self.runtime_stats.record_log_stage_now(Stage::Persisted, log_id.index() + 1);
                 }
 
@@ -2474,6 +2479,11 @@ where
 
                 let st = self.engine.state.io_state_mut();
                 if let Some(last) = &meta.last_log_id {
+                    // This node applied none of the logs that the snapshot covers past its applied
+                    // ones, so the stages a later record gives them would describe other logs.
+                    let applied_end = st.apply_progress.flushed().cloned().next_index();
+                    self.runtime_stats.exclude_log_stages(applied_end..last.index() + 1);
+
                     st.apply_progress.try_flush(last.clone());
                     st.snapshot.try_flush(last.clone());
                 }
@@ -2778,6 +2788,9 @@ where
     /// Run [`Command::TruncateLog`].
     async fn run_truncate_log(&mut self, after: Option<LogIdOf<C>>) -> Result<(), StorageError<C>> {
         self.log_store.truncate_after(after.clone()).await.sto_write_logs()?;
+
+        // The stages of the discarded logs must not describe the logs written in their place.
+        self.runtime_stats.truncate_log_stages(after.next_index());
 
         // Inform clients waiting for logs to be applied.
         let leader_id = self.current_leader();

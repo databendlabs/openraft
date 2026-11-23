@@ -77,6 +77,7 @@ use tracing::trace_span;
 pub use self::leader::Leader;
 pub use self::watch_handle::WatchChangeHandle;
 use crate::Extensions;
+use crate::LogIdOptionExt;
 use crate::OptionalSend;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
@@ -610,6 +611,10 @@ where
 
         let engine = Engine::new(state, eng_config);
 
+        // The logs applied before the core starts, such as those that `get_initial_state()`
+        // re-applies, are not observed: the log stages start after them.
+        let log_stage_begin = engine.state.io_state().applied().cloned().next_index();
+
         let sm_span = tracing::span!(parent: &core_span, Level::DEBUG, "sm_worker");
 
         let log_reader = log_store.get_log_reader().await;
@@ -702,7 +707,7 @@ where
                         progress: tx_progress,
                     },
 
-                    runtime_stats: RuntimeStats::new(&config),
+                    runtime_stats: RuntimeStats::new(&config, log_stage_begin),
                     shared_replicate_batch,
 
                     metrics_recorder: None,

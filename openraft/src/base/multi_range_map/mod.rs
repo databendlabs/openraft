@@ -2,6 +2,8 @@ mod segment_iter;
 #[cfg(test)]
 mod tests;
 
+use std::ops::Range;
+
 pub use segment_iter::SegmentIter;
 
 use super::range_map::RangeMap;
@@ -38,11 +40,21 @@ where
         &mut self.range_maps[index]
     }
 
+    /// Discard the ranges of every range map from `since` on, see [`RangeMap::truncate()`].
+    ///
+    /// `begin` is the left boundary of the first entry of each range map.
+    pub fn truncate(&mut self, begin: Bound, since: Bound) {
+        for range_map in &mut self.range_maps {
+            range_map.truncate(begin, since);
+        }
+    }
+
     /// Iterate segments: contiguous key ranges that do not cross any range map's
     /// batch boundary, within the intersection range where all ranges have data.
     ///
-    /// `begin` is the left boundary of the first segment.
-    pub fn segments(&self, begin: Bound) -> SegmentIter<'_, Bound, V, N> {
-        SegmentIter::new(begin, &self.range_maps)
+    /// `begin` is the left boundary of the first segment. The segments in `excluded`, sorted and
+    /// disjoint ranges, are skipped.
+    pub fn segments<'a>(&'a self, begin: Bound, excluded: &'a [Range<Bound>]) -> SegmentIter<'a, Bound, V, N> {
+        SegmentIter::new(begin, &self.range_maps, excluded)
     }
 }

@@ -24,6 +24,7 @@ use crate::type_config::alias::InstantOf;
 ///
 /// This is a volatile structure that is not persisted. It accumulates
 /// statistics from the time the Raft node starts.
+#[since(version = "0.10.2", change = "Make record_log_stage*() crate-private")]
 #[since(version = "0.10.2", change = "Add the re-arm wake and metrics send counters")]
 #[since(version = "0.10.0", change = "Add core_busy_histogram")]
 #[since(version = "0.10.0", change = "Add core_busy_duration snapshot")]
@@ -189,15 +190,17 @@ impl<C> Default for RuntimeStats<C>
 where C: RaftTypeConfig
 {
     fn default() -> Self {
-        Self::new(&Config::default())
+        Self::new(&Config::default(), 0)
     }
 }
 
 impl<C> RuntimeStats<C>
 where C: RaftTypeConfig
 {
-    pub(crate) fn new(config: &Config) -> Self {
-        let _ = config;
+    /// Create the statistics of a node whose state machine has applied the logs before
+    /// `log_stage_begin`, such as at startup: their stages were not observed, so the log stages
+    /// start at that index.
+    pub(crate) fn new(config: &Config, log_stage_begin: u64) -> Self {
         Self {
             core_busy_duration: Duration::ZERO,
             core_busy_histogram: Histogram::new(),
@@ -219,7 +222,7 @@ where C: RaftTypeConfig
             metrics_sends: 0,
             data_metrics_sends: 0,
             server_metrics_sends: 0,
-            log_stage: LogStages::new(config.log_stage_capacity(), 0),
+            log_stage: LogStages::new(config.log_stage_capacity(), log_stage_begin),
             log_stage_histograms: LogStageHistograms::new(),
             _phantom: PhantomData,
         }
@@ -285,7 +288,7 @@ where C: RaftTypeConfig
     /// with `right = 8`.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
-    pub fn record_log_stage_now(&mut self, stage: Stage, right: u64) {
+    pub(crate) fn record_log_stage_now(&mut self, stage: Stage, right: u64) {
         #[cfg(feature = "runtime-stats")]
         self.record_log_stage(stage, right, C::now());
 
@@ -301,13 +304,41 @@ where C: RaftTypeConfig
     /// of the batch's last log plus one.
     ///
     /// Without the `runtime-stats` feature, it does nothing.
-    pub fn record_log_stage(&mut self, stage: Stage, right: u64, now: InstantOf<C>) {
+    pub(crate) fn record_log_stage(&mut self, stage: Stage, right: u64, now: InstantOf<C>) {
         #[cfg(feature = "runtime-stats")]
         self.log_stage.record_stage(stage, right, now);
 
         #[cfg(not(feature = "runtime-stats"))]
         {
             let _ = (stage, right, now);
+        }
+    }
+
+    /// Discard the recorded log stages of the logs from index `since` on, which a truncation
+    /// removed from the log.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
+    pub(crate) fn truncate_log_stages(&mut self, since: u64) {
+        #[cfg(feature = "runtime-stats")]
+        self.log_stage.truncate(since);
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = since;
+        }
+    }
+
+    /// Exclude the logs in `range` from the log stages, such as the logs an installed snapshot
+    /// covers beyond the applied ones: their stages were not observed.
+    ///
+    /// Without the `runtime-stats` feature, it does nothing.
+    pub(crate) fn exclude_log_stages(&mut self, range: std::ops::Range<u64>) {
+        #[cfg(feature = "runtime-stats")]
+        self.log_stage.exclude(range);
+
+        #[cfg(not(feature = "runtime-stats"))]
+        {
+            let _ = range;
         }
     }
 
