@@ -208,3 +208,78 @@ async fn failure_status_cannot_be_decoded_as_a_successful_reply() {
     assert!(matches!(error, RPCError::Network(_)));
     server.await.unwrap();
 }
+
+type WriteResult = Result<ClientWriteResponse<C>, ClientWriteError<C>>;
+
+/// The answer of a node that applied a write at log index 5.
+fn written() -> String {
+    let response = ClientWriteResponse::<C> {
+        log_id: openraft::testing::log_id::<C>(1, 1, 5),
+        data: "applied".to_string(),
+        membership: None,
+    };
+    let result: WriteResult = Ok(response);
+    serde_json::to_string(&result).unwrap()
+}
+
+/// The answer of a node that did not append a write, naming node `id` at `addr` as the leader.
+fn rejected(id: u64, addr: &str) -> String {
+    let node = NodeInfo::new("raft", addr);
+    let error = ForwardToLeader::<C>::new(id, node);
+    let result: WriteResult = Err(ClientWriteError::ForwardToLeader(error));
+    serde_json::to_string(&result).unwrap()
+}
+
+/// The answer of a node that appended a write and then dropped it, naming node `id` at `addr` as
+/// the leader.
+fn discarded(id: u64, addr: &str) -> String {
+    let node = NodeInfo::new("raft", addr);
+    let error = ForwardToLeader::<C>::new(id, node);
+    let result: WriteResult = Err(ClientWriteError::LogEntryDiscarded(error));
+    serde_json::to_string(&result).unwrap()
+}
+
+#[tokio::test]
+async fn write_resends_a_rejected_write_to_the_named_leader() {
+    let first = listener().await;
+    let second = listener().await;
+    let first_addr = first.local_addr().unwrap().to_string();
+    let second_addr = second.local_addr().unwrap().to_string();
+    let first_calls = Arc::new(AtomicUsize::new(0));
+    let second_calls = Arc::new(AtomicUsize::new(0));
+    let first_task = serve(first, rejected(2, &second_addr), Duration::ZERO, first_calls.clone());
+    let second_task = serve(second, written(), Duration::ZERO, second_calls.clone());
+    let client = Client::<C>::new(1, first_addr);
+    let response = client.write(&"value".to_string()).await.unwrap().unwrap();
+    assert_eq!("applied", response.data);
+    let calls = first_calls.load(Ordering::SeqCst);
+    assert_eq!(1, calls);
+    let calls = second_calls.load(Ordering::SeqCst);
+    assert_eq!(1, calls);
+    first_task.abort();
+    second_task.abort();
+}
+
+#[tokio::test]
+async fn write_returns_a_discarded_write_without_resending_it() {
+    let first = listener().await;
+    let second = listener().await;
+    let first_addr = first.local_addr().unwrap().to_string();
+    let second_addr = second.local_addr().unwrap().to_string();
+    let first_calls = Arc::new(AtomicUsize::new(0));
+    let second_calls = Arc::new(AtomicUsize::new(0));
+    let first_task = serve(first, discarded(2, &second_addr), Duration::ZERO, first_calls.clone());
+    let second_task = serve(second, written(), Duration::ZERO, second_calls.clone());
+    let client = Client::<C>::new(1, first_addr);
+    let result = client.write(&"value".to_string()).await.unwrap();
+    let error = result.unwrap_err();
+    assert!(matches!(error, ClientWriteError::LogEntryDiscarded(_)));
+    let leader = client.leader.lock().unwrap().clone();
+    assert_eq!((2, second_addr), leader);
+    let calls = first_calls.load(Ordering::SeqCst);
+    assert_eq!(1, calls);
+    let calls = second_calls.load(Ordering::SeqCst);
+    assert_eq!(0, calls);
+    first_task.abort();
+    second_task.abort();
+}

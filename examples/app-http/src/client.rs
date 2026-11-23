@@ -112,8 +112,35 @@ where C: RaftTypeConfig<Node = NodeInfo>
     /// will be applied to state machine.
     ///
     /// The result of applying the request will be returned.
+    ///
+    /// A node that answers [`ClientWriteError::ForwardToLeader`] did not append the write, so the
+    /// write is resent to the leader it names, at most three times. A node that answers
+    /// [`ClientWriteError::LogEntryDiscarded`] appended the write and then dropped it, but the
+    /// write may still commit through another leader, and a resent copy would then apply twice.
+    /// That error is returned without resending, and the next request goes to the leader it
+    /// names.
+    #[since(version = "0.10.2", change = "return LogEntryDiscarded without resending the write")]
     pub async fn write(&self, req: &C::D) -> Result<Result<ClientWriteResponse<C>, ClientWriteError<C>>, RPCError<C>> {
-        self.send_with_forwarding("write", Some(req), 3).await
+        let deadline = Instant::now() + OPERATION_TIMEOUT;
+        let mut redirects = 3;
+
+        loop {
+            let res = self.send_until("write", Some(req), deadline).await?;
+
+            let redirected = match &res {
+                Err(ClientWriteError::ForwardToLeader(forward)) => self.follow_leader_hint(forward),
+                Err(ClientWriteError::LogEntryDiscarded(forward)) => {
+                    self.follow_leader_hint(forward);
+                    false
+                }
+                _ => false,
+            };
+
+            if !redirected || redirects == 0 {
+                return Ok(res);
+            }
+            redirects -= 1;
+        }
     }
 
     /// Read value by key, in an inconsistent mode.
@@ -321,27 +348,27 @@ where C: RaftTypeConfig<Node = NodeInfo>
                 Err(rpc_err) => rpc_err,
             };
 
-            if let Some(ForwardToLeader {
-                leader_id: Some(leader_id),
-                leader_node: Some(leader_node),
-                ..
-            }) = rpc_err.try_as_ref()
-            {
-                // Update target to the new leader.
-                {
-                    let mut t = self.leader.lock().unwrap();
-                    let api_addr = leader_node.data.clone();
-                    *t = (leader_id.clone(), api_addr);
-                }
-
-                if retry > 0 {
-                    retry -= 1;
-                    continue;
-                }
+            let redirected = rpc_err.try_as_ref().is_some_and(|forward| self.follow_leader_hint(forward));
+            if redirected && retry > 0 {
+                retry -= 1;
+                continue;
             }
 
             return Ok(Err(rpc_err));
         }
+    }
+
+    /// Send later requests to the leader that `forward` names, if it names one with an address.
+    ///
+    /// Returns whether it named one.
+    fn follow_leader_hint(&self, forward: &ForwardToLeader<C>) -> bool {
+        let (Some(leader_id), Some(leader_node)) = (&forward.leader_id, &forward.leader_node) else {
+            return false;
+        };
+
+        let mut target = self.leader.lock().unwrap();
+        *target = (leader_id.clone(), leader_node.data.clone());
+        true
     }
 }
 

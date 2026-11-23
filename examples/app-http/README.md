@@ -130,3 +130,9 @@ the original request.
 A leader rejection says that node did not accept the request. A lost response
 can follow a committed write. Retrying such a write requires application-level
 request IDs and deduplication when repeated commands have different effects.
+
+`Client::write()` resends a write only after `ForwardToLeader`, which says the
+node did not append it. After `LogEntryDiscarded`, the node had appended the
+write, and the write may still commit through another leader, so `write()`
+returns the error without resending; the next request goes to the leader the
+error names.
