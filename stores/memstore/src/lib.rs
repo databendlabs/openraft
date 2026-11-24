@@ -219,6 +219,10 @@ pub struct MemLogStore {
 
     /// When set to true, the next `limited_get_log_entries` call will return an IO error.
     pub fail_next_limited_get: AtomicBool,
+
+    /// Holds `limited_get_log_entries()` calls that start at or below an index; see
+    /// [`Self::pause_reads_up_to`].
+    read_gate: Mutex<Option<(u64, OperationGate)>>,
 }
 
 impl MemLogStore {
@@ -234,6 +238,7 @@ impl MemLogStore {
             vote: RwLock::new(None),
             return_empty_limited_get: AtomicBool::new(false),
             fail_next_limited_get: AtomicBool::new(false),
+            read_gate: Mutex::new(None),
         }
     }
 
@@ -246,6 +251,18 @@ impl MemLogStore {
     /// Make the next `limited_get_log_entries` call fail with an IO error.
     pub fn set_fail_next_limited_get(&self, value: bool) {
         self.fail_next_limited_get.store(value, Ordering::Relaxed);
+    }
+
+    /// Hold each `limited_get_log_entries()` call that starts at or below index `max_start` until
+    /// the returned gate is released.
+    ///
+    /// A held read fails if logs it reads were purged while it waited, as a read fails in a store
+    /// whose purge removes what a running read still uses.
+    #[openraft::macros::since(version = "0.10.2")]
+    pub fn pause_reads_up_to(&self, max_start: u64) -> OperationGate {
+        let gate = OperationGate::default();
+        *self.read_gate.lock().unwrap() = Some((max_start, gate.clone()));
+        gate
     }
 }
 
@@ -361,6 +378,21 @@ impl RaftLogReader<TypeConfig> for Arc<MemLogStore> {
     }
 
     async fn limited_get_log_entries(&mut self, start: u64, end: u64) -> Result<Vec<EntryOf<TypeConfig>>, io::Error> {
+        let gate = self.read_gate.lock().unwrap().clone();
+        if let Some((max_start, gate)) = gate
+            && start <= max_start
+        {
+            gate.block().await;
+
+            let purged = *self.last_purged_log_id.read().await;
+            if purged.is_some_and(|log_id| log_id.index() >= start) {
+                return Err(io::Error::other(format!(
+                    "logs from index {} were purged while the read waited",
+                    start
+                )));
+            }
+        }
+
         if self.fail_next_limited_get.swap(false, Ordering::Relaxed) {
             tracing::info!(
                 "limited_get_log_entries({}, {}): returning io::Error for testing",

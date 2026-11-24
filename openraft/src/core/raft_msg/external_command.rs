@@ -57,7 +57,8 @@ where C: RaftTypeConfig
     /// config. It purges no log after the last log in the current snapshot, and does nothing
     /// without a snapshot or when an earlier purge already covers `upto`. On a leader, a log that a
     /// replication task still reads is purged only once the task is done with it, see
-    /// [`Trigger::purge_log`].
+    /// [`Trigger::purge_log`]. A replication task that the node closed, as when it removed the
+    /// target or stopped leading, holds back every purge until it has stopped.
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
     /// [`Trigger::purge_log`]: crate::raft::trigger::Trigger::purge_log

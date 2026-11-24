@@ -123,7 +123,9 @@ where C: RaftTypeConfig
     ///
     /// Openraft won't purge logs at once, e.g., it may be delayed by several seconds, because if it
     /// is a leader and a replication task has been replicating the logs to a follower, the logs
-    /// can't be purged until the replication task is finished.
+    /// can't be purged until the replication task is finished. A replication task that the node
+    /// closed, as when it removes the target or stops leading, also delays the purge until the
+    /// task has stopped.
     ///
     /// [`max_in_snapshot_log_to_keep`]: `crate::Config::max_in_snapshot_log_to_keep`
     pub async fn purge_log(&self, upto: u64) -> Result<(), Fatal<C>> {

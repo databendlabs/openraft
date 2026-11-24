@@ -832,8 +832,11 @@ where
     /// If the node is a leader, it will only purge logs when no replication tasks are using them.
     /// Otherwise, it will retry purging the logs the next time replication has made progress.
     ///
-    /// If the node is a follower or learner, it will always purge the logs immediately since no
-    /// other tasks are using the logs.
+    /// If the node is a follower or learner, it purges at once, because it runs no replication
+    /// task. A task it closed when it stopped leading may still read the log; RaftCore holds the
+    /// [`Command::PurgeLog`] back until such tasks stop, see [`RaftCore::lingering_replications`].
+    ///
+    /// [`RaftCore::lingering_replications`]: crate::core::RaftCore::lingering_replications
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
         tracing::debug!("{}: purge_upto: {}", func_name!(), self.state.purge_upto().display());
@@ -842,7 +845,8 @@ where
             // If it is leading, it must not delete a log that is in use by a replication task.
             self.replication_handler().try_purge_log();
         } else {
-            // For follower/learner, no other tasks are using logs, just purge.
+            // No replication task of a follower/learner uses the logs; RaftCore waits for the
+            // tasks it closed.
             self.log_handler().purge_log();
         }
     }
