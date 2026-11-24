@@ -41,17 +41,35 @@ use crate::vote::raft_vote::RaftVoteExt;
 ///
 /// Access metrics through the watch channel returned by [`Raft::metrics`]:
 ///
-/// ```ignore
+/// ```no_run
+/// # use std::time::Duration;
+/// # use openraft::metrics::WaitError;
+/// # use openraft::storage::RaftStateMachine;
+/// # use openraft::{Raft, RaftTypeConfig};
+/// use openraft::ServerState;
+/// use openraft::async_runtime::WatchReceiver;
+///
+/// # async fn example<C, SM>(raft: &Raft<C, SM>, timeout: Duration) -> Result<(), WaitError>
+/// # where
+/// #     C: RaftTypeConfig,
+/// #     SM: RaftStateMachine<C>,
+/// # {
 /// let metrics_rx = raft.metrics();
 ///
-/// // Read current metrics
-/// let metrics = metrics_rx.borrow_watched();
-/// println!("Node state: {:?}", metrics.state);
-/// println!("Current leader: {:?}", metrics.current_leader);
+/// // Read current metrics. The guard returned by `borrow_watched()` can hold a read lock, as
+/// // Tokio's does, that blocks Raft from publishing new metrics. End the guard before any
+/// // `.await`, such as the waits below, which need those updates.
+/// {
+///     let metrics = metrics_rx.borrow_watched();
+///     println!("Node state: {:?}", metrics.state);
+///     println!("Current leader: {:?}", metrics.current_leader);
+/// }
 ///
 /// // Wait for specific conditions
-/// raft.wait(None).state(State::Leader, "become leader").await?;
+/// raft.wait(None).state(ServerState::Leader, "become leader").await?;
 /// raft.wait(Some(timeout)).applied_index(Some(10), "log-10 applied").await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// # Leader-Specific Metrics
@@ -131,8 +149,16 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The last log index has been applied to this Raft node's state machine.
     pub last_applied: Option<LogIdOf<C>>,
 
-    /// The id of the last log included in snapshot.
-    /// If there is no snapshot, it is (0,0).
+    /// The ID of the last log entry included in this node's latest snapshot, which is the
+    /// `last_log_id` in that snapshot's [`SnapshotMeta`](crate::storage::SnapshotMeta).
+    ///
+    /// At startup, the latest snapshot is the one that [`get_current_snapshot()`] returns. A
+    /// snapshot that this node builds, or installs from the leader, counts once the build or the
+    /// installation finishes.
+    ///
+    /// It is `None` when there is no snapshot, or when the snapshot includes no log entry.
+    ///
+    /// [`get_current_snapshot()`]: crate::storage::RaftStateMachine::get_current_snapshot
     pub snapshot: Option<LogIdOf<C>>,
 
     /// The last log id that has purged from storage, inclusive.
@@ -207,11 +233,24 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The current membership config of the cluster.
     pub membership_config: Arc<StoredMembershipOf<C>>,
 
-    /// The last committed membership config.
+    /// The last membership config that this node knows to be committed.
     ///
-    /// It lags behind [`membership_config`](Self::membership_config) until the effective
-    /// membership config is committed: when the two are equal, the last membership log entry is
-    /// committed, i.e., a membership change is fully completed.
+    /// It lags behind [`membership_config`](Self::membership_config) until the log entry holding
+    /// that config is committed. When the two are equal, that entry is committed, or this node
+    /// knows no membership entry yet and both are the default, with no log ID.
+    ///
+    /// Equality does not mean that a membership change has finished, because the committed entry
+    /// can hold an intermediate joint config. When [`Raft::change_membership()`] needs a joint
+    /// config, it first commits an entry holding the joint config, and the two fields are equal
+    /// until this node appends the entry holding the target config. If the change fails between
+    /// these steps, the cluster can stay in the joint config.
+    ///
+    /// `change_membership()` returns `Ok` only after the entry holding the target config is
+    /// committed and applied, so a successful response shows that the change has finished. To
+    /// observe this in a node's metrics, wait until the log ID of this field reaches the `log_id`
+    /// of that response, which identifies the target entry.
+    ///
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
     #[since(version = "0.10.0")]
     pub committed_membership_config: Arc<StoredMembershipOf<C>>,
 
@@ -468,8 +507,21 @@ where C: RaftTypeConfig
 pub struct RaftServerMetrics<C: RaftTypeConfig> {
     /// The ID of this Raft node.
     pub id: C::NodeId,
-    /// The current vote state.
+
+    /// The last flushed vote, the same as [`RaftMetrics::vote`]: the newest vote that
+    /// [`RaftLogStorage::save_vote()`] has persisted.
+    ///
+    /// When this node changes its vote, this field keeps the previous vote until storage persists
+    /// the new one. [`state`](Self::state), [`current_leader`](Self::current_leader), and
+    /// [`RaftMetrics::current_term`] follow the new vote at once, so they can reflect a newer vote
+    /// than this field does.
+    ///
+    /// While log storage holds no vote, this field is the initial vote: the default term and this
+    /// node's ID, not committed.
+    ///
+    /// [`RaftLogStorage::save_vote()`]: crate::storage::RaftLogStorage::save_vote
     pub vote: VoteOf<C>,
+
     /// The current server state (Leader, Follower, Candidate, etc.), or `Shutdown` once the node
     /// has stopped.
     pub state: ServerState,
@@ -484,11 +536,12 @@ pub struct RaftServerMetrics<C: RaftTypeConfig> {
     /// The current membership configuration.
     pub membership_config: Arc<StoredMembershipOf<C>>,
 
-    /// The last committed membership config.
+    /// The last membership config that this node knows to be committed.
     ///
-    /// It lags behind [`membership_config`](Self::membership_config) until the effective
-    /// membership config is committed: when the two are equal, the last membership log entry is
-    /// committed, i.e., a membership change is fully completed.
+    /// It lags behind [`membership_config`](Self::membership_config) until the log entry holding
+    /// that config is committed. When the two are equal, that entry is committed, or this node
+    /// knows no membership entry yet. Equality does not mean that a membership change has
+    /// finished: see [`RaftMetrics::committed_membership_config`].
     #[since(version = "0.10.0")]
     pub committed_membership_config: Arc<StoredMembershipOf<C>>,
 }

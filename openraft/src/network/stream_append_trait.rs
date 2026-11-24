@@ -69,6 +69,43 @@ where C: RaftTypeConfig
     /// transports should use `soft_ttl()` for setup, per-request-response, or idle-timeout policy,
     /// and return an error when the connection stops making progress.
     ///
+    /// # Cancellation
+    ///
+    /// The caller may drop the returned future before it resolves, and the output stream before
+    /// it ends. Openraft does so in these cases:
+    ///
+    /// - Log replication drops the output stream, without polling it again, as soon as the stream
+    ///   yields an error, a conflict, or a higher vote. It also drops the stream when replication
+    ///   to the target stops, such as when this node is no longer the leader.
+    /// - The heartbeat sender, whose streams carry a single request each, drops the returned future
+    ///   or the output stream once `option.hard_ttl()` has passed since the call, or as soon as the
+    ///   stream yields an error. It also drops them when heartbeats to the target stop.
+    ///
+    /// A dropped future or stream does not resume: only its destructors run, so cleanup placed
+    /// after an `.await`, or left for a later poll of the output, never runs. Work that this method
+    /// moved to another task, such as a task that reads `input` and sends the requests, outlives
+    /// the drop unless a value that the returned future or stream owns stops it, such as a guard
+    /// that cancels the task when dropped, and the task must notice the stop even while it waits
+    /// for room to send a request. Openraft also ends `input` when it drops the future or the
+    /// stream: the input of log replication yields `None` then, or once a log read that it has
+    /// already started finishes, and the input of a heartbeat holds a single request. A task that
+    /// waits for the next request from `input` thus sees the input end.
+    ///
+    /// The stop does not have to be immediate: the task may finish a send that it has already
+    /// started, and the drop need not wait for the task to end. The transport need not undo
+    /// requests it sent before the drop: the follower may still process them.
+    ///
+    /// Openraft may then call `stream_append()` again on the same `self`: log replication for its
+    /// next stream, and the heartbeat sender for its next heartbeat. The output stream borrows
+    /// `self`, so that call starts only after the drop, but a task of the dropped stream may still
+    /// be finishing then. Keep `self` safe for the call:
+    ///
+    /// - A dropped stream may leave a request partly written, or responses unread, on a connection
+    ///   that `self` keeps for later calls. Discard such a connection instead of reusing it as it
+    ///   is.
+    /// - Never yield a response to a request of a dropped stream from a later stream: each response
+    ///   must come from a request derived from the stream's own input, as described above.
+    ///
     /// # Note
     ///
     /// This method returns `BoxFuture` and `BoxStream` instead of `impl Future`/`impl Stream`
@@ -93,6 +130,11 @@ where C: RaftTypeConfig
 ///
 /// This processes requests one at a time: send request, wait for response, repeat. A partial
 /// acknowledgement or a rejection ends the stream.
+///
+/// The helper starts no task: dropping the returned future or stream drops `input` and the
+/// [`NetAppend::append_entries()`] call in progress, if any. It meets the cancellation rules of
+/// [`NetStreamAppend::stream_append`] when a dropped `append_entries()` call leaves `network` safe
+/// for the next call.
 #[since(version = "0.10.0", change = "response stream yields AppendError")]
 pub fn stream_append_sequential<'s, C, N, S>(
     network: &'s mut N,

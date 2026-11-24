@@ -87,7 +87,22 @@ where
         self.membership.is_campaigner(nid)
     }
 
-    /// Get an iterator over the voter node IDs.
+    /// Returns every ID in the read or the write quorum set, once and in ascending order.
+    ///
+    /// The quorum sets are the membership's [`read_quorum_set()`] and [`write_quorum_set()`].
+    /// Learners and campaigners outside both quorum sets are not included.
+    ///
+    /// When the two quorum sets differ, an included ID may be in the read quorum set only, so it
+    /// does not count toward a write quorum. Inclusion also does not show that the node may
+    /// campaign: that takes [`NodeRole::Campaigner`], which a voter may lack. For a decision that
+    /// depends on a role, use the role information and quorum rules of
+    /// [`membership()`](Self::membership), such as the [`NodeRef`] that
+    /// [`RaftMembership::get_node()`] returns.
+    ///
+    /// [`read_quorum_set()`]: RaftMembership::read_quorum_set
+    /// [`write_quorum_set()`]: RaftMembership::write_quorum_set
+    /// [`NodeRef`]: crate::membership::NodeRef
+    /// [`NodeRole::Campaigner`]: crate::membership::NodeRole::Campaigner
     pub fn voter_ids(&self) -> impl Iterator<Item = Mem::NodeId> {
         self.membership.voter_ids()
     }
@@ -97,7 +112,16 @@ where
         self.membership.non_write_voter_ids()
     }
 
-    /// Get the node (either voter or learner) by node id.
+    /// Returns the metadata of node `node_id`, or `None` if the membership does not know it.
+    ///
+    /// The membership knows every node whose ID [`RaftMembership::node_ids()`] lists, whatever
+    /// its roles. In a [`Membership`], every known node is a voter or a learner, but another
+    /// [`RaftMembership`] may also know a campaigner outside both quorum sets, or a node with no
+    /// capability. So a `Some` does not tell whether the node is a voter or a learner. For the
+    /// node's capabilities and voter flags, call [`RaftMembership::get_node()`] on
+    /// [`membership()`](Self::membership): the [`NodeRef`] it returns holds them.
+    ///
+    /// [`NodeRef`]: crate::membership::NodeRef
     #[since(version = "0.10.0")]
     pub fn get_node(&self, node_id: &Mem::NodeId) -> Option<&Mem::Node> {
         let node_ref = self.membership.get_node(node_id)?;
