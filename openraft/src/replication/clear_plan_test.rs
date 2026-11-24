@@ -1,7 +1,8 @@
 //! A replication task confirms a clear only once it reads nothing more for the plan RaftCore
 //! dropped. RaftCore purges the logs the plan held back only after the confirmation. Likewise, a
 //! task whose stream RaftCore closed returns only once it reads nothing more, and RaftCore purges
-//! no log until it has returned.
+//! no log until it has returned. So a closed task does not wait for a transport that is still
+//! opening its stream.
 
 use std::fmt::Debug;
 use std::future::Future;
@@ -123,18 +124,29 @@ impl RaftLogStorage<C> for GatedLog {
     }
 }
 
+/// How [`PullingNetwork`] runs a session.
+#[derive(Clone, Copy)]
+enum Session {
+    /// The response stream ends after the request stream does.
+    Answer,
+    /// The session fails at once with an RPC error.
+    Fail,
+    /// The transport never finishes opening the stream.
+    Hang,
+}
+
 /// A transport that polls the request stream on a task of its own, as a gRPC client does, and
 /// answers no request.
 struct PullingNetwork {
     /// The polling task starts once this is `true`.
     poll: WatchReceiverOf<C, bool>,
+    /// The number of sessions the replication task has started opening.
+    opened: Arc<WatchSenderOf<C, u64>>,
     /// The number of requests the polling task has taken from the stream.
     pulled: Arc<WatchSenderOf<C, u64>>,
     /// Turns `true` once the request stream has ended.
     ended: Arc<WatchSenderOf<C, bool>>,
-    /// Whether a session fails at once with an RPC error. Otherwise its response stream ends after
-    /// its request stream does.
-    fail: bool,
+    session: Session,
 }
 
 impl RaftNetworkFactory<C> for PullingNetwork {
@@ -156,6 +168,12 @@ impl RaftNetworkV2<C> for PullingNetwork {
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
+        let opened = *self.opened.borrow_watched() + 1;
+        self.opened.send(opened).ok();
+        if let Session::Hang = self.session {
+            return Box::pin(std::future::pending());
+        }
+
         let mut poll = self.poll.clone();
         let pulled = self.pulled.clone();
         let ended = self.ended.clone();
@@ -172,7 +190,7 @@ impl RaftNetworkV2<C> for PullingNetwork {
             ended.send(true).ok();
         });
 
-        let responses: BoxStream<'s, Result<AppendResult<C>, RPCError<C>>> = if self.fail {
+        let responses: BoxStream<'s, Result<AppendResult<C>, RPCError<C>>> = if let Session::Fail = self.session {
             let error = RPCError::Unreachable(Unreachable::from_string("node 2 is down"));
             Box::pin(futures_util::stream::once(futures_util::future::ready(Err(error))))
         } else {
@@ -216,6 +234,7 @@ struct Harness {
     reads: WatchReceiverOf<C, u64>,
     open_reads: WatchSenderOf<C, bool>,
     poll: WatchSenderOf<C, bool>,
+    opened: WatchReceiverOf<C, u64>,
     pulled: WatchReceiverOf<C, u64>,
     ended: WatchReceiverOf<C, bool>,
     /// Resolves once the replication task returns.
@@ -226,9 +245,10 @@ struct Harness {
 
 /// Spawn a replication task to node 2, whose log is submitted through index 20 and matches it
 /// through index 5. `open_reads` lets log reads return at once, `poll` lets the transport poll the
-/// request stream at once, and `fail` makes each session fail, see [`PullingNetwork`]. Next to the
-/// harness, it returns a value that keeps the other channels of the task open.
-fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl Sized) {
+/// request stream at once, and `session` sets how the transport runs each session, see
+/// [`PullingNetwork`]. Next to the harness, it returns a value that keeps the other channels of the
+/// task open.
+fn spawn_replication(open_reads: bool, poll: bool, session: Session) -> (Harness, impl Sized) {
     let vote = VoteOf::<C>::new_committed(1, 1).to_committed();
     let (replicate_tx, replicate_rx) = C::watch_channel(None);
     let (committed_tx, committed_rx) = C::watch_channel(None);
@@ -241,6 +261,7 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
     let (reads_tx, reads) = C::watch_channel(0);
     let (open_reads_tx, open_reads_rx) = C::watch_channel(open_reads);
     let (poll_tx, poll_rx) = C::watch_channel(poll);
+    let (opened_tx, opened) = C::watch_channel(0);
     let (pulled_tx, pulled) = C::watch_channel(0);
     let (ended_tx, ended) = C::watch_channel(false);
 
@@ -267,9 +288,10 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
     };
     let network = PullingNetwork {
         poll: poll_rx,
+        opened: Arc::new(opened_tx),
         pulled: Arc::new(pulled_tx),
         ended: Arc::new(ended_tx),
-        fail,
+        session,
     };
     let log = GatedLog {
         reads: Arc::new(reads_tx),
@@ -293,6 +315,7 @@ fn spawn_replication(open_reads: bool, poll: bool, fail: bool) -> (Harness, impl
         reads,
         open_reads: open_reads_tx,
         poll: poll_tx,
+        opened,
         pulled,
         ended,
         join,
@@ -340,7 +363,7 @@ async fn expect_failed(notifications: &mut MpscReceiverOf<C, Notification<C>>, i
 #[test]
 fn clear_is_confirmed_once_a_running_read_returns() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(false, true, false);
+        let (mut h, _channels) = spawn_replication(false, true, Session::Answer);
         let plan = InflightId::new(1);
         let clear = InflightId::new(2);
 
@@ -377,7 +400,7 @@ fn clear_is_confirmed_once_a_running_read_returns() {
 #[test]
 fn clear_is_confirmed_once_a_read_that_outlived_its_session_returns() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(false, false, true);
+        let (mut h, _channels) = spawn_replication(false, false, Session::Fail);
         let plan = InflightId::new(1);
         let clear = InflightId::new(2);
 
@@ -425,7 +448,7 @@ fn clear_is_confirmed_once_a_read_that_outlived_its_session_returns() {
 #[test]
 fn stream_reads_nothing_once_the_clear_is_confirmed() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(true, false, true);
+        let (mut h, _channels) = spawn_replication(true, false, Session::Fail);
         let plan = InflightId::new(1);
         let clear = InflightId::new(2);
 
@@ -461,7 +484,7 @@ fn stream_reads_nothing_once_the_clear_is_confirmed() {
 #[test]
 fn unfinished_commit_probe_is_resumed() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(true, true, false);
+        let (mut h, _channels) = spawn_replication(true, true, Session::Answer);
         let clear = InflightId::new(1);
 
         tracing::info!("--- RaftCore clears the plan for node 2, and the task confirms it");
@@ -496,7 +519,7 @@ fn unfinished_commit_probe_is_resumed() {
 #[test]
 fn closed_task_returns_once_a_running_read_returns() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(false, false, true);
+        let (mut h, _channels) = spawn_replication(false, false, Session::Fail);
         let plan = InflightId::new(1);
 
         tracing::info!("--- a plan's session fails, then the transport polls the stream, whose read the log holds");
@@ -528,6 +551,34 @@ fn closed_task_returns_once_a_running_read_returns() {
 
             C::timeout(TEST_TIMEOUT, h.ended.wait_until_ge(&true)).await.unwrap().unwrap();
             assert_eq!(1, *h.reads.borrow_watched());
+        }
+    });
+}
+
+/// RaftCore may close the stream while the transport is still opening it. The replication task
+/// returns without waiting for the transport, because RaftCore runs no purge, and no command queued
+/// behind it, until the task has returned.
+#[test]
+fn closed_task_does_not_wait_for_a_stream_being_opened() {
+    C::run(async {
+        let (mut h, _channels) = spawn_replication(true, false, Session::Hang);
+        let plan = InflightId::new(1);
+
+        tracing::info!("--- a plan starts a session, whose stream the transport never finishes opening");
+        {
+            h.replicate_tx.send(Some(Replicate::new_logs_since(Some(log_id(1, 1, 5)), plan))).unwrap();
+            C::timeout(TEST_TIMEOUT, h.opened.wait_until_ge(&1)).await.unwrap().unwrap();
+        }
+
+        tracing::info!("--- RaftCore closes the stream: the task returns, and has read nothing");
+        {
+            drop(h.replicate_tx);
+            drop(h.cancel_tx);
+
+            let res = C::timeout(TEST_TIMEOUT, h.join).await.unwrap();
+            let closed = res.expect("the task returned without panicking");
+            assert!(closed.is_err(), "expect the task to return because it was closed");
+            assert_eq!(0, *h.reads.borrow_watched());
         }
     });
 }

@@ -417,7 +417,16 @@ where
         let rpc_timeout = Duration::from_millis(self.replication_context.config.heartbeat_interval);
         let option = RPCOption::new(rpc_timeout);
 
-        let resp_strm_res = network.stream_append(req_strm, option).await;
+        // Once RaftCore closes the stream, it runs no purge, and no command queued behind one,
+        // until this task has returned; see `RaftCore::lingering_replications`. So the close
+        // cancels a transport that is still opening the stream, as it cancels the wait for a
+        // response below.
+        let mut cancel_rx = self.replication_context.cancel_rx.clone();
+        let opening = network.stream_append(req_strm, option);
+        let Some(resp_strm_res) = C::cancellable_by(opening, cancel_rx.changed()).await else {
+            tracing::info!("ReplicationCore: canceled while opening a stream");
+            return Err(ReplicationClosed::new("canceled"));
+        };
         // A custom streaming transport may poll the request stream while establishing
         // `stream_append()` and then still return an RPC error. Check the fatal marker here too,
         // because in that case there is no response stream for `handle_response_stream()` to

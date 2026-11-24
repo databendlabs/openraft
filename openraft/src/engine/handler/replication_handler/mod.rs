@@ -632,6 +632,12 @@ where
     ///
     /// Purging logs involves concurrent log accesses by replication tasks and purging tasks.
     /// Therefore, it is a method of ReplicationHandler.
+    ///
+    /// It checks the replication tasks of the current targets. RaftCore holds the
+    /// [`Command::PurgeLog`] back while a task it closed, such as one to a removed target, may
+    /// still read; see [`RaftCore::lingering_replications`].
+    ///
+    /// [`RaftCore::lingering_replications`]: crate::core::RaftCore::lingering_replications
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
         tracing::debug!(

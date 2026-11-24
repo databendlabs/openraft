@@ -150,6 +150,12 @@ This step is necessary because:
 If this node crashes after installing snapshot and before purging logs,
 the log will be purged the next start-up, in [`get_initial_state()`].
 
+A node that installs a snapshot after it stopped leading may still run the
+replication tasks of its leadership, which read its log. It purges only once
+each of them has stopped. The purge waits in place, and the log I/O after it
+waits too: the purge must reach storage before the logs that follow the
+snapshot are appended, or the hole above would stay in the log.
+
 
 [`get_initial_state()`]: `crate::storage::StorageHelper::get_initial_state`
 [`snapshot_meta.last_log_id`]: `crate::storage::SnapshotMeta::last_log_id`
