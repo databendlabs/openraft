@@ -139,11 +139,13 @@ where C: RaftTypeConfig
     /// leader's reported last log index to reach `min_index`. For a newly added target, pass the
     /// membership entry's index so stale metrics are not mistaken for target removal.
     ///
-    /// Returns [`ReplicationWaitError::NotLeader`] immediately if the local node is not a leader,
-    /// or [`ReplicationWaitError::NodeNotFound`] if sufficiently fresh metrics do not contain the
-    /// target in the effective membership. Missing replication metrics for an existing target
-    /// keep the wait pending. Timeout and shutdown errors are wrapped in
-    /// [`ReplicationWaitError::Wait`].
+    /// Returns [`ReplicationWaitError::NotLeader`] immediately if the local node is running but is
+    /// not a leader, or [`ReplicationWaitError::NodeNotFound`] if sufficiently fresh metrics do not
+    /// contain the target in the effective membership. Missing replication metrics for an existing
+    /// target keep the wait pending. Timeout and shutdown errors are wrapped in
+    /// [`ReplicationWaitError::Wait`]. Metrics that report [`ServerState::Shutdown`] end the wait
+    /// with `Wait(WaitError::ShuttingDown)` before any other check, as a closed metrics channel
+    /// does.
     ///
     /// The result is an observation of replication, not a guarantee that the target has applied
     /// the entries. Like other metrics waits, it can miss intermediate leadership/membership
@@ -153,6 +155,10 @@ where C: RaftTypeConfig
     /// // Wait until node 4 has log 100 and is at most 10 entries behind the leader.
     /// let metrics = raft.wait(Some(timeout)).replication(4, Some(100), 10).await?;
     /// ```
+    #[since(
+        version = "0.10.2",
+        change = "returns `Wait(ShuttingDown)`, not `NotLeader`, when the node stops"
+    )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn replication(
@@ -178,8 +184,12 @@ where C: RaftTypeConfig
         min_index: Option<u64>,
         max_lag: u64,
     ) -> Result<bool, ReplicationWaitError> {
-        if metrics.state != ServerState::Leader {
-            return Err(ReplicationWaitError::NotLeader);
+        match metrics.state {
+            ServerState::Leader => {}
+            ServerState::Shutdown => return Err(ReplicationWaitError::Wait(WaitError::ShuttingDown)),
+            ServerState::Learner | ServerState::Follower | ServerState::Candidate => {
+                return Err(ReplicationWaitError::NotLeader);
+            }
         }
 
         if metrics.last_log_index < min_index {

@@ -221,3 +221,43 @@ fn test_replication_wait_errors() {
     })
     .unwrap();
 }
+
+#[test]
+fn test_replication_wait_shutdown_metrics() {
+    UTConfig::<()>::run(async {
+        let mut metrics = RaftMetrics::<UTConfig>::new_initial(0);
+        metrics.state = ServerState::Leader;
+        metrics.last_log_index = Some(10);
+        metrics.replication = Some(btreemap! {1 => Some(log_id(1, 0, 10))});
+        metrics.membership_config = Arc::new(StoredMembershipOf::<UTConfig>::new(
+            Some(log_id(1, 0, 5)),
+            Membership::new_with_defaults(vec![btreeset! {0}], [1]),
+        ));
+        let (tx, rx) = UTConfig::<()>::watch_channel(metrics.clone());
+        let wait = Wait::<UTConfig> { timeout: None, rx };
+
+        tracing::info!("a Shutdown report must end a wait as shutdown before metrics reach the requested index 11");
+        {
+            let mut pending = Box::pin(wait.replication(1, Some(11), 0));
+            assert!(poll!(&mut pending).is_pending());
+            metrics.state = ServerState::Shutdown;
+            tx.send(metrics.clone())?;
+            assert_eq!(
+                ReplicationWaitError::Wait(WaitError::ShuttingDown),
+                pending.await.unwrap_err()
+            );
+        }
+
+        tracing::info!("a wait begun after shutdown must fail, though the last metrics show node 1 caught up");
+        {
+            drop(tx);
+            assert_eq!(
+                ReplicationWaitError::Wait(WaitError::ShuttingDown),
+                wait.replication(1, Some(10), 0).await.unwrap_err()
+            );
+        }
+
+        Ok::<(), anyhow::Error>(())
+    })
+    .unwrap();
+}
