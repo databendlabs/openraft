@@ -79,10 +79,6 @@ where CLID: RaftCommittedLeaderId
 {
     type CommittedLeaderId = CLID;
 
-    fn new(leader_id: CLID, index: u64) -> Self {
-        LogId { leader_id, index }
-    }
-
     fn committed_leader_id(&self) -> &CLID {
         &self.leader_id
     }
@@ -100,17 +96,18 @@ where CLID: RaftCommittedLeaderId
     }
 }
 
-/// Inherent counterparts of the [`RaftLogId`] methods, so callers do not have to import the trait.
+/// The constructor, and inherent counterparts of the [`RaftLogId`] methods, so callers do not have
+/// to import the trait.
 ///
-/// Each one delegates rather than reimplementing, so the trait impl stays the only definition. An
-/// inherent method shadows the trait method at every call site, so a second copy here would let the
-/// two drift apart without any call site changing.
+/// Each counterpart delegates rather than reimplementing, so the trait impl stays the only
+/// definition. An inherent method shadows the trait method at every call site, so a second copy
+/// here would let the two drift apart without any call site changing.
 impl<CLID> LogId<CLID>
 where CLID: RaftCommittedLeaderId
 {
     /// Creates a log id proposed by a committed leader with `leader_id` at the given index.
     pub fn new(leader_id: CLID, index: u64) -> Self {
-        RaftLogId::new(leader_id, index)
+        LogId { leader_id, index }
     }
 
     /// Returns the leader id that proposed this log.
