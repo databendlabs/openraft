@@ -212,10 +212,16 @@ where C: RaftTypeConfig
     /// to the purge boundary and used only if it then lies in
     /// `[matching.next_index(), searching_end]`. Every send consumes it.
     ///
-    /// Purging constrains what AppendEntries can be built: log entries at index
-    /// `<= purge_upto` are deleted, and only the log id at `purge_upto` itself is still
-    /// known, as the snapshot's last log id. Thus the lowest usable `prev` is `purge_upto`.
-    /// A snapshot must be sent instead of logs in exactly two situations:
+    /// Purging constrains what AppendEntries can be built. `purge_upto` is the boundary of a
+    /// scheduled purge, which may not have happened yet: the leader postpones it while a pending
+    /// replication may still read entries at or below it, see
+    /// [`ReplicationHandler::try_purge_log`]. A new payload never includes entries at index
+    /// `<= purge_upto`, so that new sends cannot keep postponing the purge. The log id at
+    /// `purge_upto` stays known: [`RaftState::log_ids`] holds it as a stored entry's id while the
+    /// purge waits, and as the last purged log id afterwards. It does not come from the snapshot,
+    /// which may end later, such as when the purge keeps the last
+    /// [`Config::max_in_snapshot_log_to_keep`] logs of the snapshot. Thus the lowest usable `prev`
+    /// is `purge_upto`. A snapshot must be sent instead of logs in exactly two situations:
     ///
     /// 1. `searching_end < purge_upto_next`, in either regime: every candidate matching position
     ///    lies strictly below the purge boundary. The lowest possible probe, `prev = purge_upto`,
@@ -225,13 +231,15 @@ where C: RaftTypeConfig
     ///    progress. `searching_end == purge_upto_next` is excluded: `prev = purge_upto` is then at
     ///    index `searching_end - 1`, still a candidate position worth probing.
     ///
-    /// 2. Probing while the leader log is fully purged (`purge_upto == last_log_id`, which makes
-    ///    the send range empty: `start == end`): the probe cannot carry any entry, and
+    /// 2. Probing while the purge boundary covers the leader log (`purge_upto == last_log_id`,
+    ///    which makes the send range empty: `start == end`): the probe cannot carry any entry, and
     ///    [`Inflight::probe`] cannot represent an AppendEntries without payload — an empty range
     ///    collapses to [`Inflight::None`]. Pipeline mode is not affected: [`Inflight::LogsSince`]
     ///    is an open-ended stream, and an empty tail is valid.
     ///
     /// [algo]: crate::docs::protocol::replication::log_replication#algorithm-to-find-the-last-matching-log-id-on-a-follower
+    /// [`ReplicationHandler::try_purge_log`]: crate::engine::handler::replication_handler::ReplicationHandler::try_purge_log
+    /// [`Config::max_in_snapshot_log_to_keep`]: crate::Config::max_in_snapshot_log_to_keep
     /// [`Updater::update_conflicting`]: crate::progress::entry::update::Updater::update_conflicting
     pub(crate) fn next_send(
         &mut self,
@@ -267,7 +275,9 @@ where C: RaftTypeConfig
         if let Some(probe_start) = probe_start {
             // Like a binary-search probe, start no lower than the purge boundary.
             let start = std::cmp::max(probe_start, purge_upto_next);
-            let end = std::cmp::min(start + max_entries, last_next);
+            // `start + max_entries` can exceed `u64::MAX` near the index limit. Saturating it
+            // keeps the cap exact, because `last_next` is at most `u64::MAX`.
+            let end = std::cmp::min(start.saturating_add(max_entries), last_next);
 
             // Responses received since the probe was chosen may have narrowed the search range.
             let in_search_range = matching_next <= start && start <= self.data.searching_end;
@@ -285,10 +295,19 @@ where C: RaftTypeConfig
         if is_probing {
             // Probe at the binary-search midpoint, but not below the purge boundary.
             // `start <= searching_end` still holds: `mid <= searching_end` by construction,
-            // and `purge_upto_next <= searching_end` by snapshot condition 1 above.
+            // and `purge_upto_next <= searching_end` by snapshot condition 1 above. It is
+            // asserted here, not in `validate()`: while the probe is pending, a conflict may
+            // lower `searching_end` below `start`.
             let mid = Self::calc_mid(matching_next, self.data.searching_end);
             let start = std::cmp::max(mid, purge_upto_next);
-            let end = std::cmp::min(start + max_entries, last_next);
+            debug_assert!(
+                start <= self.data.searching_end,
+                "expect: probe start: {} <= searching_end: {}",
+                start,
+                self.data.searching_end
+            );
+            // Saturating, as for the pending probe above.
+            let end = std::cmp::min(start.saturating_add(max_entries), last_next);
 
             // Snapshot condition 2: the leader log is fully purged; there is no entry
             // for the probe to carry.
@@ -346,10 +365,33 @@ where C: RaftTypeConfig
         match &self.data.inflight {
             Inflight::None => {}
             Inflight::Probe { log_id_range, .. } => {
-                // matching <= prev_log_id              <= last_log_id
-                //             prev_log_id.next_index() <= searching_end
+                // matching <= prev_log_id <= last_log_id
+                //
+                // `next_send()` plans a probe with `prev_log_id.next_index() <= searching_end`,
+                // but this is not checked here: a conflict that does not answer the pending
+                // probe, such as a heartbeat's, may lower `searching_end` below
+                // `prev_log_id.next_index()` and leave the probe pending.
+                //
+                // In practice this needs a follower that lost logs it had confirmed, such as after
+                // a disk wipe, and log reversion allowed for it through
+                // `Config::allow_log_reversion` or `Raft::trigger().allow_next_revert()`. Only
+                // such a follower answers a heartbeat with a conflict. Without log reversion
+                // allowed, `update_conflicting()` fails a `debug_assert!` on a conflict at or
+                // below `matching`. The conflict that resets `matching` drops the probe in flight,
+                // but the conflict of a request sent before the reset may arrive after the leader
+                // has sent a new probe, and it no longer reverts `matching`. For example:
+                //
+                // 1. With `matching = 5`, a heartbeat is sent and delayed. `matching` then advances to 8, the logs
+                //    up to 5 are purged, and the follower loses its log.
+                // 2. A commit update sent with `prev_log_id = 8` gets a conflict at 8. It resets `matching` to
+                //    `None`, lowers `searching_end` to 8, and drops the plan in flight. The leader later sends the
+                //    probe `(5, 13]`, above the purged logs.
+                // 3. The heartbeat gets a conflict at 5, which is not below `matching`. It lowers `searching_end`
+                //    to 5 and keeps the probe, whose `prev_log_id` is 5. Its own response, a conflict at 5, ends it
+                //    later.
+                //
+                // A conflict never raises `matching`, so the check below still holds after it.
                 validit::less_equal!(self.matching(), log_id_range.prev.as_ref());
-                validit::less_equal!(log_id_range.prev.next_index(), self.data.searching_end);
             }
             Inflight::Snapshot { inflight_id: _ } => {}
             Inflight::LogsSince { .. } => {}

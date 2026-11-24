@@ -12,11 +12,26 @@ use crate::log_id_range::LogIdRange;
 use crate::progress::inflight_id::InflightId;
 use crate::type_config::alias::LogIdOf;
 
-/// The inflight data being transmitting from leader to a follower/learner.
+/// The replication work that the leader tracks for one target node.
 ///
-/// If inflight data is non-None, it's waiting for responses from a follower/learner.
-/// The follower/learner responds with either `ack()` or `conflict()` to update the state of
-/// inflight data.
+/// A value other than `None` is work that has not ended. Until it ends, the leader starts no other
+/// work for the target, see [`ProgressEntry::next_send()`]. The logs after the `prev` of a
+/// [`Probe`](Self::Probe), a [`LogsSince`](Self::LogsSince), or a [`Clear`](Self::Clear) are not
+/// purged, because the replication task may read them, see
+/// [`ProgressEntry::is_log_range_inflight()`].
+///
+/// Not all work waits for a response from the target:
+///
+/// - [`ack()`](Self::ack) and [`conflict()`](Self::conflict) apply the target's responses. A
+///   `Probe` or a [`Snapshot`](Self::Snapshot) ends with its response.
+/// - A `LogsSince` stream stays active after an ack advances its `prev`. Once the target has
+///   acknowledged every log, the stream waits for new logs, with no response outstanding.
+/// - A `Clear` waits for a confirmation from the leader's replication task for the target, not for
+///   a response from the target. Only [`cleared()`](Self::cleared) applies it; `ack()` and
+///   `conflict()` ignore a `Clear`.
+///
+/// [`ProgressEntry::next_send()`]: crate::progress::entry::ProgressEntry::next_send
+/// [`ProgressEntry::is_log_range_inflight()`]: crate::progress::entry::ProgressEntry::is_log_range_inflight
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum Inflight<C>
@@ -135,7 +150,15 @@ where C: RaftTypeConfig
     /// Turn this log plan, which the leader drops, into the [`Inflight::Clear`] that waits for the
     /// replication task to answer `inflight_id`.
     ///
-    /// Returns `None` if `self` is not a log plan: no replication task reads the log for it.
+    /// Only [`Inflight::Probe`] and [`Inflight::LogsSince`] are log plans, and the clear keeps the
+    /// plan's `prev`. For any other value this returns `None`, which means only that this call
+    /// created no clear:
+    ///
+    /// - `None` and [`Inflight::Snapshot`] hold no log plan.
+    /// - An existing [`Inflight::Clear`] already waits for its confirmation, and a read for the
+    ///   plan it dropped may still run. The caller must leave it in place until
+    ///   [`cleared()`](Self::cleared) applies that confirmation, because until then it holds back
+    ///   the purge of the logs after its `prev`.
     pub(crate) fn into_clear(self, inflight_id: InflightId) -> Option<Self> {
         let prev = match self {
             Inflight::Probe { log_id_range, .. } => log_id_range.prev,
@@ -181,6 +204,8 @@ where C: RaftTypeConfig
         matches!(self, Inflight::Probe { .. })
     }
 
+    // test it if used
+    #[allow(dead_code)]
     pub(crate) fn is_logs_since(&self) -> bool {
         matches!(self, Inflight::LogsSince { .. })
     }
@@ -208,12 +233,12 @@ where C: RaftTypeConfig
     ///
     /// Returns `true` if the ack matched the current inflight request and was applied; `false` if
     /// it was stale and ignored. An ack is stale when its `from_inflight_id` does not match the
-    /// current request, or when there is no inflight request at all ([`Inflight::None`]): in
-    /// pipeline ([`Inflight::LogsSince`]) mode several acks share one [`InflightId`], and a
-    /// concurrent log reversion can clear the inflight to `None` (see
-    /// [`Updater::update_conflicting`]) while acks queued before the reset are still arriving. The
-    /// caller must not advance `matching` when this returns `false`: the follower state such an ack
-    /// reports no longer holds.
+    /// current request, or when there is no inflight request at all ([`Inflight::None`]): a
+    /// concurrent log reversion drops the request in flight (see [`Updater::update_conflicting`])
+    /// while acks sent before the reset are still arriving, several of them in pipeline
+    /// ([`Inflight::LogsSince`]) mode, where acks share one [`InflightId`]. The caller must not
+    /// advance `matching` when this returns `false`: the follower state such an ack reports no
+    /// longer holds.
     ///
     /// [`Updater::update_conflicting`]: crate::progress::entry::update::Updater::update_conflicting
     pub(crate) fn ack(&mut self, upto: Option<LogIdOf<C>>, from_inflight_id: InflightId) -> bool {
