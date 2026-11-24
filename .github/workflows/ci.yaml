@@ -219,6 +219,11 @@ jobs:
             extra_args: ''
             features: 'metrics-logids,serde'
 
+          # Enable "runtime-stats", whose tests run only with it
+          - toolchain: 'nightly'
+            extra_args: ''
+            features: 'runtime-stats'
+
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v4
@@ -266,6 +271,10 @@ jobs:
 
           - toolchain: 'nightly'
             features: 'single-term-leader'
+
+          # `Raft::runtime_stats()` and its tests exist only with "runtime-stats"
+          - toolchain: 'nightly'
+            features: 'runtime-stats'
 
     steps:
       - name: Setup | Checkout
