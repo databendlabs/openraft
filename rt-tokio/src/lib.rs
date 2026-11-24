@@ -187,7 +187,10 @@ mod tests {
     }
 
     /// `TokioRuntime` uses the default `AsyncRuntime::spawn_blocking()`, which reports a panic.
+    ///
+    /// Not on wasm: wasm32-wasip1 cannot spawn the worker thread, and a panic aborts there.
     #[test]
+    #[cfg(not(target_family = "wasm"))]
     fn test_spawn_blocking_reports_a_panic() {
         let mut rt = TokioRuntime::new(2);
         rt.block_on(async {
