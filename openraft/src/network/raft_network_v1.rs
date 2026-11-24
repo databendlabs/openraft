@@ -5,7 +5,7 @@
 
 use crate::RaftTypeConfig;
 
-/// **REMOVED**: Use `openraft_legacy::RaftNetwork` instead.
+/// **REMOVED**: Use `openraft_legacy::network_v1::RaftNetwork` instead.
 ///
 /// The `RaftNetwork` trait has been moved to the `openraft-legacy` crate.
 ///
@@ -25,6 +25,6 @@ use crate::RaftTypeConfig;
     since = "0.10.0",
     note = "RaftNetwork has been moved to the `openraft-legacy` crate. \
             Add `openraft-legacy` to your dependencies and use \
-            `openraft_legacy::RaftNetwork` instead."
+            `openraft_legacy::network_v1::RaftNetwork` instead."
 )]
 pub trait RaftNetwork<C: RaftTypeConfig> {}

@@ -56,11 +56,21 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// only when [`supports_direct_transition_to()`](Self::supports_direct_transition_to) returns
     /// `true`.
     ///
-    /// When it cannot append the target of a change directly, OpenRaft first appends the
+    /// When OpenRaft cannot directly append the target that [`RaftMembershipEdit::apply()`]
+    /// returns for [`Raft::change_membership()`], it first appends the
     /// [`joint_with()`](Self::joint_with) of the old and the new configuration. Every read quorum
     /// of it is a read quorum of both the old and the new configuration, and the same holds for
     /// write quorums. So on the step into it and on the step out of it, every read quorum of one
     /// side intersects every write quorum of the other side.
+    ///
+    /// [`Raft::append_membership()`] never adds a joint configuration. When the configuration it
+    /// is given cannot be appended directly, it fails with [`UnsupportedMembershipTransition`] and
+    /// writes no log.
+    ///
+    /// [`RaftMembershipEdit::apply()`]: crate::membership::RaftMembershipEdit::apply
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
+    /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
     #[since(version = "0.10.0", change = "no longer requires QuorumBridge")]
     type QuorumSet: QuorumSet<Id = Self::NodeId>
         + QuorumIntersection<Self::QuorumSet>
@@ -112,8 +122,14 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     ///
     /// Return `true` only when every read quorum of `self` intersects every write quorum of
     /// `other`, and every write quorum of `self` intersects every read quorum of `other`. OpenRaft
-    /// trusts the answer, so a wrong `true` can lose committed entries. `false` is always safe:
-    /// OpenRaft then first appends the joint configuration of `self` and `other`.
+    /// trusts the answer, so a wrong `true` can lose committed entries. `false` is always safe.
+    /// What OpenRaft does then depends on how `other` was proposed:
+    ///
+    /// - When `other` is the target that [`RaftMembershipEdit::apply()`] computes from `self`, as
+    ///   in [`Raft::change_membership()`], OpenRaft first appends the joint configuration of `self`
+    ///   and `other`.
+    /// - When a caller passes `other` to [`Raft::append_membership()`], the call fails with
+    ///   [`UnsupportedMembershipTransition`] and writes no log.
     ///
     /// Return `true` at least when every config of `other` is also a config of `self`, with the
     /// same voter set and the same quorum rule. Then every read quorum of `self` is a read quorum
@@ -131,7 +147,9 @@ where Self: OptionalFeatures + Clone + Default + Eq + Debug + Display + Sized + 
     /// [`read_write_quorums_intersect()`](Self::read_write_quorums_intersect) returned
     /// `Some(true)`.
     ///
+    /// [`RaftMembershipEdit::apply()`]: crate::membership::RaftMembershipEdit::apply
     /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
     /// [`Raft::add_learner()`]: crate::Raft::add_learner
     /// [`UnsupportedMembershipTransition`]: crate::errors::UnsupportedMembershipTransition
     #[since(version = "0.10.0")]
