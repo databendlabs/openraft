@@ -1963,7 +1963,7 @@ where
                     preconditions.as_ref().display()
                 );
 
-                self.change_membership(changes, retain, preconditions, payloads, tx);
+                self.change_membership(changes, retain, preconditions, *payloads, tx);
             }
             RaftMsg::AppendMembership {
                 payload,

@@ -100,7 +100,11 @@ where C: RaftTypeConfig
         ///
         /// `RaftCore` computes the membership, so it also picks the payload that matches the
         /// shape of that membership.
-        payloads: MembershipPayloads<C>,
+        ///
+        /// Boxed: a message takes the size of its largest variant, and a tokio channel allocates
+        /// blocks of 32 messages, the first when it is created. Without the box this variant is
+        /// the largest, though membership changes are rare.
+        payloads: Box<MembershipPayloads<C>>,
 
         /// If `retain` is `true`, then the voters that are not in the new
         /// config will be converted into learners, otherwise they will be removed.

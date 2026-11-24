@@ -104,7 +104,7 @@ where C: RaftTypeConfig
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes,
-                    payloads,
+                    payloads: Box::new(payloads),
                     retain,
                     preconditions: Batch::of(preconditions.as_ref().iter().cloned()),
                     tx,
@@ -233,7 +233,7 @@ where C: RaftTypeConfig
 
         let msg = RaftMsg::ChangeMembership {
             changes: <MembershipEditOf<C> as RaftMembershipEditOps<C::Membership>>::add_learner(id.clone(), node),
-            payloads: MembershipPayloads::Uniform(C::Payload::blank()),
+            payloads: Box::new(MembershipPayloads::Uniform(C::Payload::blank())),
             retain: true,
             preconditions: Batch::of([]),
             tx,
