@@ -52,10 +52,6 @@ where CLID: RaftCommittedLeaderId
 {
     type CommittedLeaderId = CLID;
 
-    fn new(_leader_id: CLID, _index: u64) -> Self {
-        unreachable!("RefLogId does not own the leader id, so it cannot be created from it.")
-    }
-
     fn committed_leader_id(&self) -> &CLID {
         self.leader_id
     }

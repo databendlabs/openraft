@@ -16,6 +16,13 @@ A commit message starting with these keywords needs attention:
 
 - Fix: bug fix. No modification is required.
 
+## Upgrade from v0.10.1 to v0.10.2
+
+- `RaftLogId::new` and `RaftLogId::to_type` are removed: `RaftLogId` only
+  reads a log ID. Build a [`LogId`](crate::LogId) with
+  `LogId::new(leader_id, index)` and a tuple log ID as `(term, index)`, and
+  remove `fn new` from custom `RaftLogId` implementations.
+
 ## Upgrade from [v0.9](https://github.com/databendlabs/openraft/tree/release-0.9) to [v0.10](https://github.com/databendlabs/openraft/tree/release-0.10):
 
 [Change log v0.10.0](https://github.com/databendlabs/openraft/blob/release-0.10/change-log.md)
