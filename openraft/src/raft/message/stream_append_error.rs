@@ -16,7 +16,9 @@ use crate::type_config::alias::VoteOf;
 /// [`AppendError`]: crate::raft::AppendError
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum StreamAppendError<C: RaftTypeConfig> {
+pub enum StreamAppendError<C>
+where C: RaftTypeConfig
+{
     /// Log conflict at the given prev_log_id.
     ///
     /// The follower's log at this position does not match the leader's.
@@ -42,7 +44,9 @@ where C: RaftTypeConfig
 }
 
 /// Peel off `RejectVote`, leaving `ConflictingLogId` as the residual.
-impl<C: RaftTypeConfig> Peel for StreamAppendError<C> {
+impl<C> Peel for StreamAppendError<C>
+where C: RaftTypeConfig
+{
     type Peeled = RejectVote<C>;
     type Residual = ConflictingLogId<C>;
 
