@@ -174,7 +174,8 @@ where
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
-    /// A learner that should be in the cluster was not found.
+    /// The target membership has no node for one of its voters, or for a node ID that the
+    /// membership edit refers to. See [`LearnerNotFound`].
     #[error(transparent)]
     LearnerNotFound(#[from] LearnerNotFound<NID>),
 
@@ -594,15 +595,32 @@ where CLID: RaftCommittedLeaderId
     pub membership_log_id: Option<LogId<CLID>>,
 }
 
-/// Error indicating a learner node was not found in the cluster.
+/// Error indicating that the target membership of a change lacks a node that the change needs.
+///
+/// The target is the membership that the change asks for: the result of a membership edit, or
+/// the membership passed to [`Raft::append_membership()`]. It has to hold a node for each of its
+/// voters, and for each node ID that the edit refers to, such as by setting its role.
+///
+/// The name describes one case: a voter promoted before it was added as a learner. Add the node
+/// as a learner first. A change that removes the node of a voter fails the same way. So does a
+/// role edit that names an unknown node, or a node that the same edit removes: set roles only for
+/// nodes of the target.
+///
+/// [`Raft::append_membership()`]: crate::Raft::append_membership
+#[since(
+    version = "0.10.2",
+    change = "the message also covers a role set for a missing node, not only a voter promotion"
+)]
 #[since(version = "0.10.0", change = "removed `C: RaftTypeConfig` generic parameter")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
+#[error(
+    "node {node_id} not found in the target membership, which needs it as a voter or for a role: add a new voter as a learner first, and set roles only for nodes of the target"
+)]
 pub struct LearnerNotFound<NID>
 where NID: NodeId
 {
-    /// The node ID of the learner that was not found.
+    /// The ID of the node that the target membership lacks.
     pub node_id: NID,
 }
 

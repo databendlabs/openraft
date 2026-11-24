@@ -34,8 +34,11 @@ where
 {
     /// Propose a cluster configuration change.
     ///
-    /// A node in the proposed config has to be a learner, otherwise it fails with LearnerNotFound
-    /// error.
+    /// The target, the membership that applying `members` produces, has to hold a node for each of
+    /// its voters and for each node ID that `members` sets a role for, otherwise it fails with
+    /// [`LearnerNotFound`]. A new voter therefore has to be added as a learner first, such as with
+    /// [`Self::add_learner()`], unless `members` adds its node, as [`ChangeMembers::AddVoters`]
+    /// does.
     ///
     /// Internally:
     /// - If openraft can prove that every quorum of the current config intersects every quorum of
@@ -83,6 +86,7 @@ where
     /// ```
     ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    /// [`LearnerNotFound`]: crate::errors::LearnerNotFound
     #[since(version = "0.10.0", change = "the second step appends the target of the edit")]
     #[since(
         version = "0.10.0",
