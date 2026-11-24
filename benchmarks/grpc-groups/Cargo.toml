@@ -1,0 +1,32 @@
+[package]
+name = "bench-grpc-groups"
+description = "Measure Raft groups whose members run in separate processes and talk over gRPC, in steady operation and through the crash of a node"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "grpc-groups"
+path = "src/main.rs"
+
+[dependencies]
+openraft              = { path = "../../openraft", features = ["clap", "type-alias"] }
+openraft-multi        = { path = "../../multiraft" }
+raft-kv-memstore-grpc = { path = "../../examples/raft-kv-memstore-grpc" }
+
+anyhow             = { version = "1.0.63" }
+base2histogram     = { version = "0.2.3" }
+clap               = { version = "4.2", features = ["derive"] }
+futures            = { version = "0.3" }
+libc               = { version = "0.2" }
+prost              = { version = "0.14.3" }
+tokio              = { version = "1.39", default-features = false, features = ["macros", "net", "rt-multi-thread", "time"] }
+tonic              = { version = "0.14.6" }
+tonic-prost        = { version = "0.14.6" }
+tracing            = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
+
+[build-dependencies]
+protoc-bin-vendored = { version = "3.2.0" }
+tonic-prost-build   = { version = "0.14.6" }
