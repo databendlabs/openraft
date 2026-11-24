@@ -1529,13 +1529,25 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
     /// use futures_util::TryStreamExt;
     /// use openraft::raft::WriteOption;
     ///
-    /// // Admit the batch only in the term it was prepared in.
-    /// let term = raft.as_leader()?.term();
-    /// let mut stream = raft.client_write_many([data1, data2], WriteOption::expect_leader(term)).await?;
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// // Admit the batch only while the leader that `as_leader()` returned still leads.
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
+    /// let mut stream = raft.client_write_many([data1, data2], WriteOption::expect_leader(leader_id)).await?;
     ///
     /// // try_next() extracts Fatal error, result is WriteResult
     /// while let Some(result) = stream.try_next().await? {
@@ -1544,6 +1556,8 @@ where
     ///         Err(error) => eprintln!("Write failed: {:?}", error),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
@@ -1644,21 +1658,37 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ClientWriteResult;
+    /// # use openraft::storage::RaftStateMachine;
     /// use openraft::impls::ProgressResponder;
     ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// #     data3: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<Responder<ClientWriteResult<C>> = ProgressResponder<C, ClientWriteResult<C>>>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// let (responder1, rx1) = ProgressResponder::complete_only();
     /// let (responder3, rx3) = ProgressResponder::complete_only();
     ///
-    /// // Admit the batch only in the term it was prepared in.
-    /// let term = raft.as_leader()?.term();
+    /// // Admit the batch only while the leader that `as_leader()` returned still leads.
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
     /// raft.write_many([(data1, Some(responder1)), (data2, None)])
     ///     .push(data3, Some(responder3))
-    ///     .with_leader(term)
+    ///     .with_leader(leader_id)
     ///     .await?;
     ///
     /// let response1 = rx1.await??;
     /// let response3 = rx3.await??;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// [`.push()`]: WriteManyRequest::push

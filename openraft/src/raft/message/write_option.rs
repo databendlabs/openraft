@@ -37,9 +37,26 @@ where C: RaftTypeConfig
     /// The same as `WriteOption::default().with_leader(expected_leader)`; see
     /// [`with_leader()`](Self::with_leader).
     ///
-    /// ```ignore
-    /// let term = raft.as_leader()?.term();
-    /// raft.client_write_many([data1, data2], WriteOption::expect_leader(term)).await?;
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::raft::WriteOption;
+    ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// // Admit the writes only while the leader that `as_leader()` returned still leads.
+    /// let leader_id = raft.as_leader()?.to_committed_leader_id();
+    /// raft.client_write_many([data1, data2], WriteOption::expect_leader(leader_id)).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.1")]
     pub fn expect_leader(expected_leader: impl Into<CommittedLeaderIdOf<C>>) -> Self {
@@ -79,41 +96,61 @@ where C: RaftTypeConfig
     /// before it compares the log, and so does an [expected leader](Self::with_leader) that does
     /// not match.
     ///
-    /// Use it to send a write before the write it depends on is answered: expect the log id that
-    /// the last entry of the earlier write will get. A leader gives its entries consecutive
+    /// The comparison is exact, so a stale `last_log_id`, such as a lagging one read from
+    /// [`Raft::data_metrics()`], gets the write rejected. The rejection concerns this write only:
+    /// whether another write is appended depends on the log id that the other write expects.
+    ///
+    /// To make a write depend on an earlier write, wait until the earlier write succeeds, then
+    /// expect the log id returned for its last entry, as the example below does. The later write
+    /// is then sent only after the earlier one is applied, and it is appended only if no other
+    /// entry follows the earlier one.
+    ///
+    /// A write can also be sent before the write it depends on is answered, by expecting the log
+    /// id that the earlier write's last entry will get. A leader gives its entries consecutive
     /// indexes, so the entry it appends after the one at `index` gets
     /// `LogId::new(leader.to_committed_leader_id(), index + 1)`, where `leader` is the [`Leader`]
-    /// returned by [`Raft::as_leader()`]. If the earlier write is rejected, the log does not end at
-    /// that log id, and the later write is rejected too instead of being appended without the
-    /// write it depends on. A last log id read from [`Raft::data_metrics()`] may lag; a stale one
-    /// only gets the write rejected.
+    /// returned by [`Raft::as_leader()`].
     ///
-    /// The comparison is by log id, and a log id names whichever entry the leader appended at that
-    /// index. If another write, a blank entry or a membership entry takes the log id the caller
-    /// expected for its own earlier write, the earlier write is rejected, but a later write that
-    /// expects that log id still matches. Do not append other entries on this leader while writes
-    /// that depend on each other are in flight.
+    /// Such a prediction is safe only if the caller starts from that leader's actual last log id,
+    /// and its dependent writes are the only entries appended to that leader's log from before it
+    /// reads that log id until all of them are answered: no other write, blank entry or membership
+    /// entry may be appended in that time. A log id names whichever entry the leader appended at
+    /// that index, so otherwise a predicted log id may belong to another entry. The earlier write
+    /// is then rejected, but a later write that expects that log id matches and is appended
+    /// without the write it depends on. Metrics alone cannot establish the starting point: the
+    /// last log id that [`Raft::data_metrics()`] publishes may lag entries the leader has already
+    /// appended.
     ///
     /// RaftCore never merges such a write with other queued writes, so it compares the log right
     /// before the write's own entries.
     ///
-    /// ```ignore
-    /// // The second write depends on the first; both are sent before either is answered.
-    /// let last = raft.data_metrics().borrow_watched().last_log.unwrap();
-    /// let leader = raft.as_leader()?.to_committed_leader_id();
-    /// let first = LogIdOf::<C>::new(leader, last.index() + 1);
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use futures_util::TryStreamExt;
+    /// use openraft::raft::WriteOption;
     ///
-    /// let (responder1, rx1) = ProgressResponder::complete_only();
-    /// let option1 = WriteOption::expect_last_log_id(last);
-    /// raft.write(data1).responder(responder1).with_option(option1).await?;
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// // The second write depends on the first, so send it only after the first succeeds.
+    /// let first = raft.client_write(data1).await?;
     ///
-    /// let (responder2, rx2) = ProgressResponder::complete_only();
-    /// let option2 = WriteOption::expect_last_log_id(first);
-    /// raft.write(data2).responder(responder2).with_option(option2).await?;
-    ///
-    /// // If the first write is rejected, the second one is rejected as well.
-    /// let result1 = rx1.await?;
-    /// let result2 = rx2.await?;
+    /// // Append the second write right after the first write's entry. If another entry follows
+    /// // that entry, the second write fails with `PreconditionFailed`.
+    /// let option = WriteOption::expect_last_log_id(first.log_id);
+    /// let mut results = raft.client_write_many([data2], option).await?;
+    /// let second = results.try_next().await?.expect("one result per write")?;
+    /// println!("the second write is applied at {}", second.log_id);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// [`ClientWriteError::PreconditionFailed`]: crate::errors::ClientWriteError::PreconditionFailed
