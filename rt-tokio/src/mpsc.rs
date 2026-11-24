@@ -107,9 +107,13 @@ mod tests {
         let _channel = TokioMpsc::channel::<u32>(*range.start());
         let _channel = TokioMpsc::channel::<u32>(*range.end());
 
-        let below = std::panic::catch_unwind(|| TokioMpsc::channel::<u32>(range.start() - 1));
-        assert!(below.is_err(), "a Tokio channel panics below the range");
-        let above = std::panic::catch_unwind(|| TokioMpsc::channel::<u32>(range.end() + 1));
-        assert!(above.is_err(), "a Tokio channel panics above the range");
+        // A panic aborts the test binary where panics do not unwind, such as on wasm.
+        #[cfg(panic = "unwind")]
+        {
+            let below = std::panic::catch_unwind(|| TokioMpsc::channel::<u32>(range.start() - 1));
+            assert!(below.is_err(), "a Tokio channel panics below the range");
+            let above = std::panic::catch_unwind(|| TokioMpsc::channel::<u32>(range.end() + 1));
+            assert!(above.is_err(), "a Tokio channel panics above the range");
+        }
     }
 }

@@ -1739,6 +1739,7 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
         Self::test_spawn_seed_differs_from_parent();
         Self::test_two_spawned_tasks_differ();
         Self::test_scope();
+        #[cfg(panic = "unwind")]
         Self::test_block_on_seed_is_only_for_the_root();
         Self::test_nested_wrapper_uses_its_own_seed();
         Self::test_seed_continues_across_block_on();
@@ -1859,6 +1860,10 @@ impl<Rt: AsyncRuntime> DetsimSuite<Rt> {
 
     /// A task spawned through the inner runtime cannot draw from the seed of `block_on`, so the
     /// root keeps its sequence.
+    ///
+    /// It catches the panic of the unseeded draw, so it runs only where panics unwind: on wasm a
+    /// panic aborts.
+    #[cfg(panic = "unwind")]
     fn test_block_on_seed_is_only_for_the_root() {
         use rand::RngExt;
 
