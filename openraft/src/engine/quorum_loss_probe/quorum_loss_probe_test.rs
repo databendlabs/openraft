@@ -55,6 +55,14 @@ impl Instant for SpanInstant {
     fn now() -> Self {
         Self(Duration::ZERO)
     }
+
+    fn checked_add(&self, duration: Duration) -> Option<Self> {
+        self.0.checked_add(duration).map(Self)
+    }
+
+    fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        self.0.checked_sub(duration).map(Self)
+    }
 }
 
 #[test]

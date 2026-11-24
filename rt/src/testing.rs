@@ -83,6 +83,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
             Self::test_sleep().await;
             Self::test_instant().await;
             Self::test_instant_arithmetic().await;
+            Self::test_instant_checked_arithmetic().await;
             Self::test_instant_sub_instant().await;
             Self::test_instant_saturating_duration_since().await;
             Self::test_instant_ord().await;
@@ -256,6 +257,28 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
         let mut t2 = later;
         t2 -= dur_50ms;
         assert_eq!(t2, earlier);
+    }
+
+    /// `checked_add` and `checked_sub` return what the operators return within the clock's range.
+    ///
+    /// They return `None` for a shift of `Duration::MAX`, about 584 billion years, which no clock
+    /// based on `std::time::Instant` or on `u64` nanoseconds can represent.
+    #[since(version = "0.10.2")]
+    pub async fn test_instant_checked_arithmetic() {
+        let dur_100ms = Duration::from_millis(100);
+        let dur_50ms = Duration::from_millis(50);
+
+        let now = Rt::Instant::now();
+        let later = now + dur_100ms;
+
+        assert_eq!(now.checked_add(dur_100ms), Some(later));
+        assert_eq!(later.checked_sub(dur_50ms), Some(later - dur_50ms));
+        assert_eq!(later.checked_sub(dur_100ms), Some(now));
+        assert_eq!(now.checked_add(Duration::ZERO), Some(now));
+        assert_eq!(now.checked_sub(Duration::ZERO), Some(now));
+
+        assert_eq!(now.checked_add(Duration::MAX), None);
+        assert_eq!(now.checked_sub(Duration::MAX), None);
     }
 
     /// Test `Instant - Instant` returns `Duration`.

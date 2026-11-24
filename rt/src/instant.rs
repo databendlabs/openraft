@@ -9,6 +9,8 @@ use std::panic::RefUnwindSafe;
 use std::panic::UnwindSafe;
 use std::time::Duration;
 
+use openraft_macros::since;
+
 use crate::OptionalSend;
 use crate::OptionalSync;
 
@@ -17,6 +19,14 @@ use crate::OptionalSync;
 /// Each runtime supplies its own clock, and reading it can require an active runtime context: the
 /// simulated clock of `openraft-rt-sim` exists only inside its `block_on`. Measure time only
 /// between instants of the same clock.
+///
+/// A clock represents a limited range of instants. Shifting an instant out of that range with `+`,
+/// `-`, `+=` or `-=` can panic, while [`Self::checked_add`] and [`Self::checked_sub`] return
+/// `None`.
+#[since(
+    version = "0.10.2",
+    change = "add the required methods `checked_add` and `checked_sub`"
+)]
 pub trait Instant:
     Add<Duration, Output = Self>
     + AddAssign<Duration>
@@ -43,6 +53,19 @@ pub trait Instant:
     /// is called outside that context.
     #[track_caller]
     fn now() -> Self;
+
+    /// Return the instant `duration` after this one, or `None` if the clock cannot represent it.
+    ///
+    /// It never panics: an implementation checks the range itself, such as with the `checked_add`
+    /// of the instant type it wraps, instead of calling an operator that can panic.
+    #[since(version = "0.10.2")]
+    fn checked_add(&self, duration: Duration) -> Option<Self>;
+
+    /// Return the instant `duration` before this one, or `None` if the clock cannot represent it.
+    ///
+    /// Like [`Self::checked_add`], it never panics.
+    #[since(version = "0.10.2")]
+    fn checked_sub(&self, duration: Duration) -> Option<Self>;
 
     /// Return the amount of time since the instant, or zero if the instant is in the future.
     ///
@@ -73,5 +96,13 @@ pub trait Instant:
 impl Instant for std::time::Instant {
     fn now() -> Self {
         std::time::Instant::now()
+    }
+
+    fn checked_add(&self, duration: Duration) -> Option<Self> {
+        std::time::Instant::checked_add(self, duration)
+    }
+
+    fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        std::time::Instant::checked_sub(self, duration)
     }
 }
