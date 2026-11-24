@@ -1,4 +1,6 @@
 use std::collections::BTreeSet;
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
 use std::time::Duration;
 
 use maplit::btreeset;
@@ -129,6 +131,57 @@ fn test_multiple_entries() {
     let log_ids: Vec<_> = leading.assign_log_ids(3).unwrap().into_iter().collect();
     assert_eq!(log_ids, vec![log_id(2, 2, 9), log_id(2, 2, 10), log_id(2, 2, 11)]);
     assert_eq!(Some(log_id(2, 2, 11)), leading.last_log_id);
+}
+
+/// The last batch a leader can assign ends at index `u64::MAX - 1`, so that iterating it can end at
+/// the index after its last one. After that batch, only an empty batch is accepted.
+#[test]
+fn test_assign_log_ids_up_to_the_last_assignable_index() {
+    let vote = Vote::new(2, 2).to_committed();
+    let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
+    let last_log_id = log_id(1, 1, u64::MAX - 3);
+    let mut leading = Leader::<UTConfig, _>::new(vote, membership, Some(last_log_id), SharedIdGenerator::new());
+
+    tracing::info!("--- assign the last 2 indexes, up to u64::MAX - 1");
+    {
+        let log_ids: Vec<_> = leading.assign_log_ids(2).unwrap().into_iter().collect();
+        assert_eq!(log_ids, vec![log_id(2, 2, u64::MAX - 2), log_id(2, 2, u64::MAX - 1)]);
+        assert_eq!(Some(log_id(2, 2, u64::MAX - 1)), leading.last_log_id);
+    }
+
+    tracing::info!("--- index u64::MAX is not assignable: reject 1 more entry");
+    {
+        let payload = catch_unwind(AssertUnwindSafe(|| leading.assign_log_ids(1))).unwrap_err();
+        let msg = payload.downcast::<String>().unwrap();
+        assert!(msg.contains("the last assignable log index is u64::MAX - 1"), "{msg}");
+        assert_eq!(Some(log_id(2, 2, u64::MAX - 1)), leading.last_log_id);
+    }
+
+    tracing::info!("--- an empty batch needs no index");
+    {
+        assert_eq!(None, leading.assign_log_ids(0));
+        assert_eq!(Some(log_id(2, 2, u64::MAX - 1)), leading.last_log_id);
+    }
+}
+
+/// A batch larger than the indexes left is rejected in every build, before the last log id
+/// changes. Unchecked, a build without overflow checks would store a wrapped last log id.
+#[test]
+fn test_assign_log_ids_rejects_a_batch_beyond_the_last_assignable_index() {
+    let vote = Vote::new(2, 2).to_committed();
+    let membership = Membership::new_with_defaults(vec![btreeset! {1, 2, 3}], []);
+    let last_log_id = log_id(1, 1, u64::MAX - 3);
+    let mut leading = Leader::<UTConfig, _>::new(vote, membership, Some(last_log_id), SharedIdGenerator::new());
+
+    for count in [3, usize::MAX] {
+        tracing::info!(count, "--- 2 indexes left from u64::MAX - 2: reject the batch");
+        {
+            let payload = catch_unwind(AssertUnwindSafe(|| leading.assign_log_ids(count))).unwrap_err();
+            let msg = payload.downcast::<String>().unwrap();
+            assert!(msg.contains("the last assignable log index is u64::MAX - 1"), "{msg}");
+            assert_eq!(Some(log_id(1, 1, u64::MAX - 3)), leading.last_log_id);
+        }
+    }
 }
 
 #[test]
