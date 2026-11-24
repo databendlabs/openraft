@@ -2,6 +2,7 @@ use anyhow::Result;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::EntryPayload;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
@@ -154,6 +155,83 @@ async fn add_learner_non_blocking() -> Result<()> {
         let replication = metrics.replication.as_ref().unwrap();
         let n1_repl = replication.get(&1);
         assert_eq!(Some(&None), n1_repl, "no replication state to the learner is reported");
+    }
+
+    Ok(())
+}
+
+/// Adding or re-adding a learner to a committed joint membership writes one entry that keeps every
+/// voter set.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn add_learner_preserves_committed_joint_membership() -> Result<()> {
+    let config = Config {
+        replication_lag_threshold: 0,
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+    let mut log_index = router.new_cluster([0, 1, 2], [3, 4]).await?;
+    let leader = router.get_raft_handle(&0)?;
+    let configs = vec![btreeset! {0, 1, 2}, btreeset! {1, 2, 3}];
+    let mut learners = vec![4];
+
+    tracing::info!(
+        log_index,
+        "--- commit a joint membership with leader 0 in its first set only"
+    );
+    {
+        let joint = Membership::new_with_defaults(configs.clone(), learners.iter().copied());
+        let response = leader.append_membership(joint.clone(), EntryPayload::Blank, []).await?;
+        log_index += 1;
+        assert_eq!(log_index, response.log_id.index());
+        assert_eq!(Some(joint), response.membership);
+        router.wait_applied_at_least([0, 1, 2, 3, 4], log_index, "joint membership applied").await?;
+    }
+
+    for (node_id, blocking) in [(5, false), (6, true)] {
+        tracing::info!(
+            log_index,
+            node_id,
+            blocking,
+            "--- add a learner to the joint membership"
+        );
+        {
+            router.new_raft_node(node_id).await?;
+            let response = leader.add_learner(node_id, (), blocking).await?;
+            log_index += 1;
+            learners.push(node_id);
+
+            let expected = Membership::new_with_defaults(configs.clone(), learners.iter().copied());
+            assert_eq!(log_index, response.log_id.index());
+            assert_eq!(Some(&expected), response.membership.as_ref());
+            let metrics = router.wait(&0).applied_index(Some(log_index), "add learner applied").await?;
+            assert_eq!(Some(log_index), metrics.last_log_index);
+            assert_eq!(&expected, metrics.membership_config.membership());
+            router.wait(&node_id).applied_index(Some(log_index), "new learner catches up").await?;
+        }
+    }
+
+    let expected = Membership::new_with_defaults(configs, learners);
+    for (node_id, blocking) in [(0, true), (3, false), (4, true)] {
+        tracing::info!(
+            log_index,
+            node_id,
+            blocking,
+            "--- re-add a node without changing its role"
+        );
+        {
+            let response = leader.add_learner(node_id, (), blocking).await?;
+            log_index += 1;
+
+            assert_eq!(log_index, response.log_id.index());
+            assert_eq!(Some(&expected), response.membership.as_ref());
+            let metrics = router.wait(&0).applied_index(Some(log_index), "re-add applied").await?;
+            assert_eq!(Some(log_index), metrics.last_log_index);
+            assert_eq!(&expected, metrics.membership_config.membership());
+        }
     }
 
     Ok(())
