@@ -12,6 +12,9 @@ use crate::type_config::alias::VoteOf;
 /// The snapshot data type is defined by the state machine, thus this request does not go
 /// through the [`RaftMsg`] channel, which is independent of the state machine type.
 ///
+/// The channel carries it boxed: a tokio channel allocates blocks of 32 messages, the first when
+/// it is created, and this request holds a whole snapshot, though a node rarely installs one.
+///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`RaftMsg`]: crate::core::raft_msg::RaftMsg
 pub(crate) struct InstallFullSnapshotRequest<C, SM>

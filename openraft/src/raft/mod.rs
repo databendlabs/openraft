@@ -378,7 +378,7 @@ where
     /// the [`RaftMsg`] channel, which is independent of the state machine type.
     ///
     /// [`RaftMsg`]: crate::core::raft_msg::RaftMsg
-    install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+    install_snapshot_tx: MpscSenderOf<C, Box<InstallFullSnapshotRequest<C, SM>>>,
 }
 
 impl<C, SM> Clone for Raft<C, SM>

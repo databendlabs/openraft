@@ -81,7 +81,7 @@ where
     ///
     /// The snapshot data type is defined by the state machine, thus it does not go through
     /// the [`RaftMsg`] channel, which is independent of the state machine type.
-    install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+    install_snapshot_tx: MpscSenderOf<C, Box<InstallFullSnapshotRequest<C, SM>>>,
 }
 
 impl<C, SM> ProtocolApi<C, SM>
@@ -92,7 +92,7 @@ where
     pub(in crate::raft) fn new(
         inner: Arc<RaftInner<C>>,
         sm_cmd_tx: MpscWeakSenderOf<C, sm::Command<C, SM>>,
-        install_snapshot_tx: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+        install_snapshot_tx: MpscSenderOf<C, Box<InstallFullSnapshotRequest<C, SM>>>,
     ) -> Self {
         Self {
             inner,
@@ -171,7 +171,7 @@ where
         tracing::info!("Raft::install_full_snapshot()");
 
         let (tx, rx) = C::oneshot();
-        let req = InstallFullSnapshotRequest { vote, snapshot, tx };
+        let req = Box::new(InstallFullSnapshotRequest { vote, snapshot, tx });
 
         let send_res = self.install_snapshot_tx.send(req).await;
         if send_res.is_err() {

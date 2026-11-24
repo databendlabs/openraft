@@ -264,13 +264,13 @@ where
     /// its last `Raft` handle, so the core shuts down only via `rx_control` instead of
     /// truncating an in-flight `stream_append`.
     #[allow(dead_code)]
-    pub(crate) tx_install_snapshot: MpscSenderOf<C, InstallFullSnapshotRequest<C, SM>>,
+    pub(crate) tx_install_snapshot: MpscSenderOf<C, Box<InstallFullSnapshotRequest<C, SM>>>,
 
     /// Receiver of the dedicated channel that delivers a full snapshot to install.
     ///
     /// The snapshot data type is defined by the state machine, thus it does not go through
     /// `rx_api`, which is independent of the state machine type.
-    pub(crate) rx_install_snapshot: MpscReceiverOf<C, InstallFullSnapshotRequest<C, SM>>,
+    pub(crate) rx_install_snapshot: MpscReceiverOf<C, Box<InstallFullSnapshotRequest<C, SM>>>,
 
     /// The control channel from the `Raft` handles.
     ///
@@ -1486,7 +1486,7 @@ where
 
                 Select4::Third(install_res) => {
                     match install_res {
-                        Some(req) => self.handle_install_full_snapshot_request(req),
+                        Some(req) => self.handle_install_full_snapshot_request(*req),
                         None => {
                             tracing::error!("all rx_install_snapshot senders are dropped");
                             return Err(Fatal::Stopped);
