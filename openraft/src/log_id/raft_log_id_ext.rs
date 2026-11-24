@@ -12,10 +12,7 @@ pub(crate) trait RaftLogIdExt: RaftLogId {
 
     /// Creates a reference view of this log ID implementation via a [`RefLogId`].
     fn to_ref(&self) -> RefLogId<'_, Self::CommittedLeaderId> {
-        RefLogId {
-            leader_id: self.committed_leader_id(),
-            index: self.index(),
-        }
+        RefLogId::new(self.committed_leader_id(), self.index())
     }
 }
 

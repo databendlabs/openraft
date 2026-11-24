@@ -32,17 +32,6 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
 impl<C> ClientWriteResponse<C>
 where C: RaftTypeConfig
 {
-    /// Create a new instance of `ClientWriteResponse`.
-    #[allow(dead_code)]
-    #[since(version = "0.9.5")]
-    pub(crate) fn new_app_response(log_id: LogIdOf<C>, data: C::R) -> Self {
-        Self {
-            log_id,
-            data,
-            membership: None,
-        }
-    }
-
     #[since(version = "0.9.5")]
     pub fn log_id(&self) -> &LogIdOf<C> {
         &self.log_id
