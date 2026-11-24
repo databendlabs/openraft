@@ -14,7 +14,7 @@ verify: fmt_check clippy-basic
 
 # Complete, read-only check: adds isolated features, full lint coverage,
 # documentation, integrations, benchmarks, and runtime tests.
-verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal verify-bench-durable verify-bench-idle-groups test-runtime
+verify-full: verify feature-check clippy docs-check test-membership test-bench-minimal verify-bench-durable verify-bench-grpc-groups verify-bench-idle-groups test-runtime
 	cargo test --test '*'
 	# cargo test --features single-threaded --lib
 
@@ -268,6 +268,7 @@ fmt:
 	cargo fmt --manifest-path metrics-otel/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path benchmarks/minimal/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path benchmarks/durable/Cargo.toml $(FMT_ARGS)
+	cargo fmt --manifest-path benchmarks/grpc-groups/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path benchmarks/idle-groups/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/app-http/Cargo.toml $(FMT_ARGS)
 	cargo fmt --manifest-path examples/network-v1-http/Cargo.toml $(FMT_ARGS)
@@ -473,6 +474,12 @@ verify-bench-durable:
 verify-bench-durable-rocks:
 	cargo test --manifest-path benchmarks/durable/Cargo.toml --all-targets --all-features
 	cargo clippy --no-deps --manifest-path benchmarks/durable/Cargo.toml --all-targets --all-features -- -D warnings
+
+# Raft groups across node processes over gRPC, through the crash of a node (#2458). The tests run
+# each scenario with a few groups.
+verify-bench-grpc-groups:
+	cargo test --manifest-path benchmarks/grpc-groups/Cargo.toml --all-targets
+	cargo clippy --no-deps --manifest-path benchmarks/grpc-groups/Cargo.toml --all-targets -- -D warnings
 
 # Tasks, memory and CPU of many idle Raft groups in one process (#2304).
 verify-bench-idle-groups:

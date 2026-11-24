@@ -29,7 +29,7 @@ Thus full runs cannot deadlock on their own nested checks or have those checks
 replaced by a pending main-push run. Detection is normally within one schedule
 interval plus CI runtime; GitHub schedules may be delayed.
 
-Routine CI runs 24 test/check jobs, with no planning job. Full runs run 76 jobs,
+Routine CI runs 24 test/check jobs, with no planning job. Full runs run 77 jobs,
 those 24 included, plus one small planning job. Other workflows are unchanged:
 `jepsen.yml` still runs its full scenarios on pushes to `main`, and checks
 Jepsen-specific PR changes before merging.

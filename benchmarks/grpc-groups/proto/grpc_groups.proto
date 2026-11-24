@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+// The Raft messages of examples/raft-kv-memstore-grpc.
+import "raft.proto";
+
+package grpcgroups;
+
+// ---
+// --- Raft requests between the nodes, each to one group of the target node.
+// ---
+
+message GroupAppendRequest {
+  uint64 group_id = 1;
+  openraftpb.AppendEntriesRequest request = 2;
+}
+
+message GroupVoteRequest {
+  uint64 group_id = 1;
+  openraftpb.VoteRequest request = 2;
+}
+
+// A full snapshot in one message. The groups of this benchmark build no snapshot unless a run
+// writes 5,000 entries to a group.
+message GroupSnapshotRequest {
+  uint64 group_id = 1;
+  openraftpb.SnapshotRequestMeta meta = 2;
+  bytes data = 3;
+}
+
+service GroupRaft {
+  rpc Append(GroupAppendRequest) returns (openraftpb.AppendEntriesResponse) {}
+  rpc Vote(GroupVoteRequest) returns (openraftpb.VoteResponse) {}
+  rpc PreVote(GroupVoteRequest) returns (openraftpb.VoteResponse) {}
+  rpc Snapshot(GroupSnapshotRequest) returns (openraftpb.SnapshotResponse) {}
+}
+
+// ---
+// --- The driver's control of a node.
+// ---
+
+message Peer {
+  uint64 node_id = 1;
+  string addr = 2;
+}
+
+message SetupRequest {
+  // Every node, this one included.
+  repeated Peer peers = 1;
+  uint64 groups = 2;
+}
+
+message BeginWindowRequest {
+  // The nodes that are down: the leaders on this node leave them out of the acknowledgement ages.
+  repeated uint64 down = 1;
+}
+
+// The current term of this node's member of each group, by group id.
+message Terms {
+  repeated uint64 terms = 1;
+}
+
+// The current leader of each group as this node's member knows it, by group id; 0 for none.
+message Leaders {
+  repeated uint64 leaders = 1;
+}
+
+// A log-scale histogram, as the counts of its non-empty buckets, and its largest value.
+message Histogram {
+  repeated Bucket buckets = 1;
+  uint64 max = 2;
+}
+
+message Bucket {
+  // The smallest value of the bucket.
+  uint64 value = 1;
+  uint64 count = 2;
+}
+
+// What a node measured in one window.
+message WindowReport {
+  double secs = 1;
+  double cpu_secs = 2;
+  uint64 memory_kib = 3;
+  uint64 tasks = 4;
+
+  // AppendEntries requests that this node's router sent, and the gRPC calls that carried them.
+  uint64 appends = 5;
+  uint64 rpcs = 6;
+  // Vote and PreVote requests.
+  uint64 votes = 7;
+
+  // AppendEntries requests without entries that got no reply.
+  uint64 hb_failed = 8;
+  // The round trip of each AppendEntries request without entries that got a reply.
+  Histogram hb_rtt_us = 9;
+
+  // `now - heartbeat[follower]` of every leader on this node, sampled every 100 ms.
+  Histogram ack_age_us = 10;
+  // The largest `now - last_quorum_acked` of every leader on this node, sampled every 100 ms.
+  uint64 quorum_age_max_us = 11;
+
+  Terms terms = 12;
+}
+
+message ArmFailoverRequest {
+  // The groups whose leader is about to fail.
+  repeated uint64 group_ids = 1;
+}
+
+// When this node's member of a group became its leader, and when it committed an entry of its
+// term, in CLOCK_MONOTONIC nanoseconds; 0 for not yet.
+message Takeover {
+  uint64 group_id = 1;
+  uint64 elected_ns = 2;
+  uint64 ready_ns = 3;
+  // How far the term of this node's member grew, from the arm until it became leader.
+  uint64 terms = 4;
+}
+
+message Takeovers {
+  repeated Takeover takeovers = 1;
+}
+
+service Admin {
+  // Connect to the peers, and create this node's member of each group.
+  rpc Setup(SetupRequest) returns (google.protobuf.Empty) {}
+
+  // Initialize the groups that this node leads first, spread over one heartbeat interval.
+  rpc Initialize(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  // Wait until this node leads every group it initialized, and has committed an entry of its term
+  // in each.
+  rpc WaitReady(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  rpc BeginWindow(BeginWindowRequest) returns (Terms) {}
+  rpc EndWindow(google.protobuf.Empty) returns (WindowReport) {}
+
+  rpc GetLeaders(google.protobuf.Empty) returns (Leaders) {}
+
+  // Watch this node's members of the groups whose leader is about to fail.
+  rpc ArmFailover(ArmFailoverRequest) returns (google.protobuf.Empty) {}
+  rpc GetTakeovers(google.protobuf.Empty) returns (Takeovers) {}
+}

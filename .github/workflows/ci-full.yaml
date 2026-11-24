@@ -125,6 +125,7 @@ jobs:
         include:
           - crate: 'benchmarks/minimal'
           - crate: 'benchmarks/durable'
+          - crate: 'benchmarks/grpc-groups'
           - crate: 'benchmarks/idle-groups'
 
     steps:
