@@ -43,8 +43,15 @@ this node), use [`Raft::on_cluster_leader_change()`][] instead.
 
 **Important considerations**:
 
-- **Committed leadership**: `on_start` only fires when the node is the
-  committed leader (acknowledged by a quorum), not when it's still a candidate.
+- **Committed leadership**: `start` only fires when the metrics show this node
+  running as the leader with a committed vote, acknowledged by a quorum. It does
+  not fire while the node is a candidate, or for a committed vote that the node
+  keeps after a restart, a removal, or a shutdown.
+
+- **Stop when leadership ends**: `stop` fires once the metrics stop showing
+  that leadership: the node follows another leader, campaigns again, steps down
+  as a removed leader, or stops. Closing the watch handle ends the callbacks
+  without a `stop` call, so stop a service that still runs yourself.
 
 - **Alternating callbacks**: The `start` and `stop` callbacks are guaranteed
   to be called in alternating order: `start` → `stop` → `start` → `stop` → ...
@@ -52,11 +59,17 @@ this node), use [`Raft::on_cluster_leader_change()`][] instead.
   `stop` will be called with the old `leader_id` before `start` is called with
   the new one. This ensures proper resource cleanup between leadership terms.
 
+- **Local observations**: The callbacks follow the local metrics, which keep
+  only the latest update, so a short leadership can pass without a callback,
+  and a callback runs after the change it reports. A leader cut off from a
+  quorum keeps its role, so the services of an old and a new leader can run at
+  the same time. Do not use the callbacks to authorize reads or to keep an old
+  leader from acting.
+
 - **Idempotent operations**: Ensure your start/stop logic is idempotent.
 
-- **Async callbacks**: Callbacks return a `BoxFuture` that is awaited before
-  processing the next vote change. You can use `Box::pin(async { ... })` to
-  create async callbacks that perform I/O operations.
+- **Async callbacks**: The future that a callback returns is awaited before the
+  watch reads the metrics again.
 
 [`Raft::on_leader_change()`]: `crate::Raft::on_leader_change`
 [`Raft::on_cluster_leader_change()`]: `crate::Raft::on_cluster_leader_change`
