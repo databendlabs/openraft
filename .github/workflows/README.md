@@ -4,9 +4,10 @@ Two workflows separate required checks from delayed coverage:
 
 - **`ci.yaml`:** runs on pull requests, merge groups, and pushes to `main`. It contains
   core/macros/membership tests, integration and feature tests, store tests,
-  Tokio tests, simulated-runtime tests, both deterministic simulation suites,
-  and lint/documentation/security checks. All jobs run unconditionally.
-  `workflow_call` also lets the full workflow reuse these definitions.
+  Tokio tests, Multi-Raft tests, simulated-runtime tests, both deterministic
+  simulation suites, and lint/documentation/security checks. All jobs run
+  unconditionally. `workflow_call` also lets the full workflow reuse these
+  definitions.
 - **`ci-full.yaml`:** runs daily at 01:40 UTC. It calls `ci.yaml` from the same
   commit and adds all examples on stable and nightly (including demo scripts),
   release and benchmark builds, Monoio/Compio runtimes, WASM, metrics integration,
@@ -28,8 +29,8 @@ Thus full runs cannot deadlock on their own nested checks or have those checks
 replaced by a pending main-push run. Detection is normally within one schedule
 interval plus CI runtime; GitHub schedules may be delayed.
 
-Routine CI runs 23 test/check jobs, with no planning job. Full runs run 75 jobs,
-those 23 included, plus one small planning job. Other workflows are unchanged:
+Routine CI runs 24 test/check jobs, with no planning job. Full runs run 76 jobs,
+those 24 included, plus one small planning job. Other workflows are unchanged:
 `jepsen.yml` still runs its full scenarios on pushes to `main`, and checks
 Jepsen-specific PR changes before merging.
 

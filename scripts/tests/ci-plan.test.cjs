@@ -130,7 +130,7 @@ const fastJobs = jobBlocks(fastWorkflow);
 const fullJobs = jobBlocks(workflow);
 test('required checks and deferred coverage stay in their respective workflows', () => {
   assert.deepEqual([...fastJobs.keys()].sort(), [
-    'test-openraft-core-crates', 'test-crate-tests', 'stores', 'rt-tokio',
+    'test-openraft-core-crates', 'test-crate-tests', 'stores', 'rt-tokio', 'multiraft',
     'openraft-feature-test', 'tests-feature-test', 'rt-sim', 'tests-rt-sim',
     'detsim', 'detsim-threshold', 'lint',
   ].sort());

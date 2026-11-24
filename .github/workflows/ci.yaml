@@ -177,6 +177,24 @@ jobs:
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
+  # Test crate `multiraft/`, which the workspace excludes, so no workspace job tests it.
+  multiraft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Test crate `multiraft/`
+        run: cargo test --manifest-path "multiraft/Cargo.toml"
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
   # Feature "serde" will be enabled if one of the member crates enables
   # "serde", such as `memstore`, when building a cargo workspace.
   #
