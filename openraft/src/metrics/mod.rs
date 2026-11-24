@@ -41,6 +41,8 @@ mod wait;
 mod metric_display;
 pub mod recorder;
 mod serde_instant;
+#[cfg(test)]
+mod testing;
 mod wait_condition;
 #[cfg(test)]
 mod wait_test;
