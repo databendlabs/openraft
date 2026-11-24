@@ -541,6 +541,18 @@ and [server](https://github.com/databendlabs/openraft/blob/main/examples/raft-kv
 
   The v1 sender generates a new id for each transfer, so a retransmitted
   snapshot is never mistaken for the continuation of an aborted one.
+- A transport that serializes `InstallSnapshotRequest`,
+  `InstallSnapshotResponse` or the other moved types with Serde enables the
+  `serde` feature of `openraft-legacy`, which also enables `openraft/serde`:
+
+  ```toml
+  [dependencies]
+  openraft-legacy = { version = "0.10", features = ["serde"] }
+  ```
+
+  The moved types derive `Serialize` and `Deserialize` only with this
+  feature: `openraft/serde` derived them in 0.9 and no longer does. A
+  transport that encodes them without Serde does not need the feature.
 
 ### AppendEntries results
 
@@ -564,6 +576,18 @@ let last_log_id = rpc.last_log_id();
 let response: AppendEntriesResponse<C> = send(rpc).await?;
 Ok(response.into_append_result(prev_log_id, last_log_id))
 ```
+
+A transport that serializes `AppendEntriesResponse` with Serde enables the
+`serde` feature of `openraft-legacy`, which also enables `openraft/serde`:
+
+```toml
+[dependencies]
+openraft-legacy = { version = "0.10.2", features = ["serde"] }
+```
+
+The moved type derives `Serialize` and `Deserialize` only with this feature:
+`openraft/serde` derived them before 0.10.2 and no longer does. A transport
+that encodes the response without Serde does not need the feature.
 
 Replace `is_success()` with `is_ok()`, and `is_conflict()` with
 `matches!(r, Err(AppendError::Conflict { .. }))`.

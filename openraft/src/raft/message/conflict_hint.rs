@@ -44,13 +44,15 @@ where C: RaftTypeConfig
     /// Compare the sampled log with `list`, returning the greatest log ID they are known to share
     /// and the first index at which they are known to diverge.
     ///
-    /// The sampled log is the log described by `log_ids`.
+    /// The sampled log is the log described by `log_ids`. `list` keeps the log ID at its purge
+    /// boundary, the last purged index, but none before it. That log ID can be shared or prove a
+    /// divergence like any later log ID in `list`.
     ///
     /// For each sample, the greatest log ID of the same leader at or before the sample in `list`
     /// is shared, because the sampled log holds that leader's run up to the sample. A sample whose
-    /// leader has no such log ID in `list`, for example because it is purged, contributes no shared
-    /// log ID. A run that the samples omit can share a later log ID. The shared log ID is `None` if
-    /// no sample contributes one.
+    /// leader has no such log ID in `list`, for example because that leader's log IDs up to the
+    /// sample all precede the purge boundary, contributes no shared log ID. A run that the samples
+    /// omit can share a later log ID. The shared log ID is `None` if no sample contributes one.
     ///
     /// The sampled log can share log IDs with `list` only below the divergence index. The samples
     /// prove a divergence at:
@@ -60,9 +62,9 @@ where C: RaftTypeConfig
     ///   sample, because the sampled log continues the run;
     /// - a sampled index at which `list` holds a different log ID.
     ///
-    /// A purged index or an index past the end of `list` is skipped, so the divergence index can
-    /// exceed the end of `list`. A run that the samples omit can hide an earlier divergence. An
-    /// empty hint returns `(None, 0)`.
+    /// The comparison at a sampled index is skipped when the index precedes the purge boundary or
+    /// is past the end of `list`, so the divergence index can exceed the end of `list`. A run that
+    /// the samples omit can hide an earlier divergence. An empty hint returns `(None, 0)`.
     pub(crate) fn compare(&self, list: &LogIdList<CommittedLeaderIdOf<C>>) -> (Option<LogIdOf<C>>, u64) {
         let mut common = None;
 

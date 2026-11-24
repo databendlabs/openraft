@@ -32,10 +32,24 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     /// are batched for efficiency.
     pub entries: Vec<C::Entry>,
 
-    /// The leader's cluster-committed log id: the quorum-granted commit frontier.
+    /// The log id up to which the leader lets the receiver apply entries.
     ///
-    /// The receiver records this as its own cluster-committed value and applies up to it (gated by
-    /// the locally persisted logs).
+    /// Normally it is the leader's cluster-committed log id, which a quorum has granted. With
+    /// [`Config::enable_relaxed_read`], the leader caps it at its applied log id, so that no node
+    /// applies an entry before the leader does. For example, a leader that has committed through
+    /// index 25 but applied only through index 21 sends the log id at index 25 without relaxed
+    /// reads, and the one at index 21 with them. The [read protocol] explains why.
+    ///
+    /// The receiver records this value as its cluster-committed log id. It applies only entries
+    /// that match the leader's log: up to the smaller of this value and the last log id it has
+    /// accepted from this leader. [`RaftLogStorage::append`] makes entries readable when it
+    /// returns, and the receiver may apply them from then on, before they are flushed to disk. A
+    /// successful reply does wait for durability: the receiver sends it only after its vote and
+    /// its log through [`last_log_id()`](Self::last_log_id) are flushed.
+    ///
+    /// [`Config::enable_relaxed_read`]: crate::Config::enable_relaxed_read
+    /// [read protocol]: crate::docs::protocol::read#followers-apply-only-what-the-leader-has-applied
+    /// [`RaftLogStorage::append`]: crate::storage::RaftLogStorage::append
     pub leader_commit: Option<LogIdOf<C>>,
 }
 
