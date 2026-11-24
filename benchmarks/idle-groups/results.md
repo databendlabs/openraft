@@ -1,8 +1,9 @@
 # Results of the #2304 changes
 
 These measurements follow the changes that [#2304] led to, in November 2026: the timers, the
-task futures, and the heap of idle groups. The [README](README.md) describes the fields and has
-the baseline, 0.10.0 against `main` at 1329ad82.
+task futures, and the heap of idle groups. The profile at ca32e84d and #2487 are follow-ups that
+[#2454] tracks. The [README](README.md) describes the fields and has the baseline, 0.10.0 against
+`main` at 1329ad82.
 [`scripts/measure_change.py`](scripts/measure_change.py) runs comparisons like the later ones.
 
 All runs used one Apple M3 Max (16 cores, 128 GiB) with macOS 14.5. They were release builds
@@ -218,6 +219,63 @@ member by which the heap exceeded the memory in the allocation counts above. bas
 log-scale tables take another 26 MiB per process, in 33 allocations: a fixed cost, not one per
 group.
 
+### Heap profile at ca32e84d: #2456
+
+For [#2456], the harness ran with dhat-rs 0.3.3 as its global allocator from the start of
+`measure()`, as that issue describes, in a release build with line tables. It ran two sizes of
+each case: 200 and 400 idle leaders with stub followers, and 100 and 200 idle whole groups. A
+run of 400 whole groups had 8,134 elections under dhat, so the larger size is 200; no other run
+had an election. Each allocation site live at the end of the window splits into bytes per node,
+the slope between the two sizes, and bytes per process, the rest.
+
+| Node                    |  Per node | Per process |
+|-------------------------|----------:|------------:|
+| idle leader             | 149.4 KiB |    25.5 MiB |
+| member of an idle group | 135.5 KiB |    25.0 MiB |
+
+The per-process heap is base2histogram's log-scale tables, 25.56 MiB. A `LazyLock` builds them
+for all widths when the process creates its first `Histogram`, in `RuntimeStats::new()`. Per
+node, in bytes:
+
+| Allocation                                                          | Leader | Member |
+|---------------------------------------------------------------------|-------:|-------:|
+| tokio mpsc, the first block of each of 6 channels                   | 37,568 | 37,568 |
+| the 16 histograms of `RuntimeStats`, 2,144 B each                   | 34,304 | 34,304 |
+| tokio task cells: 11 per leader, 8.3 per member                     | 22,144 | 17,280 |
+| tokio watch channels: 27 per leader, 21.7 per member                | 12,896 | 10,464 |
+| pthread mutexes that `std::sync::Mutex` boxes, macOS only           | 12,306 |  9,366 |
+| replication and heartbeat stream boxes held while idle              |  9,765 |  7,348 |
+| tokio mpsc, a second block, kept once a channel carried 32 messages |  5,358 |  6,876 |
+| `Box<RaftCore>`                                                     |  4,728 |  4,728 |
+| other sites, each under 2 KB                                        | 13,968 | 10,823 |
+
+- Each histogram holds 2,016 B of buckets and 128 B of region sums, and nothing can read them
+  without the `runtime-stats` feature. #2487 below removes them from default builds.
+- The task cells of a leader are the state-machine worker, 5,760 B; `RaftCore`, 3,712 B; two
+  replication tasks, 2,176 B each; the step-down watcher, 1,792 B; two heartbeat workers,
+  1,536 B each; three deadline notifiers, 896 B each; and the IO completion forwarder, 768 B.
+- A watch channel takes about 480 B whatever its value, mostly for the eight `Notify` of its
+  `BigNotify`. On macOS, `std::sync::Mutex` boxes a 64 B pthread mutex on its first lock, mostly
+  in those `Notify`; Linux allocates nothing for it.
+
+`tokio::sync::mpsc`, which `rt-tokio` and `rt-monoio` use, allocates the first block of a
+channel when it creates it: 32 slots of the message type and a 32 B header, whatever the
+capacity. `flume::bounded()` in `rt-compio` allocates only its shared state, and its queues grow
+on first use. `Raft::new()` creates four of the channels, at `raft/mod.rs:573-575` and `616`,
+and the state-machine worker the other two, at `sm/worker.rs:107-108`. Their message types,
+from `-Zprint-type-sizes` with memstore's `TypeConfig`:
+
+| Message, channel                        |  Size | Largest variant              |  First block |
+|-----------------------------------------|------:|------------------------------|-------------:|
+| `RaftMsg`, API requests                 | 240 B | `ChangeMembership`, 233 B    |      7,712 B |
+| `Work`, two state-machine stages        | 200 B | `Barrier`, 200 B             | 6,432 B each |
+| `sm::Command`, state-machine commands   | 192 B | `InstallFullSnapshot`, 192 B |      6,176 B |
+| `InstallFullSnapshotRequest`, snapshots | 176 B |                              |      5,664 B |
+| `Notification`, notifications           | 160 B | `StateMachine`, 160 B        |      5,152 B |
+
+[#2488] boxes the large variants that are rarely sent. `Notification::StateMachine` and
+`RaftMsg::ClientWrite` carry every apply result and every write, so they stay as they are.
+
 ## Changes from the profiles
 
 ### Checking a node's own vote first: #2427
@@ -260,6 +318,25 @@ the code before it, measured for 10 s after 5 s of settling:
 
 Other jobs raised the load average from 14 to 55 during these runs, so they do not compare CPU.
 
+### No histograms without the `runtime-stats` feature: #2487
+
+d698b3a5 ([#2487]) gives the histograms of `RuntimeStats` a zero-sized type that records nothing
+when the `runtime-stats` feature is off, since no API returns `RuntimeStats` then. A default
+build then creates no base2histogram `Histogram`, so the process no longer builds its tables.
+Against its parent ca32e84d, with `--count-allocs`, the medians of three runs of each build:
+
+| Case                       | ca32e84d | d698b3a5 |
+|----------------------------|---------:|---------:|
+| 1,000 leaders, heap        |  171 MiB |  111 MiB |
+| 1,000 leaders, memory      |  194 MiB |  132 MiB |
+| 1,000 whole groups, heap   |  416 MiB |  287 MiB |
+| 1,000 whole groups, memory |  467 MiB |  336 MiB |
+
+The runs of each build gave the same heap. Per group, the heap fell by 62 KiB with stub
+followers and by 132 KiB with whole groups, against the 59.7 and 126.7 KiB that the profile
+predicts. Allocations and AppendEntries requests per second did not change. The load average
+fell from 54 to 13 during the runs, so they do not compare CPU.
+
 [#2304]: https://github.com/databendlabs/openraft/issues/2304
 [#2343]: https://github.com/databendlabs/openraft/pull/2343
 [#2378]: https://github.com/databendlabs/openraft/pull/2378
@@ -272,4 +349,8 @@ Other jobs raised the load average from 14 to 55 during these runs, so they do n
 [#2434]: https://github.com/databendlabs/openraft/pull/2434
 [#2435]: https://github.com/databendlabs/openraft/pull/2435
 [#2440]: https://github.com/databendlabs/openraft/pull/2440
+[#2454]: https://github.com/databendlabs/openraft/issues/2454
+[#2456]: https://github.com/databendlabs/openraft/issues/2456
+[#2487]: https://github.com/databendlabs/openraft/pull/2487
+[#2488]: https://github.com/databendlabs/openraft/issues/2488
 [rust-lang/rust#62958]: https://github.com/rust-lang/rust/issues/62958
