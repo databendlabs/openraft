@@ -26,20 +26,18 @@ use crate::type_config::alias::InstantOf;
 use crate::type_config::alias::LogIdOf;
 use crate::vote::raft_vote::RaftVoteExt;
 
-/// Leading state data.
+/// The state of an established leader: a proposer whose vote is committed.
 ///
-/// Openraft leading state is the combination of Leader and Candidate in original raft.
-/// A node becomes Leading at once when starting election, although at this time, it cannot propose
-/// any new log, because its `vote` has not yet been granted by a quorum. I.e., A leader without
-/// commit vote is a Candidate in original raft.
+/// A node campaigns as a separate [`Candidate`], with an uncommitted vote. When an election quorum
+/// grants that vote, [`Candidate::into_leader()`] commits it and builds a `Leader`, the state this
+/// node uses to propose and replicate log entries.
 ///
-/// When the leader's vote is committed, i.e., granted by a quorum,
-/// `Vote.committed` is set to true.
-/// Then such a leader is the Leader in original raft.
+/// The leader id of a `Leader` never changes. While this node leads, it starts no election unless
+/// a leadership transfer has expired, and then the engine drops the `Leader` before this node
+/// campaigns. A later leadership of this node, under a greater vote, gets a new `Leader`.
 ///
-/// By combining candidate and leader into one stage, openraft does not need to lose leadership when
-/// a higher `leader_id`(roughly the `term` in original raft) is seen.
-/// But instead it will be able to upgrade its `leader_id` without losing leadership.
+/// [`Candidate`]: crate::proposer::Candidate
+/// [`Candidate::into_leader()`]: crate::proposer::Candidate::into_leader
 #[derive(Clone, Debug)]
 pub(crate) struct Leader<C, QS>
 where
@@ -58,9 +56,10 @@ where
     /// election, so that a failed transfer does not leave the cluster without a serving leader.
     pub(crate) transfer_to: Option<(C::NodeId, InstantOf<C>)>,
 
-    /// The vote this leader works in.
+    /// The vote that a quorum granted to this leader.
     ///
-    /// `self.voting` may be in progress requesting vote for a higher vote.
+    /// Its leader id never changes while this `Leader` exists, and the log ids this leader assigns
+    /// carry its committed leader id.
     pub(crate) committed_vote: CommittedVoteOf<C>,
 
     /// The time to send next heartbeat.
@@ -83,21 +82,35 @@ where
     /// Tracks replication to all known nodes; only write voters determine the committed index.
     pub(crate) progress: Valid<VecProgress<ProgressEntry<C>, QS>>,
 
-    /// Tracks heartbeat acknowledgments; a write quorum confirms the leader's authority.
+    /// Tracks RPC acknowledgments by sending stamp; acknowledgments from a write quorum keep this
+    /// leader's lease.
     ///
-    /// Tracks the sending time(not receiving time) of the last heartbeat RPC to each follower.
-    /// The leader's own entry is always updated with the current time when calculating
-    /// the quorum-acknowledged time, as the leader is assumed to have the most up-to-date
-    /// clock time. When a follower receives a heartbeat RPC, it resets its election timeout
-    /// and won't start an election for at least the duration of `leader_lease`. If we denote
-    /// the sending time of the heartbeat as `t`, then the leader can be sure that no follower
-    /// can become a leader until `t + leader_lease`. This is the basis for the leader lease
+    /// For each node, the value is the greatest [`SendStamp`] among the RPCs that the node
+    /// acknowledged, or `None` before it acknowledges one. A stamp holds the sending time of the
+    /// RPC, not its receiving time, and a heartbeat round that orders RPCs sent at the same time.
+    /// Heartbeats, log replication requests, and snapshot transfers all count. A reply
+    /// acknowledges an RPC when the node accepted this leader's vote, even if the reply reports a
+    /// log conflict.
+    ///
+    /// This leader's own entry, present when the membership knows this node, starts at the time
+    /// the `Leader` is built, with heartbeat round `0`. This leader grants each RPC it sends, but
+    /// [`Self::update_clock()`] records that grant only when a node acknowledges the RPC, by
+    /// raising this leader's entry to the RPC's stamp. [`Self::last_quorum_acked_stamp()`] and
+    /// [`Self::last_quorum_acked_time()`] only read the stored stamps.
+    ///
+    /// A follower that accepts an RPC sent at `t` renews its lease on this leader's vote, and
+    /// grants no vote to another candidate before `t + leader_lease`. This leader itself refuses
+    /// votes while its lease is valid. Every [election quorum] is a read quorum, which shares a
+    /// voter with every write quorum. So once every voter of a write quorum has acknowledged an RPC
+    /// sent at `t` or later, no other candidate can win an election before `t + leader_lease`,
+    /// except the target of a leadership transfer that this leader started.
+    ///
+    /// A leader that alone forms a write quorum keeps its lease without acknowledgments; see
+    /// [`Self::is_lease_valid()`].
     ///
     /// See [`docs::leader_lease`] for more details.
     ///
-    /// Each value is a [`SendStamp`]: the sending time plus a heartbeat round that orders RPCs sent
-    /// at the same time.
-    ///
+    /// [election quorum]: crate::docs::protocol::election_quorum
     /// [`docs::leader_lease`]: `crate::docs::protocol::replication::leader_lease`
     pub(crate) clock_progress: Valid<VecProgress<IdVal<C::NodeId, Option<SendStamp<InstantOf<C>>>>, QS>>,
 
@@ -225,6 +238,12 @@ where
     /// Updates `self.last_log_id` to the last allocated log ID.
     ///
     /// The caller is responsible for assigning the log IDs to entries.
+    ///
+    /// # Panics
+    ///
+    /// Panics in every build if the last allocated index would be greater than `u64::MAX - 1`, and
+    /// leaves `self.last_log_id` unchanged. Iterating a [`LeaderLogIds`] needs the index after its
+    /// last one, so a leader never allocates index `u64::MAX`.
     pub(crate) fn assign_log_ids(&mut self, count: usize) -> Option<LeaderLogIds<CommittedLeaderIdOf<C>>> {
         debug_assert!(self.transfer_to.is_none(), "leader is disabled to propose new log");
 
@@ -234,7 +253,14 @@ where
 
         let committed_leader_id = self.committed_vote.committed_leader_id();
         let first = self.last_log_id().next_index();
-        let last = first + count as u64 - 1;
+
+        // Require the exclusive end, not only the last index, to fit in u64: iterating the range
+        // needs it.
+        let end = u64::try_from(count).ok().and_then(|n| first.checked_add(n));
+        let Some(end) = end else {
+            panic!("can not assign {count} log ids from index {first}: the last assignable log index is u64::MAX - 1");
+        };
+        let last = end - 1;
 
         self.last_log_id = Some(LogIdOf::<C>::new(committed_leader_id.clone(), last));
 
