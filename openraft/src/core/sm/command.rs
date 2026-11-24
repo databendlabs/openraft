@@ -33,7 +33,11 @@ where
         /// Installing a snapshot is considered as an IO of AppendEntries `[0,
         /// snapshot.last_log_id]`
         log_io_id: LogIOId<C>,
-        snapshot: SmSnapshotOf<C, SM>,
+
+        /// Boxed: a command takes the size of its largest variant, and a tokio channel allocates
+        /// blocks of 32 messages, the first when it is created. A snapshot is larger than every
+        /// other command, and installing one is rare.
+        snapshot: Box<SmSnapshotOf<C, SM>>,
     },
 
     /// Apply the log entries to the state machine.
@@ -80,7 +84,10 @@ where
     }
 
     pub(crate) fn install_full_snapshot(snapshot: SmSnapshotOf<C, SM>, log_io_id: LogIOId<C>) -> Self {
-        Command::InstallFullSnapshot { log_io_id, snapshot }
+        Command::InstallFullSnapshot {
+            log_io_id,
+            snapshot: Box::new(snapshot),
+        }
     }
 
     /// Applies log ids within the inclusive range `[first, last]`.
@@ -216,5 +223,19 @@ where
             (Command::ExternalFunc { .. }, Command::ExternalFunc { .. }) => false,
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::sm::Command;
+    use crate::engine::testing::UTConfig;
+    use crate::type_config::alias::SmSnapshotOf;
+
+    #[test]
+    fn test_command_is_smaller_than_a_snapshot() {
+        // The snapshot stays boxed: every message of a state-machine channel takes the size of
+        // the largest command.
+        assert!(size_of::<Command<UTConfig>>() < size_of::<SmSnapshotOf<UTConfig, ()>>());
     }
 }
