@@ -16,12 +16,20 @@ use crate::node::NodeId;
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
 /// of a majority of every config.
+///
+/// Deserialization checks the decoded membership as [`Membership::new()`] does: it fails when a
+/// voter has no node, and accepts every membership that `new()` accepts.
+#[since(version = "0.10.2", change = "deserialization rejects a voter without a node")]
 #[since(
     version = "0.10.0",
     change = "replaced `C: RaftTypeConfig` with `NID: NodeId, N: Node`"
 )]
 #[derive(Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(bound = "", try_from = "MembershipFields<NID, N>")
+)]
 pub struct Membership<NID, N>
 where
     NID: NodeId,
@@ -199,13 +207,25 @@ where
         Membership { configs: config, nodes }
     }
 
-    /// Returns reference to the joint config.
+    /// Returns a reference to the joint config, the voter configurations of this membership.
     ///
-    /// Membership is defined by a joint of multiple configs.
-    /// Each config is a vec of node-id.
+    /// Each configuration is a `BTreeSet` of voter node IDs. Learners are in none of them. The
+    /// returned `Vec` holds:
     ///
-    /// The returned `Vec` contains one or more configs. If there is only one config, it is in a
-    /// uniform config, otherwise, it is in a joint consensus.
+    /// - No configuration. [`Membership::default()`], the membership of a node that has not been
+    ///   initialized, has none, and [`Self::new()`] and [`Self::new_with_defaults()`] accept an
+    ///   empty `config`.
+    /// - One configuration: a uniform config.
+    /// - Two or more configurations: the membership is in joint consensus, and a quorum includes a
+    ///   majority of every configuration.
+    ///
+    /// A configuration may also be an empty set. [`Raft::initialize()`],
+    /// [`Raft::change_membership()`], and [`Raft::append_membership()`] reject a membership with no
+    /// configuration or with an empty one before they write it to the log.
+    ///
+    /// [`Raft::initialize()`]: crate::Raft::initialize
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
+    /// [`Raft::append_membership()`]: crate::Raft::append_membership
     pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
         &self.configs
     }
@@ -308,9 +328,16 @@ where
         !has_role
     }
 
-    /// Create a new Membership the same as [`Self::new()`], but does not add the default
-    /// value `Node::default()` if a voter id is not in `nodes`. Thus, it may create an invalid
-    /// instance.
+    /// Create a new Membership from `configs` and `nodes` without checking that every voter has a
+    /// node.
+    ///
+    /// [`Self::new()`] returns [`NodeNotFound`] for a voter that is not in `nodes`.
+    /// [`Self::new_with_defaults()`] takes only node IDs and builds every node, voters included,
+    /// with `N::default()`. This function does neither: a voter that is not in `nodes` has no node
+    /// in the result, which breaks the [`RaftMembership`] invariant that every voter resolves
+    /// through `get_node()`.
+    ///
+    /// [`RaftMembership`]: crate::membership::RaftMembership
     pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
@@ -332,6 +359,37 @@ where
         }
 
         res
+    }
+}
+
+/// The fields of an encoded [`Membership`], which decoding checks before it builds one.
+///
+/// It has the name, the fields, and the field order that a `Membership` is encoded with, so it
+/// decodes every encoded `Membership`. It ignores unknown fields.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(bound = "", rename = "Membership")]
+struct MembershipFields<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    configs: Vec<BTreeSet<NID>>,
+    nodes: BTreeMap<NID, N>,
+}
+
+/// Builds the decoded membership with [`Membership::new()`], which checks that every voter has a
+/// node.
+#[cfg(feature = "serde")]
+impl<NID, N> TryFrom<MembershipFields<NID, N>> for Membership<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    type Error = NodeNotFound<NID>;
+
+    fn try_from(fields: MembershipFields<NID, N>) -> Result<Self, Self::Error> {
+        Membership::new(fields.configs, fields.nodes)
     }
 }
 

@@ -598,3 +598,81 @@ fn test_supports_direct_transition_is_exact_for_uniform() {
         }
     }
 }
+
+/// Decoding accepts every membership that `Membership::new()` accepts, and a JSON or a bincode
+/// round trip returns an equal membership.
+#[cfg(feature = "serde")]
+#[test]
+fn test_membership_serde_round_trip() -> anyhow::Result<()> {
+    let nodes = |ids: &[u64]| {
+        let node = |id: &u64| TestNode {
+            addr: format!("10.0.0.{id}"),
+            data: btreemap! {"id".to_string() => id.to_string()},
+        };
+        ids.iter().map(|id| (*id, node(id))).collect::<BTreeMap<_, _>>()
+    };
+
+    let cases = [
+        ("default", Membership::<u64, TestNode>::default()),
+        (
+            "uniform with a learner",
+            Membership::new(vec![btreeset! {1,2,3}], nodes(&[1, 2, 3, 4]))?,
+        ),
+        (
+            "joint",
+            Membership::new(vec![btreeset! {1,2}, btreeset! {3,4}], nodes(&[1, 2, 3, 4]))?,
+        ),
+        (
+            "overlapping voter sets",
+            Membership::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], nodes(&[1, 2, 3, 4, 5]))?,
+        ),
+        ("learners only", Membership::new(vec![], nodes(&[1, 2]))?),
+        (
+            "empty voter set",
+            Membership::new(vec![btreeset! {1}, btreeset! {}], nodes(&[1, 2]))?,
+        ),
+    ];
+
+    for (name, membership) in cases {
+        let json = serde_json::to_string(&membership)?;
+        let from_json = serde_json::from_str::<Membership<u64, TestNode>>(&json)?;
+        assert_eq!(membership, from_json, "{name}: JSON");
+
+        let bytes = bincode::serialize(&membership)?;
+        let from_bincode = bincode::deserialize::<Membership<u64, TestNode>>(&bytes)?;
+        assert_eq!(membership, from_bincode, "{name}: bincode");
+    }
+
+    Ok(())
+}
+
+/// Decoding fails when a voter has no node, as `Membership::new()` does, instead of returning a
+/// membership that breaks the `RaftMembership` rule that every voter resolves through `get_node()`.
+#[cfg(feature = "serde")]
+#[test]
+fn test_membership_deserialize_rejects_voter_without_node() -> anyhow::Result<()> {
+    let want = NodeNotFound::new(2, Operation::None).to_string();
+
+    let json = r#"{"configs":[[1],[2]],"nodes":{"1":null}}"#;
+    let err = serde_json::from_str::<Membership<u64, ()>>(json).unwrap_err();
+    assert_eq!(want, err.to_string());
+
+    let invalid = Membership::<u64, ()>::new_unchecked(vec![btreeset! {1}, btreeset! {2}], btreemap! {1=>()});
+    let bytes = bincode::serialize(&invalid)?;
+    let err = bincode::deserialize::<Membership<u64, ()>>(&bytes).unwrap_err();
+    assert_eq!(want, err.to_string());
+
+    Ok(())
+}
+
+/// Decoding ignores a field that `Membership` does not have.
+#[cfg(feature = "serde")]
+#[test]
+fn test_membership_deserialize_ignores_unknown_fields() -> anyhow::Result<()> {
+    let json = r#"{"configs":[[1]],"nodes":{"1":null},"unknown":[2]}"#;
+    let got = serde_json::from_str::<Membership<u64, ()>>(json)?;
+    let want = Membership::<u64, ()>::new(vec![btreeset! {1}], btreemap! {1=>()})?;
+    assert_eq!(want, got);
+
+    Ok(())
+}
