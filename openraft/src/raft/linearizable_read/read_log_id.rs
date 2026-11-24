@@ -8,11 +8,31 @@ use crate::type_config::alias::LogIdOf;
 
 /// The least log ID through which a state machine must apply before linearizing a read.
 ///
-/// This boundary is inclusive: the state machine must apply this log ID or a later one.
+/// This boundary is inclusive: the state machine must apply this log ID or a later one. The log ID
+/// belongs to the leadership that authorized the read, but its entry may not yet be committed or
+/// applied.
 ///
-/// A read log ID is the maximum of the producing leader's no-op log ID and the local committed log
-/// ID. Therefore, it belongs to the leadership that produced it, but the log entry itself may not
-/// yet be committed or applied.
+/// The API that produced a read log ID determines on which nodes a read may wait for it:
+///
+/// - [`LinearizeState::read_log_id()`] returns the full boundary: the maximum of the authorizing
+///   leader's no-op log ID and the committed log ID captured at authorization. A read on any node
+///   may wait for it, so it is the value to send to another node for a follower read.
+///   [`Raft::ensure_linearizable()`] and [`Raft::get_read_log_id()`] also return the full boundary.
+/// - [`LinearizeState::read_log_id_on()`] returns the boundary for a read on a given node. It is
+///   the full boundary, except for a [relaxed read] on the node that authorized it, where it is
+///   only the no-op log ID and can be earlier than the captured committed log ID. That reduced
+///   boundary is valid only on the authorizing node: another node may not have applied a write that
+///   the leader has already acknowledged.
+///
+/// A `ReadLogId` holds only the log ID, not the node it was produced for. Rebuilding one with
+/// [`Self::from_log_id`] or by deserialization neither authorizes a read nor makes a reduced
+/// boundary valid on another node.
+///
+/// [`LinearizeState::read_log_id()`]: crate::raft::linearizable_read::LinearizeState::read_log_id
+/// [`LinearizeState::read_log_id_on()`]: crate::raft::linearizable_read::LinearizeState::read_log_id_on
+/// [`Raft::ensure_linearizable()`]: crate::Raft::ensure_linearizable
+/// [`Raft::get_read_log_id()`]: crate::Raft::get_read_log_id
+/// [relaxed read]: crate::raft::linearizable_read::LinearizerOption::with_relaxed
 #[since(version = "0.10.0")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(
@@ -62,11 +82,16 @@ where C: RaftTypeConfig
     /// Rebuild a `ReadLogId` from a log ID previously produced by a leader.
     ///
     /// Use this on a follower to reconstruct the read log ID received through an
-    /// application-defined wire format when implementing follower reads. The caller is
-    /// responsible for the value originating from a leader, such as via
-    /// [`LinearizeState::read_log_id()`]; this method does not verify it.
+    /// application-defined wire format when implementing follower reads. The leader must send the
+    /// full boundary of a read it authorized, from [`LinearizeState::read_log_id()`], rather than
+    /// a boundary from [`LinearizeState::read_log_id_on()`], which may be reduced to the leader's
+    /// no-op log ID and is then valid only on the leader.
+    ///
+    /// This method does not verify the log ID and does not authorize a read. The caller is
+    /// responsible for passing the full boundary of a read that a leader authorized.
     ///
     /// [`LinearizeState::read_log_id()`]: crate::raft::linearizable_read::LinearizeState::read_log_id
+    /// [`LinearizeState::read_log_id_on()`]: crate::raft::linearizable_read::LinearizeState::read_log_id_on
     #[since(version = "0.10.0")]
     pub fn from_log_id(log_id: LogIdOf<C>) -> Self {
         Self { log_id }

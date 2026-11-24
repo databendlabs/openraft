@@ -339,6 +339,12 @@ due to the guarantee that committed logs will not be lost.
 Since a previous read could only have observed committed logs, and `read_log_id.index()` is
 at least as large as any committed log, once `last_applied_log_id.index() >= read_log_id.index()`, the state machine is assured to reflect all entries seen by any past read.
 
+An index-only wait is safe, but it may never end. The `read_log_id` can name an uncommitted
+entry, such as the no-op of a leader elected with a long uncommitted suffix. A newer leader can
+replace that suffix and commit its own entries at smaller indexes. For example, an applied entry
+at index 51 of term 3 is greater than a `read_log_id` at index 101 of term 2, but an idle cluster
+may never reach index 101. [`Linearizer`] therefore compares complete log IDs.
+
 
 [`ensure_linearizable()`]: crate::Raft::ensure_linearizable
 [`get_read_linearizer()`]: crate::Raft::get_read_linearizer
