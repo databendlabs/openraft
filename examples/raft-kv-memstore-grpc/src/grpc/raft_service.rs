@@ -235,7 +235,7 @@ mod tests {
         TypeConfig::run(async {
             let config = Arc::new(Config::default().validate().unwrap());
             let state_machine = Arc::new(StateMachineStore::default());
-            let raft = Raft::new(1, config, Network {}, LogStore::default(), state_machine).await.unwrap();
+            let raft = Raft::new(1, config, Network::default(), LogStore::default(), state_machine).await.unwrap();
             let service = RaftServiceImpl::new(raft);
 
             let prev_log_id = LogId::new(1, 5);

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 
@@ -23,7 +24,11 @@ use openraft::network::RPCOption;
 use openraft::raft::AppendError;
 use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
+use openraft::type_config::TypeConfigExt;
+use tonic::Code;
+use tonic::Status;
 use tonic::transport::Channel;
+use tonic::transport::Endpoint;
 
 use crate::NodeId;
 use crate::TypeConfig;
@@ -33,20 +38,60 @@ use crate::protobuf::VoteResponse as PbVoteResponse;
 use crate::protobuf::raft_service_client::RaftServiceClient;
 use crate::typ::*;
 
-/// Network implementation for gRPC-based Raft communication.
-/// Provides the networking layer for Raft nodes to communicate with each other.
-pub struct Network {}
+/// Builds the gRPC clients a node uses to reach the other nodes.
+///
+/// It keeps two channels for each peer address. A channel is one HTTP/2 connection, which tonic
+/// opens on first use and opens again after a failure. Replication, votes and snapshots share the
+/// first channel, and heartbeats use the second.
+///
+/// Heartbeats need a connection of their own because HTTP/2 flow control limits a whole connection
+/// as well as each stream on it. A follower whose log flush is slow stops reading the replication
+/// stream, and the data it has not read stays counted against the connection's window. Once that
+/// window is used up, a heartbeat on the same connection waits until the follower reads again,
+/// which may take as long as the flush. The follower itself answers a heartbeat at once: a
+/// heartbeat waits for no log flush.
+#[derive(Default)]
+pub struct Network {
+    /// The channels for replication, votes and snapshots, by peer address.
+    channels: HashMap<String, Channel>,
+    /// The channels for heartbeats, by peer address.
+    heartbeat_channels: HashMap<String, Channel>,
+}
 
-impl Network {}
+impl Network {
+    /// Return the channel to `addr` in `channels`, and create it on first use.
+    ///
+    /// A peer whose address changes, as by `ChangeMembers::SetNodes`, gets a new channel. A channel
+    /// to an address no peer uses any more stays in the map.
+    fn channel(channels: &mut HashMap<String, Channel>, addr: &str) -> Result<Channel, String> {
+        if let Some(channel) = channels.get(addr) {
+            return Ok(channel.clone());
+        }
+
+        let endpoint = Endpoint::from_shared(format!("http://{}", addr))
+            .map_err(|e| format!("invalid address {}: {}", addr, e))?;
+        let channel = endpoint.connect_lazy();
+        channels.insert(addr.to_string(), channel.clone());
+        Ok(channel)
+    }
+}
 
 /// Implementation of the RaftNetworkFactory trait for creating new network connections.
-/// This factory creates gRPC client connections to other Raft nodes.
+/// This factory creates gRPC clients on the channels it keeps for each peer.
 impl RaftNetworkFactory<TypeConfig> for Network {
     type Network = NetworkConnection;
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn new_client(&mut self, _: NodeId, node: &Node) -> Self::Network {
-        NetworkConnection::new(node.clone())
+        let channel = Self::channel(&mut self.channels, &node.rpc_addr);
+        NetworkConnection::new(node.clone(), channel)
+    }
+
+    /// Give heartbeats a channel of their own, so that they never wait behind replication.
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn new_heartbeat_client(&mut self, _: NodeId, node: &Node) -> Self::Network {
+        let channel = Self::channel(&mut self.heartbeat_channels, &node.rpc_addr);
+        NetworkConnection::new(node.clone(), channel)
     }
 }
 
@@ -54,22 +99,40 @@ impl RaftNetworkFactory<TypeConfig> for Network {
 /// Handles serialization and deserialization of Raft messages over gRPC.
 pub struct NetworkConnection {
     target_node: pb::Node,
+    /// The channel to the target, or why the target's address gives none.
+    channel: Result<Channel, String>,
 }
 
 impl NetworkConnection {
-    /// Creates a new NetworkConnection with the provided gRPC client.
-    pub fn new(target_node: Node) -> Self {
-        NetworkConnection { target_node }
+    /// Creates a NetworkConnection that sends its RPCs on `channel`.
+    pub fn new(target_node: Node, channel: Result<Channel, String>) -> Self {
+        NetworkConnection { target_node, channel }
     }
 
-    /// Creates a gRPC client to the target node.
-    async fn make_client(&self) -> Result<RaftServiceClient<Channel>, RPCError> {
-        let server_addr = &self.target_node.rpc_addr;
-        let channel = Channel::builder(format!("http://{}", server_addr).parse().unwrap())
-            .connect()
-            .await
-            .map_err(|e| RPCError::Unreachable(Unreachable::<TypeConfig>::new(&e)))?;
-        Ok(RaftServiceClient::new(channel))
+    /// Creates a gRPC client on the channel to the target node.
+    fn client(&self) -> Result<RaftServiceClient<Channel>, RPCError> {
+        match &self.channel {
+            Ok(channel) => Ok(RaftServiceClient::new(channel.clone())),
+            Err(e) => Err(RPCError::Unreachable(Unreachable::<TypeConfig>::from_string(e))),
+        }
+    }
+
+    /// Wait for `call` until `option.soft_ttl()` ends.
+    ///
+    /// A channel connects on first use, so the deadline covers connecting as well.
+    async fn with_deadline<T>(
+        &self,
+        option: &RPCOption,
+        call: impl Future<Output = Result<T, Status>> + OptionalSend,
+    ) -> Result<T, RPCError> {
+        let ttl = option.soft_ttl();
+        match TypeConfig::timeout(ttl, call).await {
+            Ok(res) => res.map_err(status_to_rpc_error),
+            Err(_elapsed) => Err(RPCError::Network(NetworkError::<TypeConfig>::from_string(format!(
+                "no answer from node {} within {:?}",
+                self.target_node.node_id, ttl
+            )))),
+        }
     }
 
     /// Convert pb::AppendEntriesResponse to AppendResult.
@@ -113,6 +176,18 @@ impl NetworkConnection {
     }
 }
 
+/// Map a gRPC status to the error OpenRaft expects.
+///
+/// A connection that fails, or a peer that refuses it, is `Unavailable`, which is `Unreachable`
+/// to OpenRaft, so that replication backs off. Any other status is a network error.
+fn status_to_rpc_error(status: Status) -> RPCError {
+    if status.code() == Code::Unavailable {
+        RPCError::Unreachable(Unreachable::<TypeConfig>::new(&status))
+    } else {
+        RPCError::Network(NetworkError::<TypeConfig>::new(&status))
+    }
+}
+
 // =============================================================================
 // Sub-trait implementations for NetworkConnection
 // =============================================================================
@@ -127,18 +202,18 @@ impl NetStreamAppend<TypeConfig> for NetworkConnection {
     fn stream_append<'s, S>(
         &'s mut self,
         input: S,
-        _option: RPCOption,
+        option: RPCOption,
     ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult, RPCError>>, RPCError>>
     where
         S: Stream<Item = AppendEntriesRequest> + OptionalSend + Unpin + 'static,
     {
         let fu = async move {
-            let mut client = self.make_client().await?;
+            let mut client = self.client()?;
 
-            let response = client
-                .stream_append(input.map(pb::AppendEntriesRequest::from))
-                .await
-                .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
+            // The deadline covers opening the stream, not the answers: an answer waits for the
+            // follower's log flush, which may take long while nothing is wrong.
+            let opening = client.stream_append(input.map(pb::AppendEntriesRequest::from));
+            let response = self.with_deadline(&option, opening).await?;
 
             let output = response.into_inner().map(|result| {
                 let resp = result.map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
@@ -153,27 +228,21 @@ impl NetStreamAppend<TypeConfig> for NetworkConnection {
 }
 
 impl NetVote<TypeConfig> for NetworkConnection {
-    async fn vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
-        let mut client = self.make_client().await?;
+    async fn vote(&mut self, req: VoteRequest, option: RPCOption) -> Result<VoteResponse, RPCError> {
+        let mut client = self.client()?;
 
         let proto_vote_req: PbVoteRequest = req.into();
-        let response = client
-            .vote(proto_vote_req)
-            .await
-            .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
+        let response = self.with_deadline(&option, client.vote(proto_vote_req)).await?;
 
         let proto_vote_resp: PbVoteResponse = response.into_inner();
         Ok(proto_vote_resp.into())
     }
 
-    async fn pre_vote(&mut self, req: VoteRequest, _option: RPCOption) -> Result<VoteResponse, RPCError> {
-        let mut client = self.make_client().await?;
+    async fn pre_vote(&mut self, req: VoteRequest, option: RPCOption) -> Result<VoteResponse, RPCError> {
+        let mut client = self.client()?;
 
         let proto_vote_req: PbVoteRequest = req.into();
-        let response = client
-            .pre_vote(proto_vote_req)
-            .await
-            .map_err(|e| RPCError::Network(NetworkError::<TypeConfig>::new(&e)))?;
+        let response = self.with_deadline(&option, client.pre_vote(proto_vote_req)).await?;
 
         let proto_vote_resp: PbVoteResponse = response.into_inner();
         Ok(proto_vote_resp.into())
@@ -190,10 +259,10 @@ impl NetSnapshot<TypeConfig> for NetworkConnection {
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse, StreamingError> {
-        let mut client = self.make_client().await?;
+        let mut client = self.client()?;
 
         let (mut tx, rx) = mpsc::channel(1024);
-        let response = client.snapshot(rx).await.map_err(|e| NetworkError::<TypeConfig>::new(&e))?;
+        let response = client.snapshot(rx).await.map_err(status_to_rpc_error)?;
 
         // 1. Send meta chunk
         let meta = &snapshot.meta;

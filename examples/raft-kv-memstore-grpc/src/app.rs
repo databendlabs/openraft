@@ -33,7 +33,7 @@ pub async fn start_raft_app(
     // Create stores and network
     let log_store = LogStore::default();
     let state_machine_store = Arc::new(StateMachineStore::default());
-    let network = Network {};
+    let network = Network::default();
 
     // Create Raft instance
     let raft = Raft::new(node_id, config.clone(), network, log_store, state_machine_store.clone()).await?;

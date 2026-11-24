@@ -8,6 +8,9 @@ Demonstrates building a distributed key-value store with Openraft using gRPC for
 - **Protocol Buffers**: Type-safe RPC definitions for all network operations
 - **Sub-trait implementation**: Implements individual `Net*` sub-traits directly instead of `RaftNetworkV2`
 - **Pipeline streaming**: Bidirectional gRPC streaming for efficient log replication via `NetStreamAppend`
+- **Heartbeats on their own connection**: `Network` keeps one channel per peer for replication,
+  votes and snapshots, and a second one for heartbeats, through `new_heartbeat_client()`
+- **RPC deadlines**: Votes, pre-votes and opening the append stream end at `RPCOption::soft_ttl()`
 - **In-memory storage**: [`RaftLogStorage`] and protobuf-based state machine
 
 ## Overview
@@ -24,11 +27,28 @@ This example implements:
 > This example demonstrates the advanced sub-trait approach to showcase fine-grained control
 > over network capabilities.
 
+## Connections and deadlines
+
+Each channel is one HTTP/2 connection, which tonic opens on first use and opens again after a
+failure. Heartbeats get a channel of their own because HTTP/2 flow control limits a whole
+connection as well as each stream on it. A follower whose log flush is slow stops reading the
+replication stream, and the data it has not read stays counted against the connection's window.
+On a shared connection, a heartbeat would then wait until the follower reads again, although the
+follower answers a heartbeat at once: a heartbeat waits for no log flush.
+
+The answers on an open append stream have no deadline, because each one waits for the follower's
+log flush, which may take long while nothing is wrong. Measure heartbeat latency apart from append
+and flush latency before choosing timeouts: `tests/heartbeat_during_slow_flush.rs` prints both.
+
 ## Testing
 
 **Single-process cluster** (`./tests/test_cluster.rs`):
 - Brings up 3 nodes in one process
 - Tests: initialize, add-learner, change-membership, write/read
+
+**Slow follower** (`./tests/heartbeat_during_slow_flush.rs`):
+- A learner whose log store holds each flush for 5 s keeps answering the leader's heartbeats
+- Prints the heartbeat round trips, apart from how long the appends took to be answered
 
 **Multi-process cluster** (`./test-cluster.sh`):
 - Realistic 3-process deployment
