@@ -223,7 +223,6 @@ fn test_handle_vote_resp_equal_vote() -> anyhow::Result<()> {
                 Command::RebuildReplicationStreams {
                     leader_vote: Vote::new(2, 1).to_committed(),
                     targets: vec![TargetProgress {
-                        target: 2,
                         target_node: (),
                         progress: ProgressEntry::empty(2, StreamId::new(2), 1).with_probe_start(1),
                     }],

@@ -1265,7 +1265,7 @@ where
     ) -> ReplicationHandle<C> {
         let network = {
             let mut factory = self.network_factory.lock().await;
-            factory.new_client(prog.target.clone(), &prog.target_node).await
+            factory.new_client(prog.progress.id.clone(), &prog.target_node).await
         };
 
         let (replicate_tx, replicate_rx) = C::watch_channel(None);
@@ -1288,7 +1288,7 @@ where
             self.log_store.get_log_reader().await,
             event_watcher,
             backoff_reset_rx,
-            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&prog.target)),
+            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(&self.id), target=display(&prog.progress.id)),
         );
 
         replication_handle.join_handle = Some(join_handle);
@@ -1328,7 +1328,7 @@ where
 
         ReplicationContext {
             id,
-            target: prog.target.clone(),
+            target: prog.progress.id.clone(),
             leader_vote,
             stream_id: prog.progress.data.stream_id,
             config: self.config.clone(),
@@ -2897,12 +2897,14 @@ where
         let mut new_replications = BTreeMap::new();
 
         for prog in targets.iter() {
+            let target = &prog.progress.id;
+
             let membership = self.engine.state.membership_state.effective();
-            let receives_logs = membership.membership().receives_logs(&prog.target);
+            let receives_logs = membership.membership().receives_logs(target);
             if !receives_logs {
                 continue;
             }
-            let removed = self.replications.remove(&prog.target);
+            let removed = self.replications.remove(target);
 
             // A stream serves one stream id and the node metadata its client was created from. The
             // engine gives a target a new stream id when its metadata changes, such as a new
@@ -2919,9 +2921,9 @@ where
                     debug_assert!(
                         close_old_streams || removed.stream_id != prog.progress.data.stream_id,
                         "the node of target {} changed without a new stream id",
-                        prog.target
+                        target
                     );
-                    self.close_replication(&prog.target, removed);
+                    self.close_replication(target, removed);
                     None
                 }
                 None => None,
@@ -2933,7 +2935,7 @@ where
                 self.spawn_replication_stream(leader_vote.clone(), prog).await
             };
 
-            new_replications.insert(prog.target.clone(), handle);
+            new_replications.insert(target.clone(), handle);
         }
 
         tracing::debug!("removing unused replications");

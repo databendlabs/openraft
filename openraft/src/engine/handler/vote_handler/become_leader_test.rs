@@ -71,7 +71,6 @@ fn test_become_leader() -> anyhow::Result<()> {
         Command::RebuildReplicationStreams {
             leader_vote: Vote::new(2, 1).to_committed(),
             targets: vec![TargetProgress {
-                target: 0,
                 target_node: (),
                 progress: ProgressEntry::empty(0, StreamId::new(1), 0).with_probe_start(0),
             }],

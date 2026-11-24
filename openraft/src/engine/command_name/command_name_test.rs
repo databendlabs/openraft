@@ -141,7 +141,6 @@ fn commands() -> Vec<(Command<C>, CommandName)> {
             Command::RebuildReplicationStreams {
                 leader_vote: cv.clone(),
                 targets: vec![TargetProgress {
-                    target: 1,
                     target_node: (),
                     progress: ProgressEntry::empty(1, StreamId::new(1), 1),
                 }],

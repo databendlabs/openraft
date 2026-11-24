@@ -92,9 +92,11 @@ where C: RaftTypeConfig
         let mut new_workers = BTreeMap::new();
 
         for prog in progresses {
-            tracing::debug!("id={} spawn HeartbeatWorker target={}", self.id, prog.target);
+            let target = &prog.progress.id;
 
-            let removed = self.workers.remove(&prog.target);
+            tracing::debug!("id={} spawn HeartbeatWorker target={}", self.id, target);
+
+            let removed = self.workers.remove(target);
 
             // A changed node, such as a new address from `SetNodes`, needs a client created from
             // it, so its old worker is dropped and cancelled as well. The engine gives such a
@@ -106,7 +108,7 @@ where C: RaftTypeConfig
             let handle = if let Some(handle) = handle {
                 handle
             } else {
-                let network = network_factory.new_heartbeat_client(prog.target.clone(), &prog.target_node).await;
+                let network = network_factory.new_heartbeat_client(target.clone(), &prog.target_node).await;
 
                 let (tx, rx) = C::watch_channel(None);
 
@@ -116,13 +118,13 @@ where C: RaftTypeConfig
                     stream_id: prog.progress.data.stream_id,
                     rx,
                     network,
-                    target: prog.target.clone(),
+                    target: target.clone(),
                     node: prog.target_node.clone(),
                     config: self.config.clone(),
                     tx_notification: tx_notification.clone(),
                 };
 
-                let span = tracing::span!(parent: &Span::current(), Level::DEBUG, "heartbeat", id=display(&self.id), target=display(&prog.target));
+                let span = tracing::span!(parent: &Span::current(), Level::DEBUG, "heartbeat", id=display(&self.id), target=display(target));
 
                 let (cancel, future) = worker.run();
                 let worker_handle = C::spawn(future.instrument(span));
@@ -136,7 +138,7 @@ where C: RaftTypeConfig
                 }
             };
 
-            new_workers.insert(prog.target.clone(), handle);
+            new_workers.insert(target.clone(), handle);
         }
 
         // All the left are dropped and closed.

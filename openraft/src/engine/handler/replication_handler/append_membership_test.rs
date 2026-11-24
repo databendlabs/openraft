@@ -101,12 +101,10 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
                 leader_vote: Vote::new(6, 2).to_committed(),
                 targets: vec![
                     TargetProgress {
-                        target: 3,
                         target_node: (),
                         progress: ProgressEntry::empty(3, StreamId::new(2), 0).with_probe_start(0),
                     },
                     TargetProgress {
-                        target: 4,
                         target_node: (),
                         progress: ProgressEntry::empty(4, StreamId::new(3), 0).with_probe_start(0),
                     }
@@ -344,12 +342,10 @@ fn test_leader_append_membership_renews_the_stream_of_a_changed_node() -> anyhow
             leader_vote: Vote::new(6, 2).to_committed(),
             targets: vec![
                 TargetProgress {
-                    target: 3,
                     target_node: "n3".to_string(),
                     progress: before_3,
                 },
                 TargetProgress {
-                    target: 4,
                     target_node: "new".to_string(),
                     progress: renewed_4,
                 },

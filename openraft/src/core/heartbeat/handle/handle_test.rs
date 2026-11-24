@@ -158,7 +158,6 @@ impl RaftNetworkV2<C> for RecordingClient {
 
 fn progress(target: u64, node: &str, stream_id: u64) -> TargetProgress<C> {
     TargetProgress {
-        target,
         target_node: node.to_string(),
         progress: ProgressEntry::empty(target, StreamId::new(stream_id), 0),
     }

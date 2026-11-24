@@ -271,7 +271,6 @@ fn test_append_membership_retries_the_pending_purge() {
     let rebuild = |progress: ProgressEntry<UTConfig>| Command::RebuildReplicationStreams {
         leader_vote: Vote::new_committed(3, 2).to_committed(),
         targets: vec![TargetProgress {
-            target: 3,
             target_node: (),
             progress,
         }],

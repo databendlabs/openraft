@@ -547,7 +547,6 @@ where
                 let target_node = membership.get_node(&item.id).unwrap().clone();
 
                 targets.push(TargetProgress {
-                    target: item.id.clone(),
                     target_node,
                     progress: item.clone(),
                 });

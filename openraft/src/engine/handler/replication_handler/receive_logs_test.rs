@@ -177,7 +177,6 @@ fn rebuild(progresses: [ProgressEntry<RoleConfig>; 2]) -> Command<RoleConfig> {
     let targets = progresses
         .into_iter()
         .map(|progress| TargetProgress {
-            target: progress.id,
             target_node: (),
             progress,
         })
