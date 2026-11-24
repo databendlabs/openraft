@@ -175,8 +175,10 @@ pub(crate) struct ProgressEntry<C> {
   every sample, including the first, with its own log to choose another probe.
   Hints tighten the search;
   they never advance `matching` or count toward a quorum. Shared committed leader
-  IDs identify common prefixes even when the run end indices differ. Purged
-  positions provide no negative evidence. The leader ignores the hint of a
+  IDs identify common prefixes even when the run end indices differ. The leader
+  keeps the log ID at its purge boundary, the last purged index, and that log ID
+  can still prove a common prefix or a mismatch. Positions before the boundary
+  prove neither. The leader ignores the hint of a
   conflict that answers no inflight request, such as a heartbeat's.
   `AppendError` does not implement serde, so each transport decides whether its
   wire format carries the hint. Without the hint, the leader uses binary search.

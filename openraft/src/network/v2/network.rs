@@ -277,6 +277,8 @@ where C: RaftTypeConfig
     /// Send TransferLeader message to the target node.
     ///
     /// The node received this message should pass it to [`Raft::handle_transfer_leader()`].
+    /// Return the [`TransferLeaderResponse`] that the target's call returned; the response type
+    /// describes what `Ok(())` and each error report.
     ///
     /// This method provides a default implementation that just returns [`Unreachable`] error to
     /// ignore it. In case the application did not implement it, other nodes just wait for the

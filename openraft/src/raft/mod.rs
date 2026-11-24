@@ -1179,16 +1179,22 @@ where
     /// The application receives a snapshot from the leader, in chunks or a stream, and
     /// then rebuild a snapshot, then pass the snapshot to Raft to install.
     ///
-    /// It returns `Ok` with this node's vote:
+    /// It returns `Ok` with a [`SnapshotResponse`] in each of these cases:
     ///
-    /// - once [`RaftStateMachine::install_snapshot()`] has returned `Ok` for this snapshot, or at
-    ///   once if this node's committed log already reaches the snapshot's last log id;
-    /// - at once, without installing the snapshot, if this node rejects `vote`. The returned vote
-    ///   is then greater than `vote`.
+    /// - This node accepts `vote` and installs the snapshot. It returns once
+    ///   [`RaftStateMachine::install_snapshot()`] has returned `Ok` for this snapshot.
+    /// - This node accepts `vote`, but it has already committed every log through the snapshot's
+    ///   last log id, so it does not install the snapshot. It returns only after those logs are
+    ///   flushed to storage.
+    /// - This node rejects `vote` and does not install the snapshot. The returned vote is then
+    ///   greater than `vote`.
     ///
-    /// Answer the leader's [`NetSnapshot::full_snapshot()`] with this response. Unless the vote in
-    /// it is greater, the leader takes it as proof that this node has every log through the
-    /// snapshot's last log id.
+    /// In the first two cases the returned vote is `vote`, so the response does not tell whether
+    /// this node installed the snapshot.
+    ///
+    /// Answer the leader's [`NetSnapshot::full_snapshot()`] with this response, unchanged. Unless
+    /// the vote in it is greater, the leader takes it as proof that this node has every log through
+    /// the snapshot's last log id.
     ///
     /// # Errors
     ///
@@ -1675,6 +1681,14 @@ where
     /// If this node is the `to` node, it resets the Leader lease and triggers an election when the
     /// expected log entries are flushed.
     /// Otherwise, it just resets the Leader lease to allow the `to` node to become the Leader.
+    ///
+    /// It does not wait for RaftCore to act on the request: a response of `Ok(())` means only that
+    /// the request is queued, and RaftCore ignores it unless this node's vote equals the request's
+    /// vote when RaftCore handles it. Before queueing, the `to` node waits up to
+    /// [`Config::election_timeout_min`] for the expected log entries to be flushed under the
+    /// request's vote, and otherwise returns a [`TransferLeaderError`] in the response. See
+    /// [`TransferLeaderResponse`] for what each response reports, and how to learn whether
+    /// leadership moved.
     ///
     /// The application calls
     /// [`Raft::trigger().transfer_leader()`](crate::raft::trigger::Trigger::transfer_leader) to
