@@ -169,17 +169,27 @@ pub trait RaftTypeConfig:
     /// Asynchronous runtime type.
     type AsyncRuntime: AsyncRuntime;
 
-    /// Responder type for sending client write responses asynchronously.
+    /// Responder type that an application attaches to a write to receive its result.
     ///
-    /// Responders send results back to the caller of [`Raft::client_write`] or to
-    /// application-defined channels. The generic parameter `T` is the type of result
-    /// being sent (e.g., [`ClientWriteResult`](crate::raft::ClientWriteResult) for client write
-    /// operations).
+    /// The application creates a responder of this type and passes it to
+    /// [`WriteRequest::responder()`], [`Raft::write_many()`] or [`Raft::client_write_ff()`].
+    /// RaftCore completes the responder with the result of the write. The generic parameter `T`
+    /// is the type of that result; for these write APIs it is
+    /// [`ClientWriteResult`](crate::raft::ClientWriteResult).
     ///
-    /// Applications create responders (typically using oneshot channels) and pass them
-    /// to Raft APIs that need to send asynchronous responses.
+    /// APIs that return the result of a write themselves, such as [`Raft::client_write()`] and
+    /// [`Raft::change_membership()`], wait on a responder that they create internally and do not
+    /// use this type.
     ///
-    /// [`Raft::client_write`]: `crate::raft::Raft::client_write`
+    /// [`declare_raft_types!`](crate::declare_raft_types) defaults it to
+    /// [`ProgressResponder`](crate::impls::ProgressResponder), which also reports when the write is
+    /// committed. [`OneshotResponder`](crate::impls::OneshotResponder) reports only the result.
+    ///
+    /// [`WriteRequest::responder()`]: crate::raft::WriteRequest::responder
+    /// [`Raft::write_many()`]: crate::Raft::write_many
+    /// [`Raft::client_write_ff()`]: crate::Raft::client_write_ff
+    /// [`Raft::client_write()`]: crate::Raft::client_write
+    /// [`Raft::change_membership()`]: crate::Raft::change_membership
     type Responder<T>: Responder<Self, T>
     where T: OptionalSend + 'static;
 

@@ -1,6 +1,7 @@
 //! Implement blocking-mode write operations for Raft.
-//! Blocking-mode write API blocks until the write operation is completed,
-//! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
+//! Blocking-mode write API blocks until the write operation is completed.
+//! It waits on a responder that it creates internally and does not use
+//! [`RaftTypeConfig::Responder`].
 
 use openraft_macros::since;
 
@@ -12,8 +13,6 @@ use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
 #[cfg(doc)]
 use crate::impls::ChangeMembers;
-#[cfg(doc)]
-use crate::impls::OneshotResponder;
 use crate::membership::RaftMembershipEditOps;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
