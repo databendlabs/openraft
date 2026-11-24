@@ -12,9 +12,12 @@ use crate::core::ServerState;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::log_id::LogIdOptionExt;
+use crate::metrics::Metric;
 use crate::metrics::SerdeInstant;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::metrics::testing::MetaVote;
+use crate::metrics::testing::MetaVoteConfig;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::NodeIdOf;
 use crate::type_config::alias::StoredMembershipOf;
@@ -268,6 +271,28 @@ fn test_wait_vote() {
         Ok::<(), anyhow::Error>(())
     })
     .unwrap();
+}
+
+/// `eq()` and `ge()` accept a vote that differs from the reported one only in a field of the custom
+/// vote type, and return the reported metrics. With a zero timeout, each wait checks the metrics
+/// already in the channel once.
+#[test]
+fn test_wait_vote_ignores_custom_vote_fields() {
+    MetaVoteConfig::run(async {
+        let mut metrics = RaftMetrics::<MetaVoteConfig>::new_initial(1);
+        metrics.vote = MetaVote::new(2, 1, true, 7);
+
+        let (_tx, rx) = MetaVoteConfig::watch_channel(metrics.clone());
+        let w = Wait {
+            timeout: Some(Duration::ZERO),
+            rx,
+        };
+
+        let want = MetaVote::new(2, 1, true, 8);
+        assert_eq!(Ok(metrics.clone()), w.eq(Metric::Vote(want.clone()), "vote").await);
+        assert_eq!(Ok(metrics.clone()), w.ge(Metric::Vote(want.clone()), "vote").await);
+        assert_eq!(Ok(metrics), w.vote(want, "vote").await);
+    });
 }
 
 #[test]
