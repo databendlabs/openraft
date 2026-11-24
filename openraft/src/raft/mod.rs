@@ -1493,8 +1493,11 @@ where
     /// top of a given log entry. To attach your own responders instead of reading a stream, use
     /// [`Self::write_many()`].
     ///
-    /// `Err(Fatal)` from this method means the batch was not submitted. If RaftCore stops later,
-    /// the stream yields `Err(Fatal::Stopped)` and ends.
+    /// `Err(Fatal)` from this method means the batch was not submitted. If RaftCore stops before
+    /// the result of an entry arrives, the stream yields the error that stopped RaftCore in place
+    /// of that result, as [`client_write()`](Self::client_write) returns it, and ends. The stream
+    /// does not keep the node running: once every `Raft` handle is dropped, RaftCore stops, and
+    /// the stream yields `Err(Fatal::Stopped)` in place of a result that has not arrived.
     ///
     /// # Admission
     ///
@@ -1540,6 +1543,10 @@ where
     /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
     /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
     /// [`ClientWriteError::PreconditionFailed`]: crate::errors::ClientWriteError::PreconditionFailed
+    #[since(
+        version = "0.10.2",
+        change = "the stream yields the error that stopped RaftCore, not always `Fatal::Stopped`"
+    )]
     #[since(version = "0.10.1", change = "add write_option argument")]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]

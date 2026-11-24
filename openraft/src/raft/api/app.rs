@@ -152,7 +152,9 @@ where C: RaftTypeConfig
     /// as it sends all payloads in a single message to the Raft core. RaftCore admits the batch
     /// with `write_option`.
     ///
-    /// If RaftCore stops, the stream yields `Err(Fatal::Stopped)` and ends.
+    /// If a result does not arrive, the stream yields the error that
+    /// [`RaftInner::missing_response_error()`] returns, as [`client_write()`](Self::client_write)
+    /// does, and ends. Once every `Raft` handle is dropped, that error is `Fatal::Stopped`.
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn client_write_many(
@@ -173,12 +175,27 @@ where C: RaftTypeConfig
 
         self.do_client_write_ff(Batch::of(payloads), Batch::of(responders), write_option).await?;
 
-        let stream = futures_util::stream::unfold(Some(receivers.into_iter()), |opt_iter| async move {
-            let mut iter = opt_iter?;
-            let rx = iter.next()?;
+        // The stream holds the node weakly: a stream that an application keeps must not keep the
+        // node running after its last `Raft` handle is dropped.
+        let state = Some((receivers.into_iter(), Arc::downgrade(self.inner)));
+
+        let stream = futures_util::stream::unfold(state, |state| async move {
+            let (mut receivers, inner) = state?;
+            let rx = receivers.next()?;
             match rx.await {
-                Ok(result) => Some((Ok(into_write_result(result)), Some(iter))),
-                Err(_) => Some((Err(Fatal::Stopped), None)),
+                Ok(result) => Some((Ok(into_write_result(result)), Some((receivers, inner)))),
+                Err(_) => {
+                    // The error future holds no handle, so a poll left pending here does not keep
+                    // the node running either. Once every handle is dropped, the node no longer
+                    // retains the result of RaftCore, and the stream reports `Stopped`, the error
+                    // that dropping the last handle stops RaftCore with.
+                    let error_future = inner.upgrade().map(|inner| inner.missing_response_error());
+                    let fatal = match error_future {
+                        Some(error_future) => error_future.await,
+                        None => Fatal::Stopped,
+                    };
+                    Some((Err(fatal), None))
+                }
             }
         });
 
