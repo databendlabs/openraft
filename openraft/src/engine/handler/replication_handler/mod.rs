@@ -237,13 +237,11 @@ where
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
     /// accepted.
+    ///
+    /// `inflight_id` names the tracked operation that the success answers. The success updates the
+    /// progress only while that operation is in flight, see [`Updater::update_matching()`].
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(
-        &mut self,
-        node_id: C::NodeId,
-        log_id: Option<LogIdOf<C>>,
-        inflight_id: Option<InflightId>,
-    ) {
+    pub(crate) fn update_matching(&mut self, node_id: C::NodeId, log_id: Option<LogIdOf<C>>, inflight_id: InflightId) {
         tracing::debug!("{}: node_id: {}, log_id: {}", func_name!(), node_id, log_id.display());
 
         // The value granted by a quorum may not yet be a committed.
@@ -303,16 +301,24 @@ where
     /// inflight state becomes `None`; the ID of an operation no longer in flight leaves the
     /// progress entry unchanged. With `None`, as for a heartbeat's conflict, no operation ends, but
     /// when log reversion is allowed and `conflict` is below `matching`, resetting `matching` also
-    /// drops a `LogsSince` plan.
+    /// drops the operation in flight, so that no answer the target sent before it lost its log can
+    /// raise `matching` again. A pending [`Inflight::Clear`] stays.
     ///
     /// Returns `false` if the response is stale or `target` has no progress entry, so nothing was
     /// applied.
     ///
-    /// A conflict that drops the target's `LogsSince` plan starts an [`Inflight::Clear`], because
-    /// the stream that runs the plan may still read the log: a heartbeat's conflict, such as one
-    /// that finds the target's log reverted, never reaches the stream, and a stream pipelines its
-    /// reads ahead of the answers. The logs the plan could read stay unpurged until the replication
-    /// task confirms the clear, see [`Self::update_cleared()`].
+    /// A conflict that drops a log plan of the target, a `LogsSince` plan or a probe that the
+    /// conflict does not answer, starts an [`Inflight::Clear`], because the stream that runs the
+    /// plan may still read the log: a heartbeat's conflict, such as one that finds the target's log
+    /// reverted, never reaches the stream, and a stream pipelines its reads ahead of the answers.
+    /// A probe that its own conflict answers needs no clear, because the stream sends a probe as
+    /// one request. The logs the plan could read stay unpurged until the replication task confirms
+    /// the clear, see [`Self::update_cleared()`].
+    ///
+    /// A dropped snapshot transfer reads no log, so it needs no clear. The leader sent the snapshot
+    /// because the purge boundary lies above `matching`, and the reset lowers `searching_end` to at
+    /// most `matching`, so the leader's next plan for the target is a snapshot again: `RaftCore`
+    /// ends the dropped transfer when the new one replaces its handle.
     ///
     /// This method intentionally bypasses `VecProgress::update_entry_with()`: when log
     /// reversion is explicitly allowed, [`Updater::update_conflicting()`] may reset
@@ -333,7 +339,14 @@ where
             let plan = entry.data.inflight.clone();
             let mut updater = Updater::new(&*self.config, entry);
             applied = updater.update_conflicting(conflict.index(), inflight_id);
-            if plan.is_logs_since() && entry.data.inflight.is_none() {
+
+            // Whether the stream of the plan may still read the log for it, see above.
+            let may_be_read = match &plan {
+                Inflight::LogsSince { .. } => true,
+                Inflight::Probe { inflight_id: probe, .. } => inflight_id != Some(*probe),
+                Inflight::None | Inflight::Snapshot { .. } | Inflight::Clear { .. } => false,
+            };
+            if may_be_read && entry.data.inflight.is_none() {
                 dropped = Some(plan);
             }
         });
@@ -401,6 +414,11 @@ where
     }
 
     /// Update replication progress when a response is received.
+    ///
+    /// `inflight_id` names the tracked operation that the response answers. A success without it,
+    /// such as the answer to an update of the commit index sent on its own, changes no progress,
+    /// while a conflict without it may still find the target's log reverted, see
+    /// [`Self::update_conflicting()`].
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(
         &mut self,
@@ -431,7 +449,12 @@ where
         match repl_res {
             Ok(p) => match p.0 {
                 Ok(matching) => {
-                    self.update_matching(target, matching, inflight_id);
+                    // A success without an inflight id may report a log that the target has lost
+                    // since it answered, as when a heartbeat's conflict has reset `matching`
+                    // meanwhile, and no inflight state tells that it is stale.
+                    if let Some(inflight_id) = inflight_id {
+                        self.update_matching(target, matching, inflight_id);
+                    }
                 }
                 Err(conflict) => {
                     let applied = self.update_conflicting(target.clone(), conflict, inflight_id);
@@ -705,7 +728,7 @@ where
             })
             .is_some()
         {
-            self.update_matching(id, upto, Some(inflight_id));
+            self.update_matching(id, upto, inflight_id);
         }
     }
 

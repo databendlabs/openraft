@@ -89,8 +89,10 @@ where C: RaftTypeConfig
         ///
         /// - `None`: The progress answers an RPC that no inflight operation tracks: a heartbeat, or
         ///   an update of the commit index sent on its own. It acknowledges no inflight operation
-        ///   and matches no conflict to one. But when log reversion is allowed, a conflict below
-        ///   the known matching log still resets the matching log and ends a log stream.
+        ///   and matches no conflict to one. A success does not update the matching log either: the
+        ///   target may have lost the log since it answered. But when log reversion is allowed, a
+        ///   conflict below the known matching log still resets the matching log and drops the
+        ///   operation in flight.
         inflight_id: Option<InflightId>,
     },
 
