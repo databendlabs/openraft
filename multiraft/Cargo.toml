@@ -15,3 +15,11 @@ repository = "https://github.com/databendlabs/openraft"
 [dependencies]
 openraft  = { path = "../openraft", version = "0.10.1", default-features = false }
 anyerror  = { version = "0.1" }
+
+[dev-dependencies]
+openraft-memstore  = { path = "../stores/memstore" }
+
+anyhow             = { version = "1.0.63" }
+tokio              = { version = "1.39", default-features = false, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tracing            = { version = "0.1.40" }
+tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
