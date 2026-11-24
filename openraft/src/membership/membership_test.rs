@@ -175,10 +175,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     let change = ChangeMembers::AddNodes(btreemap! {1=>node("3")});
     let res = change.apply(&m_1_2, true)?;
-    assert_eq!(
-        Membership::<u64, TestNode>::new_unchecked(vec![btreeset! {2}], btreemap! {1=>node("1"), 2=>node("2")},),
-        res
-    );
+    assert_eq!(m_1_2, res);
 
     // Success to add a learner
 
@@ -186,7 +183,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     let m_1_2_3 = change.apply(&m_1_2, true)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(
-            vec![btreeset! {2}],
+            vec![btreeset! {1}, btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}
         ),
         m_1_2_3
@@ -211,7 +208,7 @@ fn test_membership_update_nodes() -> anyhow::Result<()> {
     let m_1_2_3 = change.apply(&m_1_2, true)?;
     assert_eq!(
         Membership::<u64, TestNode>::new_unchecked(
-            vec![btreeset! {2}],
+            vec![btreeset! {1}, btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("20"), 3=>node("30")}
         ),
         m_1_2_3

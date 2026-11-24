@@ -107,6 +107,25 @@ fn test_next_membership_from_joint_keeps_old_voter_sets() -> anyhow::Result<()> 
     Ok(())
 }
 
+/// A node edit on a committed joint membership keeps its voter sets in one entry, with no second
+/// step. Removing the node of voter 1, which only the earlier set holds, fails: voter 1 stays.
+#[test]
+fn test_next_membership_node_edit_keeps_joint() -> anyhow::Result<()> {
+    let state = MembershipStateOf::<UTConfig>::new(effmem(3, 4, m123_345()), effmem(3, 4, m123_345()));
+
+    let result = state.next_membership::<_, anyerror::AnyError>(ChangeMembers::AddNodes(btreemap! {6=>()}), false);
+    let expected = Membership::new_with_defaults(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], [6]);
+    assert_eq!(Ok((expected, None)), result);
+
+    let result = state.next_membership::<_, anyerror::AnyError>(ChangeMembers::RemoveNodes(btreeset! {1}), false);
+    assert_eq!(
+        Err(ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: 1 })),
+        result
+    );
+
+    Ok(())
+}
+
 /// From a committed membership, `next_membership()` returns the target of `ReplaceAllVoters` when
 /// the step to it is proven, and the joint of the two otherwise.
 #[test]
