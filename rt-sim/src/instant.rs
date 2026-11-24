@@ -87,4 +87,42 @@ impl instant::Instant for SimInstant {
     fn now() -> Self {
         SimInstant(executor::current().lock().now)
     }
+
+    fn checked_add(&self, duration: Duration) -> Option<Self> {
+        let nanos = u64::try_from(duration.as_nanos()).ok()?;
+        self.0.checked_add(nanos).map(SimInstant)
+    }
+
+    fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        let nanos = u64::try_from(duration.as_nanos()).ok()?;
+        self.0.checked_sub(nanos).map(SimInstant)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use openraft_rt::Instant;
+
+    use super::SimInstant;
+
+    /// The checked shifts reach both ends of the `u64` nanosecond range and return `None` one
+    /// nanosecond beyond them, including for a duration that has more nanoseconds than a `u64`.
+    #[test]
+    fn checked_shifts_stop_at_the_u64_range() {
+        let ns = Duration::from_nanos;
+        let all = ns(u64::MAX);
+        let beyond_u64 = all + ns(1);
+
+        assert_eq!(SimInstant(0).checked_add(all), Some(SimInstant(u64::MAX)));
+        assert_eq!(SimInstant(u64::MAX - 1).checked_add(ns(1)), Some(SimInstant(u64::MAX)));
+        assert_eq!(SimInstant(u64::MAX).checked_add(ns(1)), None);
+        assert_eq!(SimInstant(0).checked_add(beyond_u64), None);
+
+        assert_eq!(SimInstant(u64::MAX).checked_sub(all), Some(SimInstant(0)));
+        assert_eq!(SimInstant(1).checked_sub(ns(1)), Some(SimInstant(0)));
+        assert_eq!(SimInstant(0).checked_sub(ns(1)), None);
+        assert_eq!(SimInstant(u64::MAX).checked_sub(beyond_u64), None);
+    }
 }

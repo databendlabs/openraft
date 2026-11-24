@@ -2,6 +2,8 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::ops::Deref;
 
+use openraft_macros::since;
+
 use crate::Instant;
 use crate::display_ext::DisplayInstantExt;
 
@@ -13,6 +15,14 @@ use crate::display_ext::DisplayInstantExt;
 /// Note: Serialization and deserialization are not perfectly accurate and can be indeterministic,
 /// resulting in minor variations each time. These deviations (could be smaller or greater) are
 /// typically less than a microsecond (10^-6 seconds).
+///
+/// Serialization returns an error for a time that the encoding cannot represent. Deserialization
+/// returns an error for a time that the runtime's clock cannot represent, such as a time before a
+/// simulated clock started.
+#[since(
+    version = "0.10.2",
+    change = "a time out of a clock's range returns a serde error instead of panicking"
+)]
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq, Eq)]
 #[derive(PartialOrd, Ord)]
@@ -85,25 +95,24 @@ mod serde_impl {
     {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer {
-            // Convert Instant to SystemTime
+            // Convert Instant to SystemTime, or `None` if `SystemTime` cannot represent it.
             let system_time = {
                 let sys_now = SystemTime::now();
                 let now = I::now();
 
                 if now >= self.inner {
                     let d = now - self.inner;
-                    sys_now - d
+                    sys_now.checked_sub(d)
                 } else {
                     let d = self.inner - now;
-                    sys_now + d
+                    sys_now.checked_add(d)
                 }
             };
 
             // Nanoseconds since the Unix epoch. Reject times before the epoch or past
             // `i64::MAX` nanoseconds (year 2262), so the value also fits an `i64`.
             let nano = system_time
-                .duration_since(UNIX_EPOCH)
-                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .and_then(|d| i64::try_from(d.as_nanos()).ok())
                 .ok_or_else(|| serde::ser::Error::custom("time out of range"))?;
 
@@ -131,15 +140,17 @@ mod serde_impl {
                         .checked_add(Duration::from_nanos(value))
                         .ok_or_else(|| E::custom("time out of range"))?;
 
-                    // Calculate the `Instant` from the current time
+                    // Calculate the `Instant` from the current time. The runtime's clock may not
+                    // represent it, such as a time before a simulated clock started.
                     let sys_now = SystemTime::now();
                     let now = II::now();
                     let instant = if system_time > sys_now {
-                        now + (system_time.duration_since(sys_now).unwrap())
+                        now.checked_add(system_time.duration_since(sys_now).unwrap())
                     } else {
-                        now - (sys_now.duration_since(system_time).unwrap())
+                        now.checked_sub(sys_now.duration_since(system_time).unwrap())
                     };
-                    Ok(SerdeInstant { inner: instant })
+                    let inner = instant.ok_or_else(|| E::custom("time out of range of the runtime's clock"))?;
+                    Ok(SerdeInstant { inner })
                 }
             }
 
