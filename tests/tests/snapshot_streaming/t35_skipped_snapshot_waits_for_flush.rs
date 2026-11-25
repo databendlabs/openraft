@@ -180,3 +180,80 @@ async fn skipped_snapshot_waits_for_flush() -> Result<()> {
     raft.shutdown().await?;
     Ok(())
 }
+
+/// Skipping a snapshot makes progress even when the current vote has no log IO, as after a leader
+/// change, a restart from durable logs, or a heartbeat behind the committed index.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn skipped_snapshot_responds_after_leader_change_or_restart() -> Result<()> {
+    for (restart, heartbeat) in [(false, false), (true, false), (false, true)] {
+        let config = Config {
+            enable_tick: false,
+            enable_elect: false,
+            ..Default::default()
+        };
+        let router = RaftRouter::new(config.clone())?;
+        let config = Arc::new(config.validate()?);
+        let (log_store, state_machine) = openraft_memstore::new_mem_store();
+        let mut raft = Raft::new(
+            1,
+            config.clone(),
+            router.clone(),
+            log_store.clone(),
+            state_machine.clone(),
+        )
+        .await?;
+        let vote = Vote::new_committed(1, 0);
+
+        {
+            let response = raft
+                .append_entries(AppendEntriesRequest {
+                    vote,
+                    prev_log_id: None,
+                    entries: vec![blank_ent::<TypeConfig>(1, 0, 0), blank_ent::<TypeConfig>(1, 0, 1)],
+                    leader_commit: Some(log_id(1, 0, 1)),
+                })
+                .await?;
+            assert!(response.is_ok(), "append accepted");
+            raft.wait(Some(WAIT_TIMEOUT)).applied_index(Some(1), "logs applied").await?;
+        }
+
+        let vote = if restart {
+            raft.shutdown().await?;
+            raft = Raft::new(1, config, router, log_store, state_machine).await?;
+            vote
+        } else {
+            Vote::new_committed(2, 2)
+        };
+
+        if heartbeat {
+            let response = raft
+                .append_entries(AppendEntriesRequest {
+                    vote,
+                    prev_log_id: Some(log_id(1, 0, 0)),
+                    entries: vec![],
+                    leader_commit: Some(log_id(1, 0, 1)),
+                })
+                .await?;
+            assert!(response.is_ok(), "heartbeat accepted below the committed index");
+        }
+
+        {
+            let snapshot = SnapshotOf::<TypeConfig, Cursor<Vec<u8>>> {
+                meta: SnapshotMetaOf::<TypeConfig> {
+                    last_log_id: Some(log_id(1, 0, 1)),
+                    last_membership: Default::default(),
+                },
+                snapshot: Cursor::new(vec![]),
+            };
+            let response = TypeConfig::timeout(WAIT_TIMEOUT, raft.install_full_snapshot(vote, snapshot)).await;
+            assert!(
+                response.is_ok(),
+                "skipped snapshot did not answer: restart={restart}, heartbeat={heartbeat}"
+            );
+            assert_eq!(SnapshotResponse::new(vote), response.unwrap()?);
+        }
+        raft.shutdown().await?;
+    }
+    Ok(())
+}
