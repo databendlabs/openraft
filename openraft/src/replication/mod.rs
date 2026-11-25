@@ -197,11 +197,12 @@ where
     ///
     /// Used as the unfold function for the request stream.
     async fn next_append_request(
-        stream_context: StreamContext<C, LS>,
+        mut stream_context: StreamContext<C, LS>,
     ) -> Option<(AppendEntriesRequest<C>, StreamContext<C, LS>)> {
         let res = {
-            let mut state = stream_context.stream_state.as_ref().lock().await;
-            state.next_request().await
+            let lock = stream_context.stream_state.as_ref().lock();
+            let mut state = C::cancellable_by(lock, stream_context.session_rx.changed()).await?;
+            state.next_request(&mut stream_context.session_rx).await
         };
 
         let req = match res {
@@ -406,7 +407,10 @@ where
         let inflight_queue = Arc::new(inflight_queue);
         let fatal_error = Arc::new(C::mutex(None));
 
+        // Dropping the only sender stops this session's request stream on every exit path.
+        let (_session_tx, session_rx) = C::watch_channel(());
         let stream_context = StreamContext {
+            session_rx,
             stream_state: self.stream_state.clone(),
             inflight_append_queue: inflight_queue.clone(),
             fatal_error: fatal_error.clone(),
