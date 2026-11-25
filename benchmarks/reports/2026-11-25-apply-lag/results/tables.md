@@ -1,7 +1,9 @@
 # Apply lag on main: complete tables
 
-Generated from the runs of `report-full.md`. The `arrival no-op` rows come from the second pass
-of the grid; every other row comes from the first pass, which ran without `--measure-apply`.
+Generated from the runs of `report-full.md`. The first two tables come from the first pass of the
+grid, which ran without `--measure-apply`, except the `arrival no-op` rows. The apply backlog table
+and the `arrival no-op` rows come from the second pass, and the last table from 30 more pairs of
+runs of the saturated 2 ms row.
 
 Runs per row: 5, in shuffled order per round. Clients: 256. Load average (1 min) at run start: min 6.3, median 14.8, max 26.0. Failed writes: 0.
 
@@ -46,3 +48,37 @@ Stage latencies are per entry, on the leader, in µs. The stages 1–4 column is
 | lan, apply 100 µs/call + 10 µs/entry | saturated | 764 | 400 / 577 | 3,229 / 3,912 | 3,843 / 4,823 | 84% | 179 | 59,924 |
 | cloud, apply 500 µs/call | 10,000/s | 2,711 | 1,351 / 1,677 | 810 / 1,320 | 3,379 / 3,965 | 24% | 12 | 10,044 |
 | cloud, apply 500 µs/call | saturated | 2,893 | 1,427 / 1,742 | 960 / 1,271 | 3,835 / 4,562 | 25% | 256 | 114,688 |
+
+## Apply backlog (second pass, `--measure-apply`)
+
+Runs per row: 5, in shuffled order per round. Load average (1 min) at run start: min 7.3, median 12.0, max 32.0. Committed minus applied index, in entries, sampled at every metrics report of the node; percentiles are bucketed, maxima are exact. Medians over runs.
+
+| state machine | load | leader p50 / p99 / max | leader max, range | leader samples | any node max, range | entries per apply() p50 / p90 | apply() calls |
+| :-- | --: | --: | --: | --: | --: | --: | --: |
+| lan, apply 100 µs/call | 10,000/s | 0 / 20 / 140 | 20–250 | 11,652 | 20–270 | 10 / 10 | 1,881 |
+| lan, apply 100 µs/call | 50,000/s | 0 / 100 / 100 | 100–256 | 10,488 | 100–256 | 50 / 50 | 1,830 |
+| lan, apply 100 µs/call | saturated | 0 / 256 / 256 | 256–256 | 10,800 | 256–512 | 256 / 256 | 1,822 |
+| lan, apply 500 µs/call | 10,000/s | 10 / 20 / 30 | 24–256 | 10,173 | 24–256 | 10 / 20 | 1,598 |
+| lan, apply 500 µs/call | 50,000/s | 50 / 100 / 150 | 125–256 | 10,858 | 125–256 | 50 / 100 | 1,613 |
+| lan, apply 500 µs/call | saturated | 133 / 256 / 256 | 256–256 | 13,674 | 256–256 | 113 / 205 | 2,479 |
+| lan, apply 2 ms/call | 10,000/s | 40 / 70 / 80 | 80–80 | 9,308 | 80–80 | 20 / 40 | 799 |
+| lan, apply 2 ms/call | 50,000/s | 256 / 256 / 256 | 256–296 | 5,764 | 300–512 | 106 / 155 | 783 |
+| lan, apply 2 ms/call | saturated | 256 / 256 / 256 | 256–256 | 5,874 | 256–512 | 245 / 253 | 832 |
+| lan, apply 100 µs/call + 10 µs/entry | 10,000/s | 10 / 20 / 20 | 20–256 | 11,454 | 20–256 | 10 / 20 | 1,707 |
+| lan, apply 100 µs/call + 10 µs/entry | 50,000/s | 50 / 151 / 256 | 200–256 | 11,618 | 200–512 | 50 / 100 | 1,655 |
+| lan, apply 100 µs/call + 10 µs/entry | saturated | 256 / 256 / 256 | 256–256 | 5,150 | 489–512 | 163 / 256 | 689 |
+| cloud, apply 500 µs/call | 10,000/s | 10 / 30 / 40 | 30–226 | 7,083 | 30–226 | 10 / 20 | 1,619 |
+| cloud, apply 500 µs/call | saturated | 0 / 256 / 256 | 256–256 | 3,465 | 256–256 | 256 / 256 | 465 |
+
+## Saturated 2 ms-per-call row, with and without `--measure-apply`
+
+30 pairs at `ae7a4509`, each pair one run without and one with the flag, in random order within the pair. Load average (1 min) after each run: min 5.4, median 7.9, max 15.3. A run is slow when its committed→applied p50 is above 3.8 ms.
+
+| configuration | runs | writes/s median | writes/s range | committed→applied p50 median µs | slow runs |
+| :-- | --: | --: | --: | --: | --: |
+| without `--measure-apply` | 30 | 55,981 | 50,832–75,706 | 4,422 | 21 |
+| with `--measure-apply` | 30 | 55,034 | 50,900–75,741 | 4,457 | 21 |
+| fast runs, both configurations | 18 | 73,204 | 56,342–75,741 | 2,801 | – |
+| slow runs, both configurations | 42 | 51,338 | 50,832–63,294 | 4,462 | – |
+
+Mann-Whitney U on writes/s: 476 of 900; two-sided permutation p = 0.71 (20,000 permutations).

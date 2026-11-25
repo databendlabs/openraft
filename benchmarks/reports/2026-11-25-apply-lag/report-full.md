@@ -6,10 +6,11 @@
   sum of its stage p50s) in every `lan` row, whatever the state machine cost and the load, and
   2.7 to 2.9 ms in the `cloud` rows.
 - With a cost per `apply()` call of 500 µs or more, the time from commit to apply was 1.4 to 1.9
-  calls at 10,000 writes/s, at 50,000 writes/s and at saturation: 0.71 to 0.77 ms with 500 µs
-  calls, and 2.9 to 3.7 ms with 2 ms calls. It does not grow with load, because the worker
-  applies the commits queued during a call in one following call: the saturated 2 ms row
-  averaged 215 entries per apply command.
+  calls at 10,000 and 50,000 writes/s: 0.71 to 0.72 ms with 500 µs calls, and 3.2 to 3.7 ms
+  with 2 ms calls. It does not grow with load, because the worker applies the commits queued
+  during a call in one following call. At saturation it varied from run to run. In 60 runs of
+  the saturated 2 ms row it was 2.8 to 3.8 ms (1.4 to 1.9 calls) in 18 runs and 4.2 to 4.5 ms
+  (2.1 to 2.3 calls) in 42 runs.
 - A cost per entry makes each call longer as the load rises, so the time from commit to apply
   grows with load. With 10 µs per entry it was 0.35 ms at 10,000 writes/s, 0.87 ms at 50,000
   writes/s, and 3.2 ms at saturation, where an apply command carried 179 entries on average.
@@ -20,8 +21,14 @@
   to return, then for its own call, because the worker runs one `apply()` call at a time.
 - Saturated throughput with 256 clients matched 256 writes in flight divided by the leader's
   latency per entry in every row, within 4%: 247k writes/s with 100 µs calls, 169k with 500 µs
-  calls, and 68k with 2 ms calls. In this closed loop a slower state machine lowers throughput
-  through latency. More clients would make the batches larger; that was not measured.
+  calls, and 51k to 76k with 2 ms calls, depending on which of the two times from commit to
+  apply a run settled on. In this closed loop a slower state machine lowers throughput through
+  latency. More clients would make the batches larger; that was not measured.
+- The backlog of committed but unapplied entries on the leader peaked at 20 to 150 entries in
+  the paced rows, at medians over runs. The two 50,000 writes/s rows with 2 ms calls and with a
+  cost per entry reached all 256 writes in flight, as did every saturated row. The closed loop
+  keeps the backlog near the writes in flight, so these rows cannot show one that grows without
+  bound.
 
 ## What was measured
 
@@ -65,6 +72,10 @@ about 2 s of writes.
   In paced rows it starts at the write's scheduled arrival, so it includes the pacing delay;
   the `arrival no-op` rows measure that delay alone with `--arrival-noop`. They come from a
   second pass of the grid, described under "What these numbers do not show".
+- The apply backlog comes from the same second pass, which ran all rows except the
+  `arrival no-op` rows with `--measure-apply`. The bench samples each node's committed index
+  minus its applied index at every metrics report of that node. Its percentiles are bucketed;
+  its maximum is exact.
 - Stage latencies are the `Log Stage Latencies` table the leader prints at exit. They are per
   entry. "Committed" is when `RaftCore` starts `SaveCommittedAndApply` for the entry, and
   "applied" is when `RaftCore` handles the state machine worker's result, so committed→applied
@@ -140,12 +151,19 @@ from 10,000 writes/s to saturation, and it did not depend on the state machine: 
 committed as fast as the 100 µs rows. Of that time, persisted→committed, the remaining wait for
 a follower to append, flush and answer, took 342 to 402 µs at p50.
 
-**A cost per call.** Committed→applied stayed near a fixed multiple of the call: 1.4 to 1.5 calls
-with 500 µs calls, and 1.4 to 1.9 calls with 2 ms calls, from 10,000 writes/s to saturation. The
-load changed the batch instead: with 2 ms calls, an apply command carried 12 entries at 10,000
-writes/s and 215 at saturation. With 100 µs calls the fixed costs dominate: the 50 µs log read
-and the hand-offs make committed→applied 2.4 calls at the paced rates. The saturated 2 ms row
-had the lowest committed→applied of its three rows; I did not trace why.
+**A cost per call.** In the table, committed→applied stayed near a fixed multiple of the call:
+1.4 to 1.5 calls with 500 µs calls, and 1.4 to 1.9 calls with 2 ms calls, from 10,000 writes/s
+to saturation. The load changed the batch instead: with 2 ms calls, an apply command carried 12
+entries at 10,000 writes/s and 215 at saturation. With 100 µs calls the fixed costs dominate:
+the 50 µs log read and the hand-offs make committed→applied 2.4 calls at the paced rates.
+
+The five runs of a paced row stayed within 5% of each other, apart from the client-limited 2 ms
+row at 50,000 writes/s. The saturated rows varied more: in the saturated 2 ms row,
+committed→applied ranged from 2.8 to 4.5 ms over five runs. 60 more runs of that row, 30
+without and 30 with `--measure-apply`, interleaved at `ae7a4509`, settled on one of two values.
+In 18 runs it was 2.8 to 3.8 ms (1.4 to 1.9 calls), at 56,000 to 76,000 writes/s. In 42 runs it
+was 4.2 to 4.5 ms (2.1 to 2.3 calls), at 51,000 to 63,000 writes/s. In the slower runs an entry
+waits for about one more call; I did not trace why.
 
 **A cost per entry.** With 10 µs per entry, a call lasts 100 µs plus 10 µs for each of its
 entries, and larger batches make it longer. The per-entry work of an average apply command grew
@@ -158,13 +176,43 @@ At saturation the state machine still had room: at 65,000 writes/s its delays ad
 apply. Committed→applied, 810 to 960 µs, is 1.6 to 1.9 calls of 500 µs, a little more than the
 1.4 to 1.5 calls of the `lan` rows.
 
+### Apply backlog
+
+Committed but unapplied entries, from the second pass with `--measure-apply`: the leader's
+p50, p99 and maximum, the range of the leader's maximum over the five runs, the largest maximum
+on any node, and the entries per `apply()` call on the leader.
+
+| state machine                   | load      | leader p50 / p99 / max | leader max, range | any node, max | entries per `apply()` p50 / p90 |
+| :--                             | --:       | --:                    | --:               | --:           | --:                             |
+| lan, apply 100 µs/call          | 10,000/s  |           0 / 20 / 140 |            20–250 |           140 |                         10 / 10 |
+| lan, apply 100 µs/call          | 50,000/s  |          0 / 100 / 100 |           100–256 |           100 |                         50 / 50 |
+| lan, apply 100 µs/call          | saturated |          0 / 256 / 256 |               256 |           256 |                       256 / 256 |
+| lan, apply 500 µs/call          | 10,000/s  |           10 / 20 / 30 |            24–256 |            30 |                         10 / 20 |
+| lan, apply 500 µs/call          | 50,000/s  |         50 / 100 / 150 |           125–256 |           150 |                        50 / 100 |
+| lan, apply 500 µs/call          | saturated |        133 / 256 / 256 |               256 |           256 |                       113 / 205 |
+| lan, apply 2 ms/call            | 10,000/s  |           40 / 70 / 80 |                80 |            80 |                         20 / 40 |
+| lan, apply 2 ms/call            | 50,000/s  |        256 / 256 / 256 |           256–296 |           361 |                       106 / 155 |
+| lan, apply 2 ms/call            | saturated |        256 / 256 / 256 |               256 |           484 |                       245 / 253 |
+| lan, 100 µs/call + 10 µs/entry  | 10,000/s  |           10 / 20 / 20 |            20–256 |            20 |                         10 / 20 |
+| lan, 100 µs/call + 10 µs/entry  | 50,000/s  |         50 / 151 / 256 |           200–256 |           256 |                        50 / 100 |
+| lan, 100 µs/call + 10 µs/entry  | saturated |        256 / 256 / 256 |               256 |           512 |                       163 / 256 |
+| cloud, apply 500 µs/call        | 10,000/s  |           10 / 30 / 40 |            30–226 |            40 |                         10 / 20 |
+| cloud, apply 500 µs/call        | saturated |          0 / 256 / 256 |               256 |           256 |                       256 / 256 |
+
+At 10,000 writes/s the leader's backlog stayed below 150 entries in the median run, about 15 ms
+of writes. Single runs of several paced rows reached up to 256, all the writes in flight; I did
+not trace those runs. In every saturated row the backlog reached 256; one run of the 2 ms row at
+50,000 writes/s reached 296 on the leader, and in the slow rows a follower held up to 512
+committed but unapplied entries. With per-call costs, one `apply()` call took most of the
+backlog: the saturated 2 ms row applied 245 entries per call at p50.
+
 ## What an earlier start of apply could save
 
 An application could start applying an entry when it commits, for example from
 `RaftLogStorage::save_committed()`, instead of when OpenRaft calls `apply()`. It still has to do
 the entry's own apply work, so at most it saves committed→applied minus one call. At p50 in
 these rows that is 0.14 to 0.27 ms with 100 µs calls, 0.21 to 0.27 ms with 500 µs calls, and
-0.87 to 1.7 ms with 2 ms calls. Most of the larger saving is the wait for the call in progress,
+0.87 to 2.5 ms with 2 ms calls. Most of the larger saving is the wait for the call in progress,
 which an application only avoids if its state machine can apply two batches at once.
 
 ## What these numbers do not show
@@ -172,21 +220,29 @@ which an application only avoids if its state machine can apply two batches at o
 - **Catch-up.** Every follower stays current. A follower that returns after an outage and
   applies a long backlog is not measured.
 - **Real disk and payload.** Every cost is a fixed sleep, and every write is empty. A real
-  store's apply cost grows with the bytes of a batch, and real I/O contends for the device.
-- **The backlog of committed but unapplied entries.** `--measure-apply` records it, but in three
-  interleaved pairs it lowered the saturated 2 ms row from 66,000 to 75,000 writes/s to 51,000
-  to 61,000, and raised that row's committed→applied p50 from 2.8 to 3.0 ms to 4.4 to 4.5 ms.
-  The paced 100 µs row did not change. So this report does not use it. In this closed loop the
-  leader's backlog cannot exceed 256 entries, one per client.
+  store's apply cost grows with the bytes of a batch, and real I/O contends for the device. The
+  backlog is given in entries; with empty writes its size in bytes says nothing.
 - **Overload.** Each client waits for its write, so the offered load never exceeds what the
   cluster completes, and a queue that grows without bound cannot appear. `--open-loop` can
   measure that.
 - **Followers.** The stage latencies are the leader's. Followers apply on their own.
 - **Small differences.** A second pass of the grid, run with `--measure-apply` at a load average
-  of 7.3 to 32.0, measured stage p50s 12% to 35% higher in the paced rows. In the paced 100 µs
-  row, three interleaved pairs with and without the flag measured nearly the same
-  committed→applied p50, 228 to 236 µs, so most of that difference is machine load. To measure a
-  change, compare it with its base revision on the same machine at the same time.
+  of 7.3 to 32.0, measured stage p50s 12% to 35% higher in the paced rows. The flag itself did
+  not change the results it was checked on: three interleaved pairs of the paced 100 µs row
+  measured committed→applied p50s of 228 to 236 µs with and without it, and in the 30
+  interleaved pairs of the saturated 2 ms row above, the median was 55,981 writes/s without it
+  and 55,034 with it (permutation test, p = 0.71), with 21 of 30 slow runs in each. So most of
+  the difference between the passes is machine load. To measure a change, compare it with its
+  base revision on the same machine at the same time.
+
+## Corrections
+
+The first version of this report said that `--measure-apply` lowered the saturated 2 ms row
+from 66,000 to 75,000 writes/s to 51,000 to 61,000, and left the backlog out for that reason.
+Those three pairs always ran the build without the flag first, on a row whose runs vary from
+51,000 to 76,000 writes/s. The 30 pairs above, in random order within each pair, show no effect
+of the flag, so the backlog table now uses it. The first version also gave 1.4 to 1.9 calls from
+commit to apply at saturation; most runs of the saturated 2 ms row take 2.1 to 2.3 calls.
 
 ## Reproduce
 
@@ -203,6 +259,8 @@ $BENCH --latency -c 256 -n 20000 --write-rate 10000 $LAN --apply-io-delay-us 200
 $BENCH --latency -c 256 -n 102912 $LAN --apply-io-delay-us 2000
 # pacing control
 $BENCH --latency -c 256 -n 20000 --write-rate 10000 --arrival-noop
+# apply backlog: per node in the JSON line, at apply_metrics.<node>.commit_to_apply_entries
+$BENCH --latency -c 256 -n 20000 --write-rate 10000 $LAN --apply-io-delay-us 2000 --measure-apply
 ```
 
 Each run prints its stage latencies to stderr after `Final:`, and a JSON line to stdout with
