@@ -55,6 +55,38 @@ fn test_steady_measures_the_heartbeats_between_the_nodes() {
     assert!(number(measure, "ack_age_p50_ms") > 0.0, "got: {measure:?}");
     assert!(number(measure, "tasks") > 0.0, "got: {measure:?}");
     assert_eq!("0", measure["elections"], "every group keeps its leader");
+    assert!(
+        !measure.contains_key("writes/s"),
+        "a run without writes has no write fields"
+    );
+}
+
+#[test]
+fn test_write_rate_writes_to_every_group_in_steady() {
+    let lines = run(&[
+        "--scenario",
+        "steady",
+        "--groups",
+        "6",
+        "--settle-secs",
+        "1",
+        "--measure-secs",
+        "2",
+        "--write-rate",
+        "10",
+    ]);
+
+    assert_eq!(1, lines.len(), "got: {lines:?}");
+    let measure = &lines[0];
+    // 6 groups at 10 writes a second each.
+    let writes = number(measure, "writes/s");
+    assert!((40.0..=80.0).contains(&writes), "got: {measure:?}");
+    assert!(number(measure, "write_p50_us") > 0.0, "got: {measure:?}");
+    assert!(
+        number(measure, "write_max_us") >= number(measure, "write_p99_us"),
+        "got: {measure:?}"
+    );
+    assert_eq!("0", measure["write_rejected"], "every group keeps its leader");
 }
 
 #[test]

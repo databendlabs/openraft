@@ -23,6 +23,8 @@ mod scenario;
 mod takeovers;
 mod window;
 mod window_summary;
+mod write_stats;
+mod writer;
 
 #[path = "../../idle-groups/src/process_usage.rs"]
 mod process_usage;

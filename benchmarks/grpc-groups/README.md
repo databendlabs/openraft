@@ -1,9 +1,9 @@
 # gRPC groups
 
 This benchmark measures Raft groups whose members run in separate processes and talk over gRPC,
-in steady operation and through the crash, the hang or the partition of a node. Except for writes,
-which [#2515](https://github.com/databendlabs/openraft/issues/2515) adds, it implements the design
-agreed in [#2458](https://github.com/databendlabs/openraft/issues/2458#issuecomment-7138083103).
+in steady operation and through the crash, the hang or the partition of a node, with or without
+writes. It implements the design agreed in
+[#2458](https://github.com/databendlabs/openraft/issues/2458#issuecomment-7138083103).
 
 - **Processes.** `grpc-groups run` is the driver. It starts `--nodes` processes of
   `grpc-groups node`, the same binary, on localhost, and controls them through an admin gRPC
@@ -39,13 +39,14 @@ cargo run --release --manifest-path benchmarks/grpc-groups/Cargo.toml -- run --s
 | `--settle-secs`  | 10       | Seconds to wait once every group has a leader.               |
 | `--measure-secs` | 30       | Seconds of the `measure` window of `steady`.                 |
 | `--window-secs`  | 10       | Seconds of each other window: `baseline`, `degraded` and `after`. `hang` and `partition` need 1 or more. |
+| `--write-rate`   | 0        | Writes per second to each group, from the settle period on: see below. |
 
 ## Scenarios and phases
 
 A run starts new node processes and creates the groups. The driver spreads the initializations
 over one heartbeat interval, so that the heartbeats of different groups are not in step. Once the
-leader of each group has committed its blank entry, the run waits `--settle-secs`. Nothing is
-written to the groups.
+leader of each group has committed its blank entry, the run waits `--settle-secs`. Without
+`--write-rate`, nothing is written to the groups.
 
 `steady` then measures one window, `measure`. The fault scenarios, `crash`, `hang` and
 `partition`, run these phases, and `crash` skips the last two:
@@ -73,6 +74,18 @@ whose sender still waits at the heal goes on, as data that TCP sends again after
 The driver and the nodes stamp the fault, the takeovers, the resume and the rejoins with
 `CLOCK_MONOTONIC`, which all processes on one host share.
 
+With `--write-rate N`, each node writes N entries a second to each group whose member on it leads
+the group at the scheduled time, from the settle period to the end of the run. The writes of all
+groups take turns at even intervals, open loop: a write goes out when its time comes, whether or
+not the earlier ones have committed, and its latency counts from that time, so a slow leader
+shows up as latency rather than as fewer writes. Two kinds of writes are not made:
+
+- A write whose group has no leader on a running node at its time: during `failover`, the groups
+  that node 1 led get no writes until their new leader takes over.
+- A write that came due more than 1 s before its writer got to it, as a client that gave up
+  would. Only a writer that could not run falls this far behind: without this rule, a stopped
+  node 1 would send the writes of its whole stop at the resume, to groups it no longer leads.
+
 ## Fields
 
 Each phase prints one line of tab-separated `name=value` fields. Every line begins with
@@ -94,6 +107,9 @@ and percentiles cover the samples of all nodes:
 | `ack_age_p50_ms`, `ack_age_p99_ms`, `ack_age_max_ms` | `now - heartbeat[follower]` on each leader, sampled every 100 ms. `degraded` leaves node 1 out. |
 | `quorum_age_max_ms` | the largest `now - last_quorum_acked` that the same samples saw. A leader refuses writes once this reaches `leader_lease`, 300 ms by default. |
 | `elections` | how far the highest term of each group grew, summed over the groups; 0 while every group keeps its leader |
+| `writes/s` | with `--write-rate`: the writes that committed during the window |
+| `write_p50_us`, `write_p99_us`, `write_max_us` | the time from the scheduled time of each of those writes until it committed |
+| `write_rejected` | the writes that failed, such as on a leader whose lease expired |
 
 `heartbeat[follower]` holds the send time of the last request that the follower acknowledged. At
 idle, `ack_age` therefore ranges from one round trip to one heartbeat interval plus a round trip.
@@ -141,6 +157,11 @@ window is within 1.6% of the true value: it comes from a log-scale histogram.
   node 1 followed, and node 1 took 291 to 318 ms to rejoin every group. With
   `-- --enable-pre-vote true`, `disrupted` was 0 in 4 runs, and node 1 rejoined every group
   within 16 to 28 ms.
+- With `--write-rate 10` at 1,000 groups, each of 27 windows in 12 runs committed 10,000 writes a
+  second. The median write took 1.1 to 2.2 ms in 25 of them, and 20 and 58 ms in the `baseline`
+  and `degraded` of one `hang` run. `write_rejected` was 0 in 25 windows. The other two rejected
+  9 and 371 writes, and in each a leader's `quorum_age_max_ms` exceeded the 300 ms
+  `leader_lease`, at 317 and 479 ms.
 - In `degraded` at 1,000 groups, `crash` counts 18,016 tasks, `partition` about 19,356, and
   `hang` about 20,356. At 300 groups, `hang` counted nearly the same with windows of 2 s and 6 s,
   so these tasks do not pile up.

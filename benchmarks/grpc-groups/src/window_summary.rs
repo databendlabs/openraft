@@ -19,6 +19,12 @@ pub(crate) struct WindowSummary {
     ack_age_us: DurationHistogram,
     quorum_age_max_us: u64,
     elections: u64,
+
+    /// The writes per second to each group; 0 when the run does not write.
+    write_rate: u64,
+    writes_per_sec: f64,
+    write_rejected: u64,
+    write_us: DurationHistogram,
 }
 
 impl WindowSummary {
@@ -38,6 +44,10 @@ impl WindowSummary {
             ack_age_us: DurationHistogram::default(),
             quorum_age_max_us: 0,
             elections: 0,
+            write_rate: 0,
+            writes_per_sec: 0.0,
+            write_rejected: 0,
+            write_us: DurationHistogram::default(),
         };
 
         for report in reports {
@@ -57,6 +67,13 @@ impl WindowSummary {
                 summary.ack_age_us.add_pb(ack_age_us);
             }
             summary.quorum_age_max_us = summary.quorum_age_max_us.max(report.quorum_age_max_us);
+
+            summary.write_rate = summary.write_rate.max(report.write_rate);
+            summary.writes_per_sec += per_sec(report.writes);
+            summary.write_rejected += report.write_rejected;
+            if let Some(write_us) = &report.write_us {
+                summary.write_us.add_pb(write_us);
+            }
         }
 
         let end_terms = reports.iter().filter_map(|report| report.terms.as_ref());
@@ -105,7 +122,20 @@ impl fmt::Display for WindowSummary {
             millis(self.ack_age_us.max())
         )?;
         write!(f, "\tquorum_age_max_ms={}", millis(Some(self.quorum_age_max_us)))?;
-        write!(f, "\telections={}", self.elections)
+        write!(f, "\telections={}", self.elections)?;
+
+        if self.write_rate > 0 {
+            write!(
+                f,
+                "\twrites/s={:.0}\twrite_p50_us={}\twrite_p99_us={}\twrite_max_us={}\twrite_rejected={}",
+                self.writes_per_sec,
+                or_na(self.write_us.percentile(0.5)),
+                or_na(self.write_us.percentile(0.99)),
+                or_na(self.write_us.max()),
+                self.write_rejected
+            )?;
+        }
+        Ok(())
     }
 }
 

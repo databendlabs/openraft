@@ -26,6 +26,8 @@ use crate::rejoins::Rejoins;
 use crate::router::Router;
 use crate::takeovers::Takeovers;
 use crate::window::Window;
+use crate::write_stats::WriteStats;
+use crate::writer::write_open_loop;
 
 /// How long a node waits for the groups it initialized to elect it and commit an entry.
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -52,6 +54,9 @@ pub(crate) struct AdminService {
 
     /// Shared with the Raft server, which reports the AppendEntries requests the members accept.
     rejoins: Rejoins,
+
+    /// What the writer has written, once the driver starts it.
+    writes: Arc<WriteStats>,
 }
 
 impl AdminService {
@@ -71,6 +76,7 @@ impl AdminService {
             window: Mutex::new(None),
             takeovers: Takeovers::default(),
             rejoins,
+            writes: Arc::new(WriteStats::default()),
         }
     }
 
@@ -157,6 +163,18 @@ impl Admin for AdminService {
         Ok(Response::new(()))
     }
 
+    async fn start_writes(&self, request: Request<pb::StartWritesRequest>) -> Result<Response<()>, Status> {
+        let rate = request.into_inner().rate;
+        let groups = self.groups()?;
+
+        if self.writes.rate() != 0 {
+            return Err(Status::failed_precondition("the writer starts only once"));
+        }
+        self.writes.set_rate(rate);
+        tokio::spawn(write_open_loop(groups.to_vec(), rate, self.writes.clone()));
+        Ok(Response::new(()))
+    }
+
     async fn wait_ready(&self, _request: Request<()>) -> Result<Response<()>, Status> {
         let groups = self.groups()?;
 
@@ -179,7 +197,8 @@ impl Admin for AdminService {
         if window.is_some() {
             return Err(Status::failed_precondition("a window is open"));
         }
-        *window = Some(Window::begin(self.id, groups, self.router.stats(), down).map_err(internal)?);
+        let begun = Window::begin(self.id, groups, self.router.stats(), &self.writes, down);
+        *window = Some(begun.map_err(internal)?);
 
         Ok(Response::new(terms(groups)))
     }
@@ -189,7 +208,7 @@ impl Admin for AdminService {
 
         let window = self.window.lock().expect("no thread panics while it holds the lock").take();
         let window = window.ok_or_else(|| Status::failed_precondition("no window is open"))?;
-        let report = window.end(self.router.stats(), terms(groups)).map_err(internal)?;
+        let report = window.end(self.router.stats(), &self.writes, terms(groups)).map_err(internal)?;
 
         Ok(Response::new(report))
     }

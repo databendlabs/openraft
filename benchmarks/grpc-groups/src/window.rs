@@ -16,16 +16,19 @@ use crate::process_usage;
 use crate::protobuf as pb;
 use crate::router_stats::RouterCounts;
 use crate::router_stats::RouterStats;
+use crate::write_stats::WriteCounts;
+use crate::write_stats::WriteStats;
 
 /// How often a window samples the acknowledgement ages of the leaders.
 const SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
-/// One measurement window of a node: what its router had counted at the start, and the
-/// acknowledgement ages of its leaders, sampled since.
+/// One measurement window of a node: what its router and its writer had counted at the start,
+/// and the acknowledgement ages of its leaders, sampled since.
 pub(crate) struct Window {
     started: Instant,
     cpu_secs: f64,
     counts: RouterCounts,
+    write_counts: WriteCounts,
     samples: Arc<Mutex<AckSamples>>,
     sampler: JoinHandle<()>,
 }
@@ -41,13 +44,21 @@ struct AckSamples {
 }
 
 impl Window {
-    /// Start a window on node `id`: discard the heartbeat round trips that `stats` recorded so
-    /// far, and sample the leaders among `groups`, leaving the followers on the nodes in `down`
-    /// out.
-    pub(crate) fn begin(id: u64, groups: &[Raft], stats: &RouterStats, down: BTreeSet<u64>) -> anyhow::Result<Self> {
+    /// Start a window on node `id`: discard the heartbeat round trips that `stats` and the write
+    /// latencies that `writes` recorded so far, and sample the leaders among `groups`, leaving the
+    /// followers on the nodes in `down` out.
+    pub(crate) fn begin(
+        id: u64,
+        groups: &[Raft],
+        stats: &RouterStats,
+        writes: &WriteStats,
+        down: BTreeSet<u64>,
+    ) -> anyhow::Result<Self> {
         let cpu_secs = process_usage::cpu_secs().context("read the CPU time of the node")?;
         stats.take_hb_rtt();
+        writes.take_latency();
         let counts = stats.counts();
+        let write_counts = writes.counts();
 
         let samples = Arc::new(Mutex::new(AckSamples::default()));
         let sampler = tokio::spawn(sample_ack_ages(id, groups.to_vec(), down, samples.clone()));
@@ -56,13 +67,19 @@ impl Window {
             started: Instant::now(),
             cpu_secs,
             counts,
+            write_counts,
             samples,
             sampler,
         })
     }
 
     /// End the window, and report it with `terms`, the terms of the node's members at the end.
-    pub(crate) fn end(self, stats: &RouterStats, terms: pb::Terms) -> anyhow::Result<pb::WindowReport> {
+    pub(crate) fn end(
+        self,
+        stats: &RouterStats,
+        writes: &WriteStats,
+        terms: pb::Terms,
+    ) -> anyhow::Result<pb::WindowReport> {
         self.sampler.abort();
 
         let secs = self.started.elapsed().as_secs_f64();
@@ -71,6 +88,8 @@ impl Window {
         let tasks = tokio::runtime::Handle::current().metrics().num_alive_tasks() as u64;
         let counts = stats.counts().since(&self.counts);
         let hb_rtt_us = stats.take_hb_rtt();
+        let write_counts = writes.counts().since(&self.write_counts);
+        let write_us = writes.take_latency();
         let samples = self.samples.lock().expect("no thread panics while it holds the lock");
 
         Ok(pb::WindowReport {
@@ -86,6 +105,10 @@ impl Window {
             ack_age_us: Some(samples.ack_age_us.to_pb()),
             quorum_age_max_us: samples.quorum_age_max_us,
             terms: Some(terms),
+            write_rate: writes.rate(),
+            writes: write_counts.committed,
+            write_rejected: write_counts.rejected,
+            write_us: Some(write_us.to_pb()),
         })
     }
 }

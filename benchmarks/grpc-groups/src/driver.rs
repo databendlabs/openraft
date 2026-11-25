@@ -66,6 +66,10 @@ pub(crate) struct RunArgs {
     #[arg(long, default_value_t = 10)]
     window_secs: u64,
 
+    /// Writes per second to each group, from the settle period on; 0 for none.
+    #[arg(long, default_value_t = 0)]
+    write_rate: u64,
+
     /// openraft `Config` flags for every node, after `--`, such as `-- --enable-pre-vote true`.
     #[arg(last = true)]
     raft_args: Vec<String>,
@@ -99,6 +103,9 @@ async fn run_scenario(args: &RunArgs) -> anyhow::Result<()> {
     }
 
     set_up_groups(&nodes, args.groups).await?;
+    if args.write_rate > 0 {
+        start_writes(&nodes, args.write_rate).await?;
+    }
     sleep(Duration::from_secs(args.settle_secs)).await;
 
     let phase = |name| Phase {
@@ -183,6 +190,16 @@ async fn set_up_groups(nodes: &[NodeProcess], groups: u64) -> anyhow::Result<()>
     try_join_all(nodes.iter().map(|node| {
         let mut admin = node.admin();
         async move { admin.wait_ready(()).await }
+    }))
+    .await?;
+    Ok(())
+}
+
+/// Have each of `nodes` write `rate` entries a second to each group that it leads.
+async fn start_writes(nodes: &[NodeProcess], rate: u64) -> anyhow::Result<()> {
+    try_join_all(nodes.iter().map(|node| {
+        let mut admin = node.admin();
+        async move { admin.start_writes(pb::StartWritesRequest { rate }).await }
     }))
     .await?;
     Ok(())

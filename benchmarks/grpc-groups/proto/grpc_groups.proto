@@ -102,6 +102,19 @@ message WindowReport {
   uint64 quorum_age_max_us = 11;
 
   Terms terms = 12;
+
+  // The writes per second to each group that this node leads; 0 when it does not write.
+  uint64 write_rate = 13;
+  // The writes that committed, and those that failed, such as on a leader whose lease expired.
+  uint64 writes = 14;
+  uint64 write_rejected = 15;
+  // The time from the scheduled time of each write that committed until it committed.
+  Histogram write_us = 16;
+}
+
+message StartWritesRequest {
+  // Writes per second to each group, on the node that leads it at the scheduled time.
+  uint64 rate = 1;
 }
 
 message ArmFailoverRequest {
@@ -153,6 +166,9 @@ service Admin {
 
   // Initialize the groups that this node leads first, spread over one heartbeat interval.
   rpc Initialize(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  // Write to the groups that this node leads, at a fixed rate per group, until the node exits.
+  rpc StartWrites(StartWritesRequest) returns (google.protobuf.Empty) {}
 
   // Wait until this node leads every group it initialized, and has committed an entry of its term
   // in each.
