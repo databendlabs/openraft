@@ -481,7 +481,7 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     #[cfg(feature = "single-threaded")]
     async fn test_select_non_send() {
-        let value = std::rc::Rc::new(1);
+        let value = Rc::new(1);
         let first = async { value.clone() };
         let second = pending::<()>();
         let third = pending::<()>();
@@ -742,9 +742,9 @@ impl<Rt: AsyncRuntime> Suite<Rt> {
 
     #[cfg(feature = "single-threaded")]
     async fn test_mpsc_try_peek_non_send() {
-        let (tx, rx) = Rt::Mpsc::channel::<std::rc::Rc<u64>>(MPSC_PEEK_CAPACITY);
+        let (tx, rx) = Rt::Mpsc::channel::<Rc<u64>>(MPSC_PEEK_CAPACITY);
         let mut rx = rx.peekable();
-        let value = std::rc::Rc::new(10);
+        let value = Rc::new(10);
         let sent_value = value.clone();
         let sent = tx.send(sent_value).await;
         sent.unwrap();
@@ -1699,7 +1699,7 @@ impl Wake for WakeFlag {
 /// Polls the future and returns its current state.
 fn poll_in_place<F: Future>(fut: Pin<&mut F>) -> Poll<F::Output> {
     let waker = futures_util::task::noop_waker();
-    let mut cx = futures_util::task::Context::from_waker(&waker);
+    let mut cx = Context::from_waker(&waker);
     fut.poll(&mut cx)
 }
 

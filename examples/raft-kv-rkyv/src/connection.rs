@@ -55,7 +55,7 @@ impl Connection {
 }
 
 impl RaftNetworkV2<TypeConfig> for Connection {
-    type SnapshotData = std::io::Cursor<Vec<u8>>;
+    type SnapshotData = io::Cursor<Vec<u8>>;
 
     async fn append_entries(
         &mut self,
@@ -114,7 +114,7 @@ impl RaftNetworkV2<TypeConfig> for Connection {
             let (vote, meta, bytes) = Codec::round_trip(&(vote, snapshot.meta, snapshot.snapshot.into_inner()))?;
             let snapshot = Snapshot {
                 meta,
-                snapshot: std::io::Cursor::new(bytes),
+                snapshot: io::Cursor::new(bytes),
             };
             let response = target.install_full_snapshot(vote, snapshot).await.map_err(io::Error::other)?;
             Codec::round_trip(&response)

@@ -93,9 +93,8 @@ impl GrpcClient {
     async fn with_forwarding<T, F>(&mut self, make_rpc: F) -> anyhow::Result<T>
     where F: Fn(
             &mut AppServiceClient<Channel>,
-        ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<tonic::Response<T>, tonic::Status>> + Send + '_>,
-        > {
+        )
+            -> std::pin::Pin<Box<dyn Future<Output = Result<tonic::Response<T>, tonic::Status>> + Send + '_>> {
         let max_retries = 3;
 
         for _attempt in 0..=max_retries {

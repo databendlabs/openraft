@@ -965,20 +965,20 @@ pub fn expect_timeout<T>(result: Result<T, WaitError>) -> anyhow::Result<()> {
 pub trait TestingVoteExt: openraft::vote::RaftVote {
     /// Creates a new vote for a node in a specific term, with uncommitted status.
     fn from_term_node_id(
-        term: <Self::LeaderId as openraft::vote::RaftLeaderId>::Term,
-        node_id: <Self::LeaderId as openraft::vote::RaftLeaderId>::NodeId,
+        term: <Self::LeaderId as RaftLeaderId>::Term,
+        node_id: <Self::LeaderId as RaftLeaderId>::NodeId,
     ) -> Self {
         let leader_id = Self::LeaderId::new(term, node_id);
         Self::from_leader_id(leader_id, false)
     }
 
     /// Gets the node ID of the leader this vote is for.
-    fn to_leader_node_id(&self) -> <Self::LeaderId as openraft::vote::RaftLeaderId>::NodeId {
+    fn to_leader_node_id(&self) -> <Self::LeaderId as RaftLeaderId>::NodeId {
         self.leader_node_id().clone()
     }
 
     /// Gets a reference to the node ID of the leader this vote is for.
-    fn leader_node_id(&self) -> &<Self::LeaderId as openraft::vote::RaftLeaderId>::NodeId {
+    fn leader_node_id(&self) -> &<Self::LeaderId as RaftLeaderId>::NodeId {
         self.leader_id().node_id()
     }
 }

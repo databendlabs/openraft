@@ -68,7 +68,7 @@ async fn client_writes() -> Result<()> {
     tracing::info!(log_index, "--- run concurrent writes while the cluster remains stable");
     {
         let leader = router.leader().expect("leader not found");
-        let mut clients = futures::stream::FuturesUnordered::new();
+        let mut clients = stream::FuturesUnordered::new();
         clients.push(router.client_request_many(leader, "0", 100));
         clients.push(router.client_request_many(leader, "1", 100));
         clients.push(router.client_request_many(leader, "2", 100));

@@ -141,7 +141,7 @@ pub(super) enum Completion<T> {
 
 /// A request deadline includes client backlog and retries; drain expiry preserves uncertainty.
 pub(super) async fn with_deadline<F, T>(future: F, deadline: Deadline) -> anyhow::Result<Completion<T>>
-where F: std::future::Future<Output = anyhow::Result<T>> {
+where F: Future<Output = anyhow::Result<T>> {
     let at = match deadline {
         Deadline::None => return future.await.map(Completion::Completed),
         Deadline::Request(at) | Deadline::Drain(at) => at,

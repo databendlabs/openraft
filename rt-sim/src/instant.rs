@@ -26,8 +26,8 @@ impl SimInstant {
     }
 
     /// Nanoseconds since the start of the virtual clock.
-    pub fn elapsed_since_start(self) -> std::time::Duration {
-        std::time::Duration::from_nanos(self.0 - executor::EPOCH_NANOS.min(self.0))
+    pub fn elapsed_since_start(self) -> Duration {
+        Duration::from_nanos(self.0 - executor::EPOCH_NANOS.min(self.0))
     }
 
     pub(crate) fn nanos(self) -> u64 {

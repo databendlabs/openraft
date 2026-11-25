@@ -444,7 +444,7 @@ impl RaftSnapshotBuilder<TypeConfig> for Arc<StateMachine> {
 }
 
 impl RaftStateMachine<TypeConfig> for Arc<StateMachine> {
-    type SnapshotData = crate::typ::SnapshotData;
+    type SnapshotData = SnapshotData;
 
     type SnapshotBuilder = Self;
 

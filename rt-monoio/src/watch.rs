@@ -40,7 +40,7 @@ where T: OptionalSend + OptionalSync
 {
     #[inline]
     fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.0.send(value).map_err(|e| watch::SendError(e.0))
+        self.0.send(value).map_err(|e| SendError(e.0))
     }
 
     #[inline]
@@ -73,7 +73,7 @@ where T: OptionalSend + OptionalSync
 {
     #[inline]
     async fn changed(&mut self) -> Result<(), RecvError> {
-        self.0.changed().await.map_err(|_| watch::RecvError(()))
+        self.0.changed().await.map_err(|_| RecvError(()))
     }
 
     #[inline]

@@ -75,7 +75,7 @@ use crate::typ::TypeConfig;
 /// same check run correctly in both modes: advanced mode legitimately allows
 /// different `node_id`s to lead in the same `term`, so equality must include
 /// `node_id`.
-pub type CLeaderId = openraft::type_config::alias::CommittedLeaderIdOf<crate::typ::TypeConfig>;
+pub type CLeaderId = openraft::type_config::alias::CommittedLeaderIdOf<TypeConfig>;
 
 pub type DurableLogIds = BTreeMap<NodeId, LogIdListOf<TypeConfig>>;
 

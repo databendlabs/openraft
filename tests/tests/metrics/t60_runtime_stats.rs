@@ -107,7 +107,7 @@ async fn runtime_stats_log_stage_counts_batched_entries_per_entry() -> Result<()
         assert!(after_samples > before_samples);
         #[cfg(not(feature = "rt-sim"))]
         {
-            assert!(runtime_stats.core_busy_duration > std::time::Duration::ZERO);
+            assert!(runtime_stats.core_busy_duration > Duration::ZERO);
             let longest = runtime_stats.core_busy_histogram.percentile(1.0);
             assert!(longest > 0);
         }

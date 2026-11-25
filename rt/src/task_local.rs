@@ -455,8 +455,8 @@ impl From<std::cell::BorrowMutError> for ScopeInnerErr {
     }
 }
 
-impl From<std::thread::AccessError> for ScopeInnerErr {
-    fn from(_: std::thread::AccessError) -> Self {
+impl From<thread::AccessError> for ScopeInnerErr {
+    fn from(_: thread::AccessError) -> Self {
         Self::AccessError
     }
 }

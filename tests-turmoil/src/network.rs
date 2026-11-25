@@ -144,7 +144,7 @@ impl TurmoilConnection {
 }
 
 impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
-    type SnapshotData = crate::typ::SnapshotData;
+    type SnapshotData = SnapshotData;
 
     async fn append_entries(
         &mut self,
@@ -189,12 +189,12 @@ impl RaftNetworkV2<TypeConfig> for TurmoilConnection {
 
 fn deser<T>(payload: &[u8]) -> io::Result<T>
 where T: for<'de> Deserialize<'de> {
-    bincode::deserialize(payload).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    bincode::deserialize(payload).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))
 }
 
 fn ser<T>(resp: &T) -> io::Result<Vec<u8>>
 where T: Serialize {
-    bincode::serialize(resp).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    bincode::serialize(resp).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))
 }
 
 /// Handle incoming RPCs on a node.
@@ -236,7 +236,7 @@ pub async fn handle_rpc(raft: Arc<Raft>, mut stream: TcpStream) -> io::Result<()
             }
             _ => {
                 return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
+                    ErrorKind::InvalidData,
                     format!("Unknown RPC type: {rpc_type}"),
                 ));
             }

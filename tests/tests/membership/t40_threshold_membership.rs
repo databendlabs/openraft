@@ -35,7 +35,7 @@ openraft::declare_raft_types!(
         Node = (),
         LeaderId = openraft::impls::leader_id_std::LeaderId<u64, u64>,
         Membership = ThresholdMembership<u64, ()>,
-        MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
+        MembershipEdit = ThresholdChange<Self::NodeId, Self::Node>,
         AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 
@@ -45,7 +45,7 @@ openraft::declare_raft_types!(
         R = (),
         Node = (),
         Membership = ThresholdMembership<u64, ()>,
-        MembershipEdit = openraft_membership::ThresholdChange<Self::NodeId, Self::Node>,
+        MembershipEdit = ThresholdChange<Self::NodeId, Self::Node>,
         AsyncRuntime = AsyncRuntimeOf<openraft_memstore::TypeConfig>,
 );
 

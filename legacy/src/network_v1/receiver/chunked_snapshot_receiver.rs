@@ -83,7 +83,7 @@ where C: RaftTypeConfig
     fn install_snapshot(
         &self,
         req: InstallSnapshotRequest<C>,
-    ) -> impl std::future::Future<Output = Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>>>;
+    ) -> impl Future<Output = Result<InstallSnapshotResponse<C>, RaftError<C, InstallSnapshotError>>>;
 }
 
 impl<C, SM> ChunkedSnapshotReceiver<C> for Raft<C, SM>

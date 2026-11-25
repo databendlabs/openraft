@@ -141,8 +141,7 @@ mod tests {
         raft.last_log_index = applied.map(|l| l.index);
         raft.last_applied = applied;
 
-        let sets: Vec<std::collections::BTreeSet<NodeId>> =
-            voters.into_iter().map(|v| v.into_iter().collect()).collect();
+        let sets: Vec<BTreeSet<NodeId>> = voters.into_iter().map(|v| v.into_iter().collect()).collect();
         let mem = crate::typ::majority_membership(sets, learners);
         raft.membership_config = Arc::new(StoredMembership::new(Some(log_id(1, 1, 1)), mem));
 

@@ -104,7 +104,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     Ok(())
 }
 
-async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
+async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> Result<()> {
     for i in node_ids.iter() {
         router
             .wait(i)

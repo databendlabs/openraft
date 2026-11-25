@@ -40,7 +40,7 @@ where T: OptionalSend + OptionalSync
     #[inline]
     fn send(&self, value: T) -> Result<(), SendError<T>> {
         self.0.send(value).map_err(|e| match e {
-            SeeSendError::ChannelClosed(value) => watch::SendError(value),
+            SeeSendError::ChannelClosed(value) => SendError(value),
         })
     }
 
@@ -88,7 +88,7 @@ where T: OptionalSend + OptionalSync
         if self.0.borrow_and_update().has_changed() {
             return Ok(());
         }
-        Err(watch::RecvError(()))
+        Err(RecvError(()))
     }
 
     #[inline]

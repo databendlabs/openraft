@@ -33,7 +33,7 @@ impl StateMachine {
 }
 
 impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
-    type SnapshotData = std::io::Cursor<Vec<u8>>;
+    type SnapshotData = io::Cursor<Vec<u8>>;
 
     async fn build_snapshot(&mut self) -> io::Result<Snapshot> {
         let state = self.state.lock().await;
@@ -44,7 +44,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
         let bytes = Codec::encode(&*state)?;
         let snapshot = Snapshot {
             meta,
-            snapshot: std::io::Cursor::new(bytes),
+            snapshot: io::Cursor::new(bytes),
         };
         // Keep the snapshot and its view consistent with each other.
         *self.snapshot.lock().await = Some(snapshot.clone());
@@ -53,7 +53,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
 }
 
 impl RaftStateMachine<TypeConfig> for StateMachine {
-    type SnapshotData = std::io::Cursor<Vec<u8>>;
+    type SnapshotData = io::Cursor<Vec<u8>>;
     type SnapshotBuilder = Self;
 
     async fn applied_state(&mut self) -> io::Result<(Option<LogId>, StoredMembership)> {
@@ -99,7 +99,7 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
         *current = state;
         *self.snapshot.lock().await = Some(Snapshot {
             meta: meta.clone(),
-            snapshot: std::io::Cursor::new(bytes),
+            snapshot: io::Cursor::new(bytes),
         });
         Ok(())
     }

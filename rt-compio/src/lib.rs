@@ -86,8 +86,8 @@ pin_project_lite::pin_project! {
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Elapsed(());
 
-impl std::fmt::Display for Elapsed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Elapsed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Time has elapsed")
     }
 }

@@ -59,10 +59,10 @@ async fn building_snapshot_does_not_block_apply() -> Result<()> {
     {
         let next = log_index + 1;
 
-        let rpc = AppendEntriesRequest::<openraft_memstore::TypeConfig> {
+        let rpc = AppendEntriesRequest::<TypeConfig> {
             vote: Vote::new_committed(1, 0),
             prev_log_id: Some(log_id(1, 0, log_index)),
-            entries: vec![blank_ent::<openraft_memstore::TypeConfig>(1, 0, next)],
+            entries: vec![blank_ent::<TypeConfig>(1, 0, next)],
             // Append and commit this entry
             leader_commit: Some(log_id(1, 0, next)),
         };
