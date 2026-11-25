@@ -1,6 +1,5 @@
 use crate::LogId;
 use crate::log_id::option_raft_log_id_ext::OptionRaftLogIdExt;
-use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
 use crate::log_id::raft_log_id::RaftLogId;
 use crate::log_id::raft_log_id_ext::RaftLogIdExt;
 use crate::log_id::ref_log_id::RefLogId;
@@ -35,7 +34,7 @@ where CLID: RaftCommittedLeaderId
     }
 
     fn get_log_id(&self, index: u64) -> Option<LogId<CLID>> {
-        self.ref_log_id(index).to_log_id()
+        self.ref_log_id(index).map(RefLogId::into_log_id)
     }
 
     /// Get the log id at the specified index.

@@ -6,7 +6,7 @@ use crate::RaftTypeConfig;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::engine::EngineOutput;
-use crate::log_id::option_ref_log_id_ext::OptionRefLogIdExt;
+use crate::log_id::ref_log_id::RefLogId;
 use crate::raft_state::LogStateReader;
 use crate::storage::RaftStateMachine;
 use crate::type_config::alias::LogIdOf;
@@ -132,6 +132,6 @@ where
             st
         );
 
-        log_id.to_log_id()
+        log_id.map(RefLogId::into_log_id)
     }
 }
