@@ -168,4 +168,5 @@ off use no CPU, and with defaults the CPU goes to the heartbeats: 36,685 AppendE
 a second at 1,000 groups.
 
 [results.md](results.md) has the measurements of the changes that followed, from retiring the
-ticker in #2378 to removing the histograms of default builds in #2487.
+ticker in #2378 to boxing the rarely sent channel messages in #2488, and of the harness additions
+of #2455 and #2459.

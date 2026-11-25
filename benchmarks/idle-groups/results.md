@@ -1,17 +1,18 @@
 # Results of the #2304 changes
 
 These measurements follow the changes that [#2304] led to, in November 2026: the timers, the
-task futures, and the heap of idle groups. The profile at ca32e84d and #2487 are follow-ups that
-[#2454] tracks. The [README](README.md) describes the fields and has the baseline, 0.10.0 against
-`main` at 1329ad82.
+task futures, and the heap of idle groups. The profile at ca32e84d, #2479, #2487 and #2488, and
+the harness additions of #2455 and #2459, are follow-ups that [#2454] tracks. The
+[README](README.md) describes the fields and has the baseline, 0.10.0 against `main` at
+1329ad82.
 [`scripts/measure_change.py`](scripts/measure_change.py) runs comparisons like the later ones.
 
 All runs used one Apple M3 Max (16 cores, 128 GiB) with macOS 14.5. They were release builds
 with the system allocator and tokio 1.54.1 with 4 worker threads, ran the default `Config`, and
-wrote nothing. A run waits 10 s after switching the timers and then measures 30 s, unless a
-section says otherwise, and each row is one run. CPU is a share of one core, and memory is the
-physical footprint. Repeated runs of one build differ by about 3% in CPU and by a few MiB in
-memory.
+wrote nothing outside the write bursts of #2455. A run waits 10 s after switching the timers and
+then measures 30 s, unless a section says otherwise, and each row is one run. CPU is a share of
+one core, and memory is the physical footprint. Repeated runs of one build differ by about 3% in
+CPU and by a few MiB in memory.
 
 ## Timers
 
@@ -273,8 +274,10 @@ from `-Zprint-type-sizes` with memstore's `TypeConfig`:
 | `InstallFullSnapshotRequest`, snapshots | 176 B |                              |      5,664 B |
 | `Notification`, notifications           | 160 B | `StateMachine`, 160 B        |      5,152 B |
 
-[#2488] boxes the large variants that are rarely sent. `Notification::StateMachine` and
-`RaftMsg::ClientWrite` carry every apply result and every write, so they stay as they are.
+[#2488] boxes the large variants that are rarely sent; the last section of
+[Changes from the profiles](#changes-from-the-profiles) has its results.
+`Notification::StateMachine` and `RaftMsg::ClientWrite` carry every apply result and every write,
+so they stay as they are.
 
 ## Changes from the profiles
 
@@ -318,6 +321,30 @@ the code before it, measured for 10 s after 5 s of settling:
 
 Other jobs raised the load average from 14 to 55 during these runs, so they do not compare CPU.
 
+### Sending a heartbeat's request without boxing its stream: #2479
+
+c1262b59 ([#2479], for [#2460]) makes the heartbeat worker pass `stream::iter([payload])`, which
+is `Unpin`, instead of a boxed `stream::once()`. Against its parent 04739b76, with
+`--count-allocs` and 3 interleaved rounds per build, the allocations per AppendEntries request
+were:
+
+| Case               | 04739b76, per round | c1262b59, per round |
+|--------------------|--------------------:|--------------------:|
+| 1,000 leaders      | 14.98, 14.99, 14.99 | 13.99, 13.99, 13.99 |
+| 1,000 whole groups | 15.93, 15.97, 15.97 | 14.97, 14.96, 14.97 |
+
+These divide `allocs/s` by `appends/s`, so they count every allocation of the idle process, and
+the difference between the builds is the change: one allocation per request. The heap, 171 and
+416 MiB, and the AppendEntries requests per second did not change. The medians of CPU were 36.3%
+against 36.1% with stub followers and 64.3% against 63.0% for whole groups, within the noise;
+the 1-minute load average stayed between 8 and 25.
+
+A CPU profile with samply 0.13.1 at 1 kHz, over 30 s of 1,000 whole groups and two runs per
+build, puts the idle process at about 16 µs of CPU per AppendEntries request. Allocation and
+free under the heartbeat worker took about 1% of the samples: the boxed stream about 0.15%, and
+the three allocations that remain on the path 0.9%. [#2482] proposed removing those three and
+was dropped, as [#2454] records.
+
 ### No histograms without the `runtime-stats` feature: #2487
 
 d698b3a5 ([#2487]) gives the histograms of `RuntimeStats` a zero-sized type that records nothing
@@ -337,6 +364,149 @@ followers and by 132 KiB with whole groups, against the 59.7 and 126.7 KiB that 
 predicts. Allocations and AppendEntries requests per second did not change. The load average
 fell from 54 to 13 during the runs, so they do not compare CPU.
 
+### Boxing the large messages that are rarely sent: #2488
+
+Three changes for [#2488] box the large variants that the channels of a node rarely carry, so
+that the first block of each channel, which tokio allocates when it creates the channel, takes
+less memory. With memstore's `TypeConfig`, from `-Zprint-type-sizes`:
+
+| Message, channel                        | Changed by         |        Size |          First block |
+|-----------------------------------------|--------------------|------------:|---------------------:|
+| `sm::Command`, state-machine commands   | 7a16393b ([#2493]) |  192 → 72 B |      6,176 → 2,336 B |
+| `Work`, two state-machine stages        | 7a16393b ([#2493]) |  200 → 96 B | 6,432 → 3,104 B each |
+| `InstallFullSnapshotRequest`, snapshots | d44215cd ([#2494]) |   176 → 8 B |        5,664 → 288 B |
+| `RaftMsg`, API requests                 | 5bf7a8b2 ([#2495]) | 240 → 176 B |      7,712 → 5,664 B |
+
+- 7a16393b boxes the snapshot of `sm::Command::InstallFullSnapshot`. `Work::Barrier` and
+  `engine::Command` hold an `sm::Command`, so they shrink too: `engine::Command` from 192 to
+  128 B.
+- d44215cd makes the snapshot channel carry `Box<InstallFullSnapshotRequest>`, whose size is
+  that of a pointer.
+- 5bf7a8b2 boxes the payloads of `RaftMsg::ChangeMembership`. `ClientWrite`, at 176 B, is now
+  the largest variant.
+
+Each change against its parent, with `measure_change.py`, `--count-allocs` and 3 interleaved
+rounds per build, the medians of the heap per group:
+
+| Case               | 6c1bd191 | 7a16393b | d44215cd | 5bf7a8b2 |
+|--------------------|---------:|---------:|---------:|---------:|
+| 1,000 leaders      |  114 KiB |  100 KiB |   95 KiB |   93 KiB |
+| 1,000 whole groups |  294 KiB |  254 KiB |  238 KiB |  227 KiB |
+
+The rounds of a build stayed within 1 KiB, and 7a16393b and d44215cd, each measured in two
+comparisons, gave the same heap in both. Together the three changes took 21 KiB per group off
+the heap with stub followers, 18%, and 67 KiB with whole groups, 23%. Allocations and
+AppendEntries requests per second did not change. The 1-minute load average ran from 23 to 55,
+so they do not compare CPU.
+
+The type sizes account for most of these drops:
+
+- 7a16393b: the three state-machine channels hold 10.25 KiB less per node, so 10.25 KiB per
+  group with stub followers and 30.75 KiB per whole group of three. Measured: 14 and 40 KiB.
+  The engine's command queue keeps the capacity it grows to, so about 64 queued
+  `engine::Command`s could explain the other 4 KiB per node; that was not measured.
+- d44215cd: the snapshot channel holds 5.25 KiB less per node, so 5.25 and 15.75 KiB.
+  Measured: 5 and 16 KiB.
+- 5bf7a8b2: each block of the API channel holds 2 KiB less. A leader has only the first block,
+  so 2 KiB per group with stub followers; measured: 2 KiB. The #2456 profile found the members
+  of whole groups keeping a second `RaftMsg` block, 0.67 per member on average, which makes
+  about 3.4 KiB per member, or 10 KiB per group; measured: 11 KiB.
+
+## Harness additions
+
+### Counting timer wakes and metrics sends: #2459
+
+a7b8c43c ([#2473], for [#2459]) counts, in `RuntimeStats`, the timer deadlines that `RaftCore`
+is notified of, the wakes it gives a timer's task to re-arm it, and the sends on each metrics
+channel. With the `runtime-stats` feature, the harness reports them as `fires/s`, `rearms/s`,
+`metrics/s`, `data_metrics/s` and `server_metrics/s`. Without the feature, idle CPU did not
+change: against its parent 0d6fa0a0, with 3 interleaved rounds per build, the medians were 34.1%
+before and 32.0% after with stub followers, and 62.9% for both builds with local followers. The
+1-minute load average ran from 34 to 103, so a single figure moves by several points.
+
+With the feature, one run per case, at a load average from 31 to 42:
+
+| Followers | fires/s | rearms/s | metrics/s | data_metrics/s | server_metrics/s | AppendEntries/s |
+|-----------|--------:|---------:|----------:|---------------:|-----------------:|----------------:|
+| stub      |  18,484 |   18,480 |    55,416 |         55,416 |                0 |          36,968 |
+| local     |  19,497 |   19,488 |    97,147 |         58,113 |           38,967 |          38,963 |
+
+- Each heartbeat that fires is followed by one re-arm wake: a leader's heartbeat timer wakes
+  twice per heartbeat, and each kind of wake comes about 18.5 times a second per leader.
+- A leader sends `RaftMetrics` 3 times per heartbeat round, and each of those sends changes
+  `RaftDataMetrics` too. That is consistent with one report when the heartbeat fires and one
+  for each of the two follower responses.
+- A follower sends `RaftServerMetrics` once per heartbeat it receives: `server_metrics/s` equals
+  `appends/s`.
+- The run with local followers had 17 elections, at a load average above 30. The runs without
+  the feature had none.
+- The feature raised the memory from 196 to 324 MiB with stub followers and from 470 to 855 MiB
+  with local ones, about 131 KiB per node. That is consistent with the six log-stage ring
+  buffers, which allocate in full on their first record since #2435.
+
+### Memory and latency of a write burst: #2455
+
+`--burst-writes` ([#2478], landed as 04739b76) writes to the leader of every group right after
+the timers switch, before the settle period, so that the window shows what the burst left
+behind. These runs were at a6415e9e, the commit of #2478 before it was rebased onto `main`, with
+1,000 groups and `--burst-writes 1000 --burst-depth 16`. The 1-minute load average ran from 6 to
+56, so they do not compare CPU. No run had an election or a retried write.
+
+With `--count-allocs`, the medians of 3 rounds; the heap was the same in every round. Per member
+is the growth of the heap:
+
+| Case               | Heap, idle | Heap, after | Per member | Memory, idle | Memory, after |
+|--------------------|-----------:|------------:|-----------:|-------------:|--------------:|
+| 1,000 leaders      |    171 MiB |     502 MiB |   +339 KiB |      191 MiB |       635 MiB |
+| 1,000 whole groups |    416 MiB |   1,403 MiB |   +337 KiB |      464 MiB |     1,600 MiB |
+
+- Most of the growth is the stored log. A 2,000-write burst, one run per case, left 807 and
+  2,318 MiB of heap: the second 1,000 writes added 312 KiB per member, against 338 KiB for the
+  first 1,000. So about 312 KiB per member is the 1,000 entries, and about 26 KiB is a one-time
+  growth of buffers that keep their capacity.
+- From the source: memstore keeps each entry as `serde_json::to_string()` output, about 140
+  bytes in a 256-byte buffer, since serde_json starts at 128 bytes and doubles. With its share
+  of a `BTreeMap` node, that comes to about 317 bytes per entry, or 310 KiB per 1,000.
+- The memory grew more than the heap, by 444 against 331 MiB for 1,000 leaders. The gap between
+  them went from 20 MiB idle to 133 MiB, most likely free memory that the allocator kept after
+  the burst.
+
+The 64-slot reserves that #2440 removed, compared with `measure_change.py` and 3 interleaved
+rounds per build, without `--count-allocs`, the medians. The build with the reserves reverts
+b52ee511 on a6415e9e. The load average was 9.4 at the start and 7.8 at the end.
+
+| Case               | Build            | Writes/s |     p50 |      p99 |      Max |    Memory |
+|--------------------|------------------|---------:|--------:|---------:|---------:|----------:|
+| 1,000 leaders      | 64-slot reserves |     539k | 14.5 ms |  33.5 ms |  75.3 ms |   660 MiB |
+| 1,000 leaders      | empty queues     |     526k | 14.7 ms |  33.4 ms |  77.7 ms |   619 MiB |
+| 1,000 whole groups | 64-slot reserves |     503k | 28.5 ms | 108.5 ms | 168.0 ms | 1,674 MiB |
+| 1,000 whole groups | empty queues     |     498k | 29.4 ms | 110.6 ms | 166.9 ms | 1,582 MiB |
+
+- Write latency is the same within the spread between rounds of one build: with the reserves,
+  the p99 of 1,000 leaders ran from 32 to 51 ms. Growing the queues from empty did not change
+  it measurably.
+- With one run each and `--count-allocs`, the reserves cost about 40 KiB of heap per member,
+  idle and after the burst alike: 211 against 171 MiB idle and 541 against 502 MiB after the
+  burst for 1,000 leaders, and 535 against 416 MiB and 1,521 against 1,403 MiB for whole
+  groups. So a burst at depth 16 never grew these queues to 64 slots, and the saving of #2440
+  holds after a burst.
+
+With the `runtime-stats` feature and `--count-allocs`, 2 rounds each, both the same:
+
+| Case               | Heap, idle | Heap, after |
+|--------------------|-----------:|------------:|
+| 1,000 leaders      |    315 MiB |     646 MiB |
+| 1,000 whole groups |    845 MiB |   1,832 MiB |
+
+The feature adds 146 KiB per member over the default build, idle and after the burst alike, so
+the log-stage ring buffers are allocated in full before the burst writes anything. From the
+source, 6 stages × 1,024 slots × 24 bytes is 144 KiB. Both builds still had the histograms of
+`RuntimeStats`, which #2487 later removed from default builds.
+
+`--count-allocs` slows a burst: with it, a burst of 1,000 leaders ran at 284k to 307k writes a
+second with a p50 of 26 ms, against 526k and 14.7 ms without it for the same build. Compare
+latency only between runs that both count allocations or both do not.
+
 [#2304]: https://github.com/databendlabs/openraft/issues/2304
 [#2343]: https://github.com/databendlabs/openraft/pull/2343
 [#2378]: https://github.com/databendlabs/openraft/pull/2378
@@ -351,6 +521,15 @@ fell from 54 to 13 during the runs, so they do not compare CPU.
 [#2440]: https://github.com/databendlabs/openraft/pull/2440
 [#2454]: https://github.com/databendlabs/openraft/issues/2454
 [#2456]: https://github.com/databendlabs/openraft/issues/2456
+[#2459]: https://github.com/databendlabs/openraft/issues/2459
+[#2460]: https://github.com/databendlabs/openraft/issues/2460
+[#2473]: https://github.com/databendlabs/openraft/pull/2473
+[#2478]: https://github.com/databendlabs/openraft/pull/2478
+[#2479]: https://github.com/databendlabs/openraft/pull/2479
+[#2482]: https://github.com/databendlabs/openraft/issues/2482
 [#2487]: https://github.com/databendlabs/openraft/pull/2487
 [#2488]: https://github.com/databendlabs/openraft/issues/2488
+[#2493]: https://github.com/databendlabs/openraft/pull/2493
+[#2494]: https://github.com/databendlabs/openraft/pull/2494
+[#2495]: https://github.com/databendlabs/openraft/pull/2495
 [rust-lang/rust#62958]: https://github.com/rust-lang/rust/issues/62958
