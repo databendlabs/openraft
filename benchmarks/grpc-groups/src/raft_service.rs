@@ -12,6 +12,7 @@ use tonic::Response;
 use tonic::Status;
 
 use crate::Raft;
+use crate::partition::Partition;
 use crate::protobuf as pb;
 use crate::protobuf::group_raft_server::GroupRaft;
 use crate::rejoins::Rejoins;
@@ -23,11 +24,18 @@ pub(crate) struct RaftService {
 
     /// Learns of every AppendEntries request that a member accepts.
     rejoins: Rejoins,
+
+    /// Holds the requests while this node is cut off from its peers.
+    partition: Partition,
 }
 
 impl RaftService {
-    pub(crate) fn new(groups: Arc<OnceLock<Vec<Raft>>>, rejoins: Rejoins) -> Self {
-        Self { groups, rejoins }
+    pub(crate) fn new(groups: Arc<OnceLock<Vec<Raft>>>, rejoins: Rejoins, partition: Partition) -> Self {
+        Self {
+            groups,
+            rejoins,
+            partition,
+        }
     }
 
     fn group(&self, group_id: u64) -> Result<&Raft, Status> {
@@ -46,6 +54,7 @@ impl GroupRaft for RaftService {
         let pb::GroupAppendRequest { group_id, request } = request.into_inner();
         let request = request.ok_or_else(|| Status::invalid_argument("no AppendEntries request"))?;
 
+        self.partition.hold().await;
         let result = self.group(group_id)?.append_entries(request.into()).await.map_err(internal)?;
         // A member that rejects the sender's vote does not accept it as the leader.
         if !matches!(result, Err(AppendError::HigherVote(_))) {
@@ -58,6 +67,7 @@ impl GroupRaft for RaftService {
         let pb::GroupVoteRequest { group_id, request } = request.into_inner();
         let request = request.ok_or_else(|| Status::invalid_argument("no Vote request"))?;
 
+        self.partition.hold().await;
         let response = self.group(group_id)?.vote(request.into()).await.map_err(internal)?;
         Ok(Response::new(response.into()))
     }
@@ -66,6 +76,7 @@ impl GroupRaft for RaftService {
         let pb::GroupVoteRequest { group_id, request } = request.into_inner();
         let request = request.ok_or_else(|| Status::invalid_argument("no PreVote request"))?;
 
+        self.partition.hold().await;
         let response = self.group(group_id)?.pre_vote(request.into()).await.map_err(internal)?;
         Ok(Response::new(response.into()))
     }
@@ -75,6 +86,7 @@ impl GroupRaft for RaftService {
         request: Request<pb::GroupSnapshotRequest>,
     ) -> Result<Response<raftpb::SnapshotResponse>, Status> {
         let pb::GroupSnapshotRequest { group_id, meta, data } = request.into_inner();
+        self.partition.hold().await;
         let meta = meta.ok_or_else(|| Status::invalid_argument("no snapshot meta"))?;
         let vote = meta.vote.ok_or_else(|| Status::invalid_argument("no vote in the snapshot meta"))?;
         let membership =

@@ -125,7 +125,8 @@ message Takeovers {
 
 message ArmRejoinRequest {
   // The CLOCK_MONOTONIC time, in nanoseconds, before which this node records nothing. The driver
-  // picks a time while the node is down, so that every event it records follows its return.
+  // picks a time while the node is down or cut off, so that every event it records follows its
+  // return.
   uint64 after_ns = 1;
 }
 
@@ -172,4 +173,9 @@ service Admin {
   rpc ArmRejoin(ArmRejoinRequest) returns (google.protobuf.Empty) {}
   rpc GetRejoins(google.protobuf.Empty) returns (Rejoins) {}
   rpc DisarmRejoin(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  // Cut this node off from its peers, until Heal: its router holds each Raft request to a peer,
+  // and its server each Raft request from a peer. Admin calls are not cut.
+  rpc Cut(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc Heal(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }

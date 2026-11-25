@@ -14,6 +14,10 @@ pub(crate) enum Scenario {
     /// groups it led and a `degraded` window without it, then resume it with `SIGCONT`, and
     /// measure its `rejoin` and an `after` window.
     Hang,
+
+    /// As `hang`, but cut node 1 off from the other nodes, and later heal its links, while it
+    /// keeps running.
+    Partition,
 }
 
 impl fmt::Display for Scenario {
@@ -22,6 +26,7 @@ impl fmt::Display for Scenario {
             Scenario::Steady => write!(f, "steady"),
             Scenario::Crash => write!(f, "crash"),
             Scenario::Hang => write!(f, "hang"),
+            Scenario::Partition => write!(f, "partition"),
         }
     }
 }

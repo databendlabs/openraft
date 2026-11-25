@@ -240,6 +240,16 @@ impl Admin for AdminService {
         self.rejoins.disarm();
         Ok(Response::new(()))
     }
+
+    async fn cut(&self, _request: Request<()>) -> Result<Response<()>, Status> {
+        self.router.partition().cut();
+        Ok(Response::new(()))
+    }
+
+    async fn heal(&self, _request: Request<()>) -> Result<Response<()>, Status> {
+        self.router.partition().heal();
+        Ok(Response::new(()))
+    }
 }
 
 /// Return the current term of each of `groups`.

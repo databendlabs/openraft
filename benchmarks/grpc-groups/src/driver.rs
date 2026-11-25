@@ -32,8 +32,8 @@ const REJOIN_LIMIT: Duration = Duration::from_secs(30);
 const REJOIN_POLL: Duration = Duration::from_millis(20);
 
 /// How long after the arm, which precedes the fault, the faulty node starts to record its rejoin.
-/// The node is down by then, and stays down for at least the `degraded` window, so that it records
-/// only what follows its return.
+/// The node is down or cut off by then, and stays so for at least the `degraded` window, so that it
+/// records only what follows its return.
 const REJOIN_ARM_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, clap::Args)]
@@ -80,8 +80,12 @@ pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
             args.scenario
         );
     }
-    if args.scenario == Scenario::Hang && Duration::from_secs(args.window_secs) <= REJOIN_ARM_DELAY {
-        anyhow::bail!("hang needs --window-secs 1 or more, so that node 1 is still down when it starts to record");
+    let returns = matches!(args.scenario, Scenario::Hang | Scenario::Partition);
+    if returns && Duration::from_secs(args.window_secs) <= REJOIN_ARM_DELAY {
+        anyhow::bail!(
+            "{} needs --window-secs 1 or more, so that node 1 is still out when it starts to record",
+            args.scenario
+        );
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
@@ -111,7 +115,7 @@ async fn run_scenario(args: &RunArgs) -> anyhow::Result<()> {
             print_line(measure_window(&nodes, phase("baseline"), args.window_secs, &[]).await?)?;
 
             let node_1 = nodes.remove(0);
-            print_line(failover(&nodes, phase("failover"), || node_1.crash()).await?)?;
+            print_line(failover(&nodes, phase("failover"), async move || node_1.crash()).await?)?;
 
             print_line(measure_window(&nodes, phase("degraded"), args.window_secs, &[1]).await?)?;
         }
@@ -120,11 +124,27 @@ async fn run_scenario(args: &RunArgs) -> anyhow::Result<()> {
 
             let node_1 = nodes.remove(0);
             arm_rejoin(&node_1).await?;
-            print_line(failover(&nodes, phase("failover"), || node_1.stop()).await?)?;
+            print_line(failover(&nodes, phase("failover"), async || node_1.stop()).await?)?;
 
             print_line(measure_window(&nodes, phase("degraded"), args.window_secs, &[1]).await?)?;
 
-            print_line(rejoin(&node_1, &nodes, phase("rejoin"), || node_1.resume()).await?)?;
+            print_line(rejoin(&node_1, &nodes, phase("rejoin"), async || node_1.resume()).await?)?;
+
+            nodes.insert(0, node_1);
+            print_line(measure_window(&nodes, phase("after"), args.window_secs, &[]).await?)?;
+        }
+        Scenario::Partition => {
+            print_line(measure_window(&nodes, phase("baseline"), args.window_secs, &[]).await?)?;
+
+            // Node 1 keeps running while it is cut off, but `degraded` measures the other nodes
+            // alone, as in the other fault scenarios.
+            let node_1 = nodes.remove(0);
+            arm_rejoin(&node_1).await?;
+            print_line(failover(&nodes, phase("failover"), async || node_1.cut().await).await?)?;
+
+            print_line(measure_window(&nodes, phase("degraded"), args.window_secs, &[1]).await?)?;
+
+            print_line(rejoin(&node_1, &nodes, phase("rejoin"), async || node_1.heal().await).await?)?;
 
             nodes.insert(0, node_1);
             print_line(measure_window(&nodes, phase("after"), args.window_secs, &[]).await?)?;
@@ -191,7 +211,7 @@ async fn measure_window(nodes: &[NodeProcess], phase: Phase, secs: u64, down: &[
 
 /// Inject `fault` into node 1, and measure how fast `survivors` take over the groups it led.
 async fn failover<F>(survivors: &[NodeProcess], phase: Phase, fault: F) -> anyhow::Result<FailoverSummary>
-where F: FnOnce() -> anyhow::Result<()> {
+where F: AsyncFnOnce() -> anyhow::Result<()> {
     // Node 1 initialized the groups whose id is a multiple of the node count, and leads them.
     let affected = (0..phase.groups).filter(|group_id| group_id % phase.nodes == 0).collect::<Vec<_>>();
 
@@ -205,7 +225,7 @@ where F: FnOnce() -> anyhow::Result<()> {
     .await?;
 
     let faulted_ns = clock::monotonic_ns();
-    fault()?;
+    fault().await?;
 
     let deadline = Instant::now() + FAILOVER_LIMIT;
     let takeovers = loop {
@@ -251,12 +271,12 @@ async fn rejoin<F>(
     end_fault: F,
 ) -> anyhow::Result<RejoinSummary>
 where
-    F: FnOnce() -> anyhow::Result<()>,
+    F: AsyncFnOnce() -> anyhow::Result<()>,
 {
     let begin_terms = get_terms(others).await?;
 
     let returned_ns = clock::monotonic_ns();
-    end_fault()?;
+    end_fault().await?;
 
     let deadline = Instant::now() + REJOIN_LIMIT;
     let rejoins = loop {

@@ -27,6 +27,7 @@ use tonic::transport::Channel;
 use tonic::transport::Endpoint;
 
 use crate::C;
+use crate::partition::Partition;
 use crate::protobuf as pb;
 use crate::protobuf::group_raft_client::GroupRaftClient;
 use crate::router_stats::RouterStats;
@@ -43,6 +44,9 @@ struct RouterInner {
     /// The client of each peer node, by node id, set once at setup.
     clients: OnceLock<BTreeMap<u64, GroupRaftClient<Channel>>>,
     stats: RouterStats,
+
+    /// Holds the requests while this node is cut off from its peers.
+    partition: Partition,
 }
 
 impl Router {
@@ -65,6 +69,11 @@ impl Router {
         &self.inner.stats
     }
 
+    /// The cut of this node, which the server holds the requests from the peers by too.
+    pub(crate) fn partition(&self) -> &Partition {
+        &self.inner.partition
+    }
+
     fn client(&self, target: u64) -> Result<GroupRaftClient<Channel>, Unreachable<C>> {
         let client = self.inner.clients.get().and_then(|clients| clients.get(&target));
         client.cloned().ok_or_else(|| Unreachable::from_string(format!("no channel to node {target}")))
@@ -85,6 +94,7 @@ impl GroupRouter<C, u64> for Router {
         stats.count_append();
         let heartbeat = rpc.entries.is_empty().then(|| HeartbeatTimer::start(stats));
 
+        self.partition().hold().await;
         let mut client = self.client(target).map_err(RPCError::Unreachable)?;
         let request = pb::GroupAppendRequest {
             group_id,
@@ -108,6 +118,7 @@ impl GroupRouter<C, u64> for Router {
     ) -> Result<VoteResponse<C>, RPCError<C>> {
         self.stats().count_vote();
 
+        self.partition().hold().await;
         let mut client = self.client(target).map_err(RPCError::Unreachable)?;
         let request = pb::GroupVoteRequest {
             group_id,
@@ -126,6 +137,7 @@ impl GroupRouter<C, u64> for Router {
     ) -> Result<VoteResponse<C>, RPCError<C>> {
         self.stats().count_vote();
 
+        self.partition().hold().await;
         let mut client = self.client(target).map_err(RPCError::Unreachable)?;
         let request = pb::GroupVoteRequest {
             group_id,
@@ -144,6 +156,7 @@ impl GroupRouter<C, u64> for Router {
         _cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<C>, StreamingError<C>> {
+        self.partition().hold().await;
         let mut client = self.client(target).map_err(StreamingError::Unreachable)?;
 
         let membership = &snapshot.meta.last_membership;

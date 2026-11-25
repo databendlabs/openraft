@@ -65,6 +65,19 @@ impl NodeProcess {
         self.signal(libc::SIGCONT).context("resume the node with SIGCONT")
     }
 
+    /// Cut the node off from the other nodes, as a blackholed network would: it keeps running,
+    /// but no Raft request crosses the cut until [`Self::heal()`]. The admin calls still do.
+    pub(crate) async fn cut(&self) -> anyhow::Result<()> {
+        self.admin().cut(()).await.context("cut the links of the node")?;
+        Ok(())
+    }
+
+    /// Heal the links of the node after [`Self::cut()`].
+    pub(crate) async fn heal(&self) -> anyhow::Result<()> {
+        self.admin().heal(()).await.context("heal the links of the node")?;
+        Ok(())
+    }
+
     fn signal(&self, signal: libc::c_int) -> std::io::Result<()> {
         let pid = libc::pid_t::try_from(self.child.id()).map_err(std::io::Error::other)?;
         // SAFETY: `kill()` reads only its arguments, and `pid` is a child of this process that it

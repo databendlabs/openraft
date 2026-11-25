@@ -1,6 +1,6 @@
 [package]
 name = "bench-grpc-groups"
-description = "Measure Raft groups whose members run in separate processes and talk over gRPC, in steady operation and through the crash or the hang of a node"
+description = "Measure Raft groups whose members run in separate processes and talk over gRPC, in steady operation and through the crash, the hang or the partition of a node"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -21,7 +21,7 @@ clap               = { version = "4.2", features = ["derive"] }
 futures            = { version = "0.3" }
 libc               = { version = "0.2" }
 prost              = { version = "0.14.3" }
-tokio              = { version = "1.39", default-features = false, features = ["macros", "net", "rt-multi-thread", "time"] }
+tokio              = { version = "1.39", default-features = false, features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tonic              = { version = "0.14.6" }
 tonic-prost        = { version = "0.14.6" }
 tracing            = { version = "0.1.40" }
