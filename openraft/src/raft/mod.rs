@@ -106,13 +106,13 @@ use crate::core::RaftCore;
 use crate::core::SharedReplicateBatch;
 use crate::core::StepDownWatcher;
 use crate::core::heartbeat::handle::HeartbeatWorkersHandle;
-use crate::core::io_flush_tracking::AppliedProgress;
-use crate::core::io_flush_tracking::CommitProgress;
+pub use crate::core::io_flush_tracking::AppliedProgress;
+pub use crate::core::io_flush_tracking::CommitProgress;
 pub use crate::core::io_flush_tracking::FlushPoint;
 use crate::core::io_flush_tracking::IoProgressWatcher;
-use crate::core::io_flush_tracking::LogProgress;
-use crate::core::io_flush_tracking::SnapshotProgress;
-use crate::core::io_flush_tracking::VoteProgress;
+pub use crate::core::io_flush_tracking::LogProgress;
+pub use crate::core::io_flush_tracking::SnapshotProgress;
+pub use crate::core::io_flush_tracking::VoteProgress;
 use crate::core::merged_raft_msg_receiver::BatchRaftMsgReceiver;
 use crate::core::notification::Notification;
 use crate::core::notification_channel::NotificationChannel;
@@ -1956,17 +1956,64 @@ where
     /// Tracks when log entries and votes are durably written to storage.
     /// Updated on every I/O completion (vote saves and log appends).
     ///
+    /// # Waiting for an entry
+    ///
+    /// A [`FlushPoint`] holds the vote and the last log id of the latest I/O that storage flushed.
+    /// Flush points compare their votes first, so `wait_until_ge()` returns either of these:
+    ///
+    /// - A flush point under the target's vote, with a log id at or after the target's.
+    /// - A flush point under a greater vote, with any log id, or none.
+    ///
+    /// To wait for an entry, build the target from the entry's log id and the committed vote of
+    /// the leader that proposed the entry. With the vote of a later leader, any log id of that
+    /// leader would meet the target, whatever its index. With an uncommitted vote, the committed
+    /// vote of the same leader ID would meet it, without a log id.
+    ///
+    /// Then check the vote of the returned flush point. Under the target's vote, this node flushes
+    /// the entries of that leader's log in order, so a log id at or after the entry's shows that
+    /// storage flushed the entry. A greater vote does not show it: the vote may have changed
+    /// before storage flushed the entry, and a later leader can make this node truncate an entry
+    /// that was not committed. The handle keeps only the latest flush point, so it does not show
+    /// whether one under the target's vote came first.
+    ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// # use openraft::type_config::alias::LogIdOf;
+    /// use openraft::Vote;
+    /// use openraft::raft::FlushPoint;
+    ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     term: C::Term,
+    /// #     node_id: C::NodeId,
+    /// #     log_id: LogIdOf<C>,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// let mut log_progress = raft.watch_log_progress();
     ///
-    /// // Wait for a specific log entry to be flushed
-    /// let target = Some(FlushPoint::new(
-    ///     Vote::new_committed(2, node_id),
-    ///     Some(LogId::new(LeaderId::new(2, node_id), 100))
-    /// ));
-    /// log_progress.wait_until_ge(&target).await?;
+    /// // Node `node_id` proposed the entry `log_id` as the leader of `term`.
+    /// let vote = Vote::new_committed(term, node_id);
+    /// let target = Some(FlushPoint::new(vote.clone(), Some(log_id.clone())));
+    ///
+    /// match log_progress.wait_until_ge(&target).await? {
+    ///     Some(flushed) if flushed.vote == vote => {
+    ///         // The wait returned under `vote`, so `flushed.last_log_id` is at or after `log_id`.
+    ///         println!("storage flushed {log_id}");
+    ///     }
+    ///     _ => {
+    ///         // A greater vote ended the wait, whatever log id it holds.
+    ///         println!("the vote changed; storage may not have flushed {log_id}");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.0")]
     #[must_use = "progress handle should be stored to track I/O progress"]
