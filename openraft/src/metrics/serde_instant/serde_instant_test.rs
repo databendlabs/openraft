@@ -6,6 +6,9 @@ use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use serde::Deserialize;
+use serde::de::value::U64Deserializer;
+
 use super::SerdeInstant;
 use crate::Instant;
 use crate::engine::testing::UTConfig;
@@ -26,6 +29,10 @@ type StartedDayAgo = TestInstant<DAY>;
 
 /// A clock that cannot represent a time more than a day from now.
 type EndsInDay = TestInstant<{ u64::MAX - DAY }>;
+
+/// A clock that can represent any time within 292 billion years of now, so its range covers every
+/// `u64` count of nanoseconds since the Unix epoch.
+type WideRange = TestInstant<{ u64::MAX / 2 }>;
 
 impl<const NOW_SECS: u64> Add<Duration> for TestInstant<NOW_SECS> {
     type Output = Self;
@@ -130,13 +137,13 @@ fn test_deserialize_out_of_clock_range() {
 
     tracing::info!(
         now_nanos,
-        "a clock that ends in a day decodes now, but cannot represent u64::MAX ns, in 2554"
+        "a clock that ends in a day decodes now, but cannot represent i64::MAX ns, in 2262"
     );
     {
         let decoded = serde_json::from_str::<SerdeInstant<EndsInDay>>(&now_nanos.to_string());
         assert!(decoded.is_ok(), "{decoded:?}");
 
-        let err = serde_json::from_str::<SerdeInstant<EndsInDay>>(&u64::MAX.to_string()).unwrap_err();
+        let err = serde_json::from_str::<SerdeInstant<EndsInDay>>(&i64::MAX.to_string()).unwrap_err();
         assert!(is_clock_range_error(&err), "{err}");
     }
 }
@@ -162,6 +169,44 @@ fn test_serialize_out_of_system_time_range() {
 
         let far: SerdeInstant<EndsInDay> = SerdeInstant::new(TestInstant(Duration::ZERO));
         let err = serde_json::to_string(&far).unwrap_err();
+        assert_eq!(err.to_string(), "time out of range");
+    }
+}
+
+/// Encoding and decoding share a range that ends at `i64::MAX` nanoseconds since the Unix epoch,
+/// in year 2262. Decoding rejects a later time even when the runtime's clock can represent it.
+#[test]
+fn test_out_of_encoding_range() {
+    let max = i64::MAX as u64;
+    let decode = |nanos: u64| {
+        let deserializer = U64Deserializer::<serde::de::value::Error>::new(nanos);
+        SerdeInstant::<WideRange>::deserialize(deserializer)
+    };
+
+    tracing::info!(max, "decoding accepts the end of the range, and rejects any later time");
+    {
+        let decoded = decode(max);
+        assert!(decoded.is_ok(), "{decoded:?}");
+
+        for nanos in [max + 1, u64::MAX] {
+            let err = decode(nanos).unwrap_err();
+            assert_eq!(err.to_string(), "time out of range", "decoding {nanos}");
+        }
+    }
+
+    tracing::info!(
+        max,
+        "encoding accepts a time a day before the end of the range, and rejects one a day after it; \
+         the system clock moves far less between decoding and encoding"
+    );
+    {
+        let day = Duration::from_secs(DAY);
+        let end = decode(max).unwrap().into_inner();
+
+        let encoded = serde_json::to_string(&SerdeInstant::new(end - day));
+        assert!(encoded.is_ok(), "{encoded:?}");
+
+        let err = serde_json::to_string(&SerdeInstant::new(end + day)).unwrap_err();
         assert_eq!(err.to_string(), "time out of range");
     }
 }
