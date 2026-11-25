@@ -9,7 +9,6 @@ use crate::type_config::alias::LeaderCommitted;
 use crate::type_config::alias::LeaderNodeId;
 use crate::type_config::alias::LeaderTerm;
 use crate::vote::RaftLeaderId;
-use crate::vote::Vote;
 use crate::vote::committed::CommittedVote;
 use crate::vote::leader_id::raft_leader_id::RaftLeaderIdExt;
 use crate::vote::non_committed::UncommittedVote;
@@ -22,6 +21,7 @@ use crate::vote::vote_status::VoteStatus;
 /// The associated type `LeaderId` identifies the leader this vote is for.
 /// It is decoupled from [`RaftTypeConfig`](crate::RaftTypeConfig) to break
 /// circular type dependencies.
+#[since(version = "0.10.2", change = "removed `to_owned_vote`")]
 #[since(
     version = "0.10.0",
     change = "from `RaftVote<C>` to `RaftVote` with associated type `LeaderId`"
@@ -46,16 +46,6 @@ where Self: OptionalFeatures + Eq + Clone + Debug + Display + 'static
     /// Whether this vote has been committed by a quorum.
     #[since(version = "0.10.0")]
     fn is_committed(&self) -> bool;
-
-    /// Convert to the openraft-provided [`Vote`] struct.
-    ///
-    /// This creates an owned [`Vote<LID>`] from any vote implementation.
-    /// [`Vote`] is openraft's standard vote representation, which differs from
-    /// user-defined vote types that may be optimized for storage.
-    #[since(version = "0.10.0")]
-    fn to_owned_vote(&self) -> Vote<Self::LeaderId> {
-        Vote::from_leader_id(self.leader_id().clone(), self.is_committed())
-    }
 
     /// Compare this vote with another vote by partial order.
     ///
@@ -238,30 +228,6 @@ mod tests {
         let uncommitted_vote = vote.to_non_committed();
         assert_eq!(RaftVote::partial_cmp(&vote, &uncommitted_vote), Some(Ordering::Equal));
         assert_eq!(RaftVote::partial_cmp(&uncommitted_vote, &vote), Some(Ordering::Equal));
-    }
-
-    #[test]
-    fn test_to_owned_vote() {
-        // From Vote
-        let vote = Vote::<UTLeaderId>::new(1, 2);
-        let owned = vote.to_owned_vote();
-        assert_eq!(owned, vote);
-
-        let committed_vote = Vote::<UTLeaderId>::new_committed(3, 4);
-        let owned = committed_vote.to_owned_vote();
-        assert_eq!(owned, committed_vote);
-
-        // From CommittedVote
-        let committed = vote.to_committed();
-        let owned = committed.to_owned_vote();
-        assert_eq!(owned.leader_id, vote.leader_id);
-        assert!(owned.is_committed());
-
-        // From UncommittedVote
-        let uncommitted = committed_vote.to_non_committed();
-        let owned = uncommitted.to_owned_vote();
-        assert_eq!(owned.leader_id, committed_vote.leader_id);
-        assert!(!owned.is_committed());
     }
 
     #[test]
