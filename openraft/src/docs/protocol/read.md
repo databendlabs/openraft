@@ -260,7 +260,7 @@ let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
 linearizer.await_ready(&my_raft).await?;
 
 // Following read from state machine is linearized across the cluster
-let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+let val = my_raft.with_state_machine(|sm| Box::pin(async move { sm.read("foo") })).await?;
 ```
 
 The above snippet shows how to perform a linearizable read on the leader.
@@ -297,8 +297,9 @@ A basic example of a follower read:
 ```ignore
 let deadline = Instant::now() + timeout;
 
-// Ask the remote leader to authorize this read, via an application-defined RPC
-let leader_id = my_raft.current_leader().await.unwrap();
+// Ask the remote leader to authorize this read, via an application-defined RPC.
+// `current_leader()` returns `None` while no leader is known, such as during an election.
+let leader_id = my_raft.current_leader().await.ok_or(NoLeader)?;
 let data = my_app_rpc.get_read_linearizer(leader_id, deadline).await?;
 let linearizer = Linearizer::new(data.node_id, data.noop_log_id, data.committed, data.applied);
 
@@ -307,7 +308,7 @@ let remaining = deadline.saturating_duration_since(Instant::now());
 let linearized_state = linearizer.try_await_ready(&my_raft, Some(remaining)).await?.map_err(|_| Timeout)?;
 
 // Following read from state machine is linearized across the cluster
-let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+let val = my_raft.with_state_machine(|sm| Box::pin(async move { sm.read("foo") })).await?;
 ```
 
 See a complete implementation in the [raft-kv-memstore example](https://github.com/databendlabs/openraft/tree/main/examples/raft-kv-memstore):

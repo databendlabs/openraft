@@ -1045,22 +1045,32 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use std::sync::Arc;
-    /// use openraft::metrics::MetricsRecorder;
+    /// `recorder` below is an `Arc<dyn MetricsRecorder>`. The [`metrics::recorder`] module shows
+    /// how to implement [`MetricsRecorder`].
     ///
-    /// struct MyRecorder;
-    /// impl MetricsRecorder for MyRecorder {
-    ///     fn record_apply_batch(&self, entry_count: u64) { /* ... */ }
-    ///     fn record_append_batch(&self, entry_count: u64) { /* ... */ }
-    /// }
-    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::errors::Fatal;
+    /// # use openraft::metrics::MetricsRecorder;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>, recorder: Arc<dyn MetricsRecorder>) -> Result<(), Fatal<C>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// // Enable metrics recording
-    /// raft.set_metrics_recorder(Some(Arc::new(MyRecorder))).await?;
+    /// raft.set_metrics_recorder(Some(recorder)).await?;
     ///
     /// // Disable metrics recording
     /// raft.set_metrics_recorder(None).await?;
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// [`metrics::recorder`]: crate::metrics::recorder
     ///
     /// # Errors
     ///
@@ -1395,12 +1405,28 @@ where
     /// using [`Linearizer::try_await_ready`].
     ///
     /// # Examples
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ReadPolicy;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # trait Read {
+    /// #     fn read(&self, key: &str) -> Option<String>;
+    /// # }
+    /// #
+    /// # async fn example<C, SM>(my_raft: Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + Read,
+    /// # {
     /// let linearizer = my_raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
     /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
-    /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+    /// let val = my_raft.with_state_machine(|sm| Box::pin(async move { sm.read("foo") })).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Follower Read
@@ -1409,16 +1435,46 @@ where
     /// then use [`Linearizer::try_await_ready`] to wait for local state machine to catch
     /// up.
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ReadPolicy;
+    /// # use openraft::raft::linearizable_read::Linearizer;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # trait Read {
+    /// #     fn read(&self, key: &str) -> Option<String>;
+    /// # }
+    /// #
+    /// # trait AppRpc<C>
+    /// # where C: RaftTypeConfig
+    /// # {
+    /// #     async fn get_read_linearizer(
+    /// #         &self,
+    /// #         leader_id: C::NodeId,
+    /// #         read_policy: ReadPolicy,
+    /// #     ) -> Result<Linearizer<C>, Box<dyn std::error::Error>>;
+    /// # }
+    /// #
+    /// # async fn example<C, SM, R>(my_raft: Raft<C, SM>, my_app_rpc: R) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + Read,
+    /// #     R: AppRpc<C>,
+    /// # {
+    /// // `current_leader()` returns `None` while no leader is known, such as during an election
+    /// let leader_id = my_raft.current_leader().await.ok_or("no known leader")?;
+    ///
     /// // Application defined RPC to get the `read_log_id` from the remote leader
-    /// let leader_id = my_raft.current_leader().await?.unwrap();
     /// let linearizer = my_app_rpc.get_read_linearizer(leader_id, ReadPolicy::ReadIndex).await?;
     ///
-    /// // Block waiting local state machine to apply up to to the `read_log_id`
+    /// // Block waiting local state machine to apply up to the `read_log_id`
     /// let _ = linearizer.try_await_ready(&my_raft, None).await?.unwrap();
     ///
     /// // Following read from state machine is linearized across the cluster
-    /// let val = my_raft.with_state_machine(|sm| { sm.read("foo") }).await?;
+    /// let val = my_raft.with_state_machine(|sm| Box::pin(async move { sm.read("foo") })).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// See: [Read Operation](crate::docs::protocol::read)
@@ -1517,12 +1573,49 @@ where
         self.app_api().client_write(C::Payload::blank()).await.into_raft_result()
     }
 
-    /// Submit a mutating client request to Raft to update the state machine, returns an application
-    /// defined response receiver [`Responder::Receiver`].
+    /// Submit a mutating client request to Raft without waiting for its result.
     ///
-    /// `_ff` means fire and forget.
+    /// `_ff` means fire and forget. Unlike [`Self::client_write()`], this method does not wait for
+    /// the write to be applied and does not return its result. RaftCore reports the result to
+    /// `responder` instead.
     ///
-    /// It is same as [`Self::client_write`] but does not wait for the response.
+    /// The caller observes each stage of the write in a different place:
+    ///
+    /// - Submission: this method returns `Ok(())` once the write is queued for RaftCore. It means
+    ///   only that the write was submitted: RaftCore may still reject it, and a write that RaftCore
+    ///   admits may never be committed or applied. `Err(Fatal)` means RaftCore has stopped and the
+    ///   write was not submitted.
+    /// - Commit: once the log entry of the write is committed, RaftCore calls
+    ///   [`Responder::on_commit()`] with its log id. The state machine may not have applied the
+    ///   write yet. A rejected or discarded write gets no commit notification.
+    /// - Completion: RaftCore calls [`Responder::on_complete()`] with the write's
+    ///   [`ClientWriteResult`]: `Ok` with a [`ClientWriteResponse`] once the state machine has
+    ///   applied the write, or `Err` with a [`ClientWriteError`] if the write fails, such as
+    ///   [`ClientWriteError::ForwardToLeader`] when RaftCore rejects it without appending it, or
+    ///   [`ClientWriteError::LogEntryDiscarded`] when its appended entry is discarded, which leaves
+    ///   its commit status unknown.
+    ///
+    /// This method returns no receiver. The caller creates a responder of the type that the type
+    /// config selects as [`Responder<T>`](RaftTypeConfig::Responder), keeps its receiver, and
+    /// passes `Some(responder)`. The success or rejection of the write arrives at that receiver.
+    /// With `None`, nothing reports whether the write was rejected, committed, or applied.
+    ///
+    /// [`declare_raft_types!`] selects [`ProgressResponder`] by default.
+    /// [`ProgressResponder::new()`] returns a commit receiver and a complete receiver, and
+    /// [`ProgressResponder::complete_only()`] returns only the complete receiver. The
+    /// [`ProgressResponder`] documentation shows an example that submits a write with this method.
+    /// If the responder is dropped without a result, for example because RaftCore stopped, the
+    /// complete receiver of a [`ProgressResponder`] returns an error. That error does not tell
+    /// whether the write was committed or applied.
+    ///
+    /// [`Responder::on_commit()`]: crate::raft::responder::Responder::on_commit
+    /// [`Responder::on_complete()`]: crate::raft::responder::Responder::on_complete
+    /// [`ClientWriteError::ForwardToLeader`]: crate::errors::ClientWriteError::ForwardToLeader
+    /// [`ClientWriteError::LogEntryDiscarded`]: crate::errors::ClientWriteError::LogEntryDiscarded
+    /// [`declare_raft_types!`]: crate::declare_raft_types
+    /// [`ProgressResponder`]: crate::impls::ProgressResponder
+    /// [`ProgressResponder::new()`]: crate::impls::ProgressResponder::new
+    /// [`ProgressResponder::complete_only()`]: crate::impls::ProgressResponder::complete_only
     #[since(version = "0.10.0", date = "2025-10-27", change = "add responder arg")]
     #[since(version = "0.10.0")]
     pub async fn client_write_ff(
@@ -1632,23 +1725,41 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::raft::ClientWriteResult;
+    /// # use openraft::storage::RaftStateMachine;
     /// use openraft::impls::ProgressResponder;
     ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     data1: C::D,
+    /// #     data2: C::D,
+    /// #     data3: C::D,
+    /// # ) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<Responder<ClientWriteResult<C>> = ProgressResponder<C, ClientWriteResult<C>>>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// // Fire-and-forget
-    /// raft.write(my_data).await?;
+    /// raft.write(data1).await?;
     ///
     /// // With responder
-    /// let (responder, rx) = ProgressResponder::complete_only();
-    /// raft.write(my_data).responder(responder).await?;
-    /// let result = rx.await??;
+    /// let (responder2, rx2) = ProgressResponder::complete_only();
+    /// raft.write(data2).responder(responder2).await?;
+    /// let response2 = rx2.await??;
     ///
     /// // Conditional write (fails if leader changed)
+    /// let (responder3, rx3) = ProgressResponder::complete_only();
     /// let leader_id = raft.as_leader()?.to_committed_leader_id();
-    /// raft.write(my_data)
+    /// raft.write(data3)
     ///     .with_leader(leader_id)
-    ///     .responder(responder)
+    ///     .responder(responder3)
     ///     .await?;
+    /// let response3 = rx3.await??;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// [`.responder()`]: WriteRequest::responder
@@ -1794,13 +1905,16 @@ where
 
     /// Initialize a pristine Raft node with the given config.
     ///
-    /// This command should be called on pristine nodes — where the log index is 0 and the node is
-    /// in Learner state — as if either of those constraints are false, it indicates that the
-    /// cluster is already formed and in motion. If `InitializeError::NotAllowed` is returned
-    /// from this function, it is safe to ignore, as it simply indicates that the cluster is
-    /// already up and running, which is ultimately the goal of this function. You can check
-    /// if the cluster is initialized with [`Raft::is_initialized()`] and then avoid re-initialize
-    /// it in case you want to get rid of this error.
+    /// A node is pristine when it has no log and its vote has the default term. A node that starts
+    /// with empty storage is pristine. A node that has voted for a candidate is not, even if it
+    /// has no log, because its vote has a greater term. [`Raft::is_initialized()`] returns `false`
+    /// only while the node is pristine.
+    ///
+    /// On a node that is not pristine, `initialize()` changes nothing and returns
+    /// `InitializeError::NotAllowed`. This error only says that the node can no longer be
+    /// initialized. It does not mean that the cluster has a leader or that a quorum of its voters
+    /// is reachable, and neither does a successful `initialize()`. To learn when a leader is
+    /// elected, watch [`Raft::metrics()`] or wait for it with [`Raft::wait()`].
     ///
     /// ## Recommended Usage
     ///
@@ -1815,11 +1929,24 @@ where
     /// However, calling `initialize()` with **different configurations** on different nodes
     /// may lead to a split-brain condition and must be avoided.
     ///
+    /// To change the membership of an initialized cluster, such as to grow a single-node cluster,
+    /// call [`Raft::add_learner()`] and [`Raft::change_membership()`] on the leader. A node that
+    /// joins this way starts with empty storage and is not initialized.
+    ///
     /// ## Behavior
     ///
-    /// Once a node is successfully initialized, it will commit a new membership config
-    /// log entry to store, then enter Candidate state and attempt to elect itself as the
-    /// leader.
+    /// On success, this node:
+    ///
+    /// 1. Appends the membership config as the log at index 0. The membership takes effect on this
+    ///    node at once, before the log is committed.
+    /// 2. Starts an election to become the leader, and enters the Candidate state.
+    /// 3. Returns `Ok(())` once the membership log is flushed to this node's storage, without
+    ///    waiting for the election.
+    ///
+    /// The election needs the votes of a quorum of the voters: a single-node cluster elects this
+    /// node by itself, while a multi-node cluster has no leader until a quorum of its voters is
+    /// reachable. The elected leader then commits a blank log of its own term, which also commits
+    /// the membership log.
     ///
     /// `members` converts into the first membership config. The default [`Membership`] converts
     /// from a `BTreeMap` or a `HashMap` of nodes, and from a `BTreeSet` of node ids when the node
@@ -1834,21 +1961,59 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// use std::collections::BTreeMap;
-    /// use openraft::BasicNode;
+    /// Initialize a single-node cluster on node 1:
     ///
-    /// // Initialize a single-node cluster
+    /// ```no_run
+    /// use std::collections::BTreeMap;
+    ///
+    /// use openraft::impls::BasicNode;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(raft: Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<NodeId = u64, Node = BasicNode>,
+    /// #     BTreeMap<u64, BasicNode>: Into<C::Membership>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    ///
     /// let mut nodes = BTreeMap::new();
     /// nodes.insert(1, BasicNode { addr: "127.0.0.1:8080".to_string() });
     /// raft.initialize(nodes).await?;
     ///
-    /// // Initialize a three-node cluster
+    /// // `initialize()` does not wait for the election
+    /// raft.wait(None).current_leader(1, "node 1 is elected").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Or initialize a three-node cluster by calling `initialize()` on node 1 only. Nodes 2 and 3
+    /// start with empty storage. Node 1 becomes the leader once one of them votes for it, then
+    /// replicates the membership log to both:
+    ///
+    /// ```no_run
+    /// use std::collections::BTreeMap;
+    ///
+    /// use openraft::impls::BasicNode;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(raft: Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<NodeId = u64, Node = BasicNode>,
+    /// #     BTreeMap<u64, BasicNode>: Into<C::Membership>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    ///
     /// let mut nodes = BTreeMap::new();
     /// nodes.insert(1, BasicNode { addr: "127.0.0.1:8080".to_string() });
     /// nodes.insert(2, BasicNode { addr: "127.0.0.1:8081".to_string() });
     /// nodes.insert(3, BasicNode { addr: "127.0.0.1:8082".to_string() });
     /// raft.initialize(nodes).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.0", change = "takes `Into<C::Membership>` instead of `IntoNodes`")]
     #[tracing::instrument(level = "debug", skip(self))]
@@ -1868,9 +2033,21 @@ where
     /// - Raft core task is panicked due to programming error.
     /// - Raft core task is encountered a storage error.
     ///
-    /// Example for getting the current committed log id:
-    /// ```ignore
-    /// let committed = my_raft.with_raft_state(|st| st.committed).await?;
+    /// Example for getting the local committed log id:
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::errors::Fatal;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn example<C, SM>(my_raft: &Raft<C, SM>) -> Result<(), Fatal<C>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let committed = my_raft.with_raft_state(|st| st.local_committed().cloned()).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub async fn with_raft_state<F, V>(&self, func: F) -> Result<V, Fatal<C>>
     where
@@ -2257,8 +2434,20 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let handle = raft.on_leader_change(
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// #
+    /// # async fn start_leader_services() {}
+    /// # async fn stop_leader_services() {}
+    /// #
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>)
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let mut handle = raft.on_leader_change(
     ///     |leader_id| async move {
     ///         println!("Became leader: {:?}", leader_id);
     ///         start_leader_services().await;
@@ -2271,6 +2460,7 @@ where
     ///
     /// // Later, stop watching
     /// handle.close().await;
+    /// # }
     /// ```
     ///
     /// [`on_cluster_leader_change()`]: Self::on_cluster_leader_change
@@ -2390,24 +2580,39 @@ where
 
     /// Get a handle to wait for the metrics to satisfy some condition.
     ///
+    /// A wait checks the metrics it observes and returns the first that satisfy its condition. It
+    /// returns [`WaitError::ShuttingDown`] if the metrics channel closes first, which happens when
+    /// the node stops.
     ///
-    /// If `timeout` is `None`, then it will wait forever(10 years).
-    /// If `timeout` is `Some`, then it will wait for the specified duration.
+    /// If `timeout` is `Some`, the wait returns [`WaitError::Timeout`] when no observed metrics
+    /// satisfy the condition within that duration. If `timeout` is `None`, the wait sets no
+    /// timeout: it ends only when observed metrics satisfy the condition or the metrics channel
+    /// closes.
     ///
-    /// ```ignore
+    /// ```no_run
     /// # use std::time::Duration;
-    /// # use openraft::{State, Raft};
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::ServerState;
     ///
+    /// # async fn example<C, SM>(r: &Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig<NodeId = u64>,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
     /// let timeout = Duration::from_millis(200);
     ///
     /// // wait for raft log-3 to be applied:
     /// r.wait(Some(timeout)).applied_index(Some(3), "log-3 applied").await?;
     ///
-    /// // wait for ever for raft node's current leader to become 3:
+    /// // wait with no timeout for raft node's current leader to become 2:
     /// r.wait(None).current_leader(2, "wait for leader").await?;
     ///
     /// // wait for raft state to become a follower
-    /// r.wait(None).state(State::Follower, "state").await?;
+    /// r.wait(None).state(ServerState::Follower, "state").await?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
         self.inner.wait(timeout)
@@ -2556,10 +2761,30 @@ where
     /// Example for getting the last applied log id from SM(assume there is `last_applied()` method
     /// provided):
     ///
-    /// ```rust,ignore
+    /// ```no_run
+    /// # use std::future::Future;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::errors::Fatal;
+    /// # use openraft::storage::RaftStateMachine;
+    /// # use openraft::type_config::alias::LogIdOf;
+    /// #
+    /// # trait LastApplied<C>
+    /// # where C: RaftTypeConfig
+    /// # {
+    /// #     fn last_applied(&mut self) -> impl Future<Output = Option<LogIdOf<C>>> + Send;
+    /// # }
+    /// #
+    /// # async fn example<C, SM>(my_raft: &Raft<C, SM>) -> Result<(), Fatal<C>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + LastApplied<C>,
+    /// # {
     /// let last_applied_log_id = my_raft.with_state_machine(|sm| {
-    ///     async move { sm.last_applied().await }
+    ///     Box::pin(async move { sm.last_applied().await })
     /// }).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[since(version = "0.10.0")]
     pub async fn with_state_machine<F, V>(&self, func: F) -> Result<V, Fatal<C>>
