@@ -104,6 +104,26 @@ within 1.6% of the true value: it comes from a log-scale histogram.
 - At idle, each leader sends a heartbeat to each follower about every 50 ms. idle-groups measured
   about 35,000 AppendEntries requests per second for 1,000 groups with local followers.
 
+## Measuring a change
+
+The [`measure_change.py`](../idle-groups/scripts/measure_change.py) of idle-groups compares a
+change with the code before it, with `--bench grpc-groups`. It builds this benchmark without the
+change and with it, in one checkout, and runs each case with the two builds in turns, so that both
+see the same machine load. A case is `RUNS SCENARIO [EXTRA ARGS]`. The extra args follow
+`--scenario`, so openraft `Config` flags come last, after `--`:
+
+```sh
+benchmarks/idle-groups/scripts/measure_change.py my-change $(git diff --name-only) \
+    --bench grpc-groups \
+    --case '3 steady' \
+    --case '3 crash -- --enable-pre-vote true'
+```
+
+The script writes each line that a run prints, one per phase, to `results/LABEL-<time>.tsv` under
+`benchmarks/grpc-groups/target/measure-change/`. At the end it prints the median of each field for
+each build, as a Markdown table per phase of each case. The
+[idle-groups README](../idle-groups/README.md#measuring-a-change) describes its other options.
+
 CPU includes the cost of tonic, which two builds of openraft share. A difference between two
 builds comes from the change, but the absolute numbers are not openraft's alone. CPU and the
 round-trip percentiles also change with the load of the machine: compare them over several runs,

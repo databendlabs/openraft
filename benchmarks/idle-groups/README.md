@@ -143,6 +143,11 @@ under `benchmarks/idle-groups/target/measure-change/`, or under `--out-dir` if i
 measure a commit instead of uncommitted changes, compare it with its parent: pass
 `--base HEAD~1` and the files of `git diff --name-only HEAD~1`.
 
+At the end, the script prints the median of each field for each build, as a Markdown table per
+case. With `--bench grpc-groups`, it builds and runs
+[`benchmarks/grpc-groups`](../grpc-groups/README.md#measuring-a-change) instead, whose cases are
+`RUNS SCENARIO [EXTRA ARGS]`, and prints a table per phase of each case.
+
 The second build recompiles only what the files of the change affect. Do not edit those files
 while the script runs. Other load on the machine moves `cpu%`, so check the load average before
 and after a comparison of CPU.
