@@ -417,7 +417,7 @@ where C: RaftTypeConfig
         for (i, ent) in entries.iter().enumerate() {
             let ref_log_id = ent.ref_log_id();
 
-            if !self.has_log_id(ref_log_id.clone()) {
+            if !self.has_log_id(ref_log_id) {
                 tracing::debug!("found conflicting log id at index {}: {}", i, ref_log_id);
                 return i;
             }
