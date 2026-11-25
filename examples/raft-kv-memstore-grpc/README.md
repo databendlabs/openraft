@@ -30,6 +30,9 @@ This example implements:
 - Brings up 3 nodes in one process
 - Tests: initialize, add-learner, change-membership, write/read
 
+**Snapshot** (`./tests/snapshot_to_learner.rs`):
+- A learner added after the leader purged its logs installs the leader's snapshot
+
 **Multi-process cluster** (`./test-cluster.sh`):
 - Realistic 3-process deployment
 - Same test sequence with actual network communication
