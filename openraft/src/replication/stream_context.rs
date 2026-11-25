@@ -7,6 +7,7 @@ use crate::replication::inflight_append_queue::InflightAppendQueue;
 use crate::replication::stream_state::StreamState;
 use crate::storage::RaftLogStorage;
 use crate::type_config::alias::MutexOf;
+use crate::type_config::alias::WatchReceiverOf;
 
 /// Context passed through the AppendEntries request stream.
 ///
@@ -18,6 +19,9 @@ where
     C: RaftTypeConfig,
     LS: RaftLogStorage<C>,
 {
+    /// Closed when this stream_append session ends, even if the transport keeps polling.
+    pub(crate) session_rx: WatchReceiverOf<C, ()>,
+
     /// Shared state for generating the next request.
     pub(crate) stream_state: Arc<MutexOf<C, StreamState<C, LS>>>,
 
