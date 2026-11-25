@@ -9,6 +9,11 @@ pub(crate) enum Scenario {
     /// Measure a `baseline` window, kill node 1 with `SIGKILL`, measure the `failover` of the
     /// groups it led, then a `degraded` window without it.
     Crash,
+
+    /// Measure a `baseline` window, stop node 1 with `SIGSTOP`, measure the `failover` of the
+    /// groups it led and a `degraded` window without it, then resume it with `SIGCONT`, and
+    /// measure its `rejoin` and an `after` window.
+    Hang,
 }
 
 impl fmt::Display for Scenario {
@@ -16,6 +21,7 @@ impl fmt::Display for Scenario {
         match self {
             Scenario::Steady => write!(f, "steady"),
             Scenario::Crash => write!(f, "crash"),
+            Scenario::Hang => write!(f, "hang"),
         }
     }
 }

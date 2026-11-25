@@ -15,6 +15,7 @@ use crate::node_process::NodeProcess;
 use crate::phase::Phase;
 use crate::protobuf as pb;
 use crate::raft_config;
+use crate::rejoin_summary::RejoinSummary;
 use crate::scenario::Scenario;
 use crate::window_summary::WindowSummary;
 
@@ -23,6 +24,17 @@ const FAILOVER_LIMIT: Duration = Duration::from_secs(30);
 
 /// How often the `failover` phase asks the surviving nodes how far they got.
 const FAILOVER_POLL: Duration = Duration::from_millis(20);
+
+/// How long the `rejoin` phase waits for the returning node to rejoin every group.
+const REJOIN_LIMIT: Duration = Duration::from_secs(30);
+
+/// How often the `rejoin` phase asks the returning node how far it got.
+const REJOIN_POLL: Duration = Duration::from_millis(20);
+
+/// How long after the arm, which precedes the fault, the faulty node starts to record its rejoin.
+/// The node is down by then, and stays down for at least the `degraded` window, so that it records
+/// only what follows its return.
+const REJOIN_ARM_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, clap::Args)]
 pub(crate) struct RunArgs {
@@ -50,7 +62,7 @@ pub(crate) struct RunArgs {
     #[arg(long, default_value_t = 30)]
     measure_secs: u64,
 
-    /// Seconds of each window of a fault scenario: `baseline` and `degraded`.
+    /// Seconds of each window of a fault scenario: `baseline`, `degraded` and `after`.
     #[arg(long, default_value_t = 10)]
     window_secs: u64,
 
@@ -62,8 +74,14 @@ pub(crate) struct RunArgs {
 /// Start the node processes, run the scenario, and print one line per phase.
 pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
     raft_config::parse(&args.raft_args).context("parse the openraft Config flags")?;
-    if args.scenario == Scenario::Crash && args.nodes < 3 {
-        anyhow::bail!("crash needs --nodes 3 or more, so that the other nodes keep a quorum");
+    if args.scenario != Scenario::Steady && args.nodes < 3 {
+        anyhow::bail!(
+            "{} needs --nodes 3 or more, so that the other nodes keep a quorum",
+            args.scenario
+        );
+    }
+    if args.scenario == Scenario::Hang && Duration::from_secs(args.window_secs) <= REJOIN_ARM_DELAY {
+        anyhow::bail!("hang needs --window-secs 1 or more, so that node 1 is still down when it starts to record");
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
@@ -92,10 +110,24 @@ async fn run_scenario(args: &RunArgs) -> anyhow::Result<()> {
         Scenario::Crash => {
             print_line(measure_window(&nodes, phase("baseline"), args.window_secs, &[]).await?)?;
 
-            let crashed = nodes.remove(0);
-            print_line(crash(crashed, &nodes, phase("failover")).await?)?;
+            let node_1 = nodes.remove(0);
+            print_line(failover(&nodes, phase("failover"), || node_1.crash()).await?)?;
 
             print_line(measure_window(&nodes, phase("degraded"), args.window_secs, &[1]).await?)?;
+        }
+        Scenario::Hang => {
+            print_line(measure_window(&nodes, phase("baseline"), args.window_secs, &[]).await?)?;
+
+            let node_1 = nodes.remove(0);
+            arm_rejoin(&node_1).await?;
+            print_line(failover(&nodes, phase("failover"), || node_1.stop()).await?)?;
+
+            print_line(measure_window(&nodes, phase("degraded"), args.window_secs, &[1]).await?)?;
+
+            print_line(rejoin(&node_1, &nodes, phase("rejoin"), || node_1.resume()).await?)?;
+
+            nodes.insert(0, node_1);
+            print_line(measure_window(&nodes, phase("after"), args.window_secs, &[]).await?)?;
         }
     }
     Ok(())
@@ -157,9 +189,9 @@ async fn measure_window(nodes: &[NodeProcess], phase: Phase, secs: u64, down: &[
     Ok(WindowSummary::new(phase, &begin_terms, &reports))
 }
 
-/// Kill `crashed`, node 1, with `SIGKILL`, and measure how fast `survivors` take over the groups
-/// it led.
-async fn crash(crashed: NodeProcess, survivors: &[NodeProcess], phase: Phase) -> anyhow::Result<FailoverSummary> {
+/// Inject `fault` into node 1, and measure how fast `survivors` take over the groups it led.
+async fn failover<F>(survivors: &[NodeProcess], phase: Phase, fault: F) -> anyhow::Result<FailoverSummary>
+where F: FnOnce() -> anyhow::Result<()> {
     // Node 1 initialized the groups whose id is a multiple of the node count, and leads them.
     let affected = (0..phase.groups).filter(|group_id| group_id % phase.nodes == 0).collect::<Vec<_>>();
 
@@ -173,7 +205,7 @@ async fn crash(crashed: NodeProcess, survivors: &[NodeProcess], phase: Phase) ->
     .await?;
 
     let faulted_ns = clock::monotonic_ns();
-    crashed.crash()?;
+    fault()?;
 
     let deadline = Instant::now() + FAILOVER_LIMIT;
     let takeovers = loop {
@@ -190,8 +222,73 @@ async fn crash(crashed: NodeProcess, survivors: &[NodeProcess], phase: Phase) ->
         sleep(FAILOVER_POLL).await;
     };
 
+    // The member that did not take a group over would watch it until the limit of the watch, and
+    // its watcher would count among the tasks of the next window.
+    try_join_all(survivors.iter().map(|node| {
+        let mut admin = node.admin();
+        async move { admin.disarm_failover(()).await }
+    }))
+    .await?;
+
     let moved = count_moved(survivors, phase).await?;
     Ok(FailoverSummary::new(phase, &affected, faulted_ns, &takeovers, moved))
+}
+
+/// Have node 1, which is about to fail, record how it rejoins its groups once it returns.
+async fn arm_rejoin(node_1: &NodeProcess) -> anyhow::Result<()> {
+    let after_ns = clock::monotonic_ns() + REJOIN_ARM_DELAY.as_nanos() as u64;
+    node_1.admin().arm_rejoin(pb::ArmRejoinRequest { after_ns }).await?;
+    Ok(())
+}
+
+/// End the fault of `returning`, node 1, with `end_fault`, and measure how it rejoins the groups,
+/// until it has rejoined every group or for [`REJOIN_LIMIT`]. `others` are the nodes that stayed
+/// up.
+async fn rejoin<F>(
+    returning: &NodeProcess,
+    others: &[NodeProcess],
+    phase: Phase,
+    end_fault: F,
+) -> anyhow::Result<RejoinSummary>
+where
+    F: FnOnce() -> anyhow::Result<()>,
+{
+    let begin_terms = get_terms(others).await?;
+
+    let returned_ns = clock::monotonic_ns();
+    end_fault()?;
+
+    let deadline = Instant::now() + REJOIN_LIMIT;
+    let rejoins = loop {
+        let rejoins = returning.admin().get_rejoins(()).await?.into_inner();
+
+        let rejoined = rejoins.rejoins.iter().all(|rejoin| rejoin.rejoined_ns > 0);
+        if rejoined || Instant::now() >= deadline {
+            break rejoins;
+        }
+        sleep(REJOIN_POLL).await;
+    };
+    returning.admin().disarm_rejoin(()).await?;
+
+    let mut end_terms = get_terms(others).await?;
+    end_terms.extend(get_terms(std::slice::from_ref(returning)).await?);
+    Ok(RejoinSummary::new(
+        phase,
+        returned_ns,
+        &rejoins,
+        &begin_terms,
+        &end_terms,
+    ))
+}
+
+/// Return the terms of the members of every group on each of `nodes`.
+async fn get_terms(nodes: &[NodeProcess]) -> anyhow::Result<Vec<pb::Terms>> {
+    let terms = try_join_all(nodes.iter().map(|node| {
+        let mut admin = node.admin();
+        async move { admin.get_terms(()).await.map(|response| response.into_inner()) }
+    }))
+    .await?;
+    Ok(terms)
 }
 
 /// Count the groups that a surviving node initialized, but no longer leads.

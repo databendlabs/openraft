@@ -122,7 +122,7 @@ where
 }
 
 /// Return the highest term of each group among the terms that the nodes reported.
-fn highest_terms<'a, I>(reports: I) -> Vec<u64>
+pub(crate) fn highest_terms<'a, I>(reports: I) -> Vec<u64>
 where I: IntoIterator<Item = &'a pb::Terms> {
     let mut highest = Vec::new();
     for report in reports {

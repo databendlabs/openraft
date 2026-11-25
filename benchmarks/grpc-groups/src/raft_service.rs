@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use openraft::raft::AppendError;
 use raft_kv_memstore_grpc::protobuf as raftpb;
 use raft_kv_memstore_grpc::typ::Snapshot;
 use raft_kv_memstore_grpc::typ::SnapshotMeta;
@@ -13,16 +14,20 @@ use tonic::Status;
 use crate::Raft;
 use crate::protobuf as pb;
 use crate::protobuf::group_raft_server::GroupRaft;
+use crate::rejoins::Rejoins;
 
 /// Passes each Raft request from a peer node to this node's member of its group.
 pub(crate) struct RaftService {
     /// This node's member of each group, by group id, set once at setup.
     groups: Arc<OnceLock<Vec<Raft>>>,
+
+    /// Learns of every AppendEntries request that a member accepts.
+    rejoins: Rejoins,
 }
 
 impl RaftService {
-    pub(crate) fn new(groups: Arc<OnceLock<Vec<Raft>>>) -> Self {
-        Self { groups }
+    pub(crate) fn new(groups: Arc<OnceLock<Vec<Raft>>>, rejoins: Rejoins) -> Self {
+        Self { groups, rejoins }
     }
 
     fn group(&self, group_id: u64) -> Result<&Raft, Status> {
@@ -42,6 +47,10 @@ impl GroupRaft for RaftService {
         let request = request.ok_or_else(|| Status::invalid_argument("no AppendEntries request"))?;
 
         let result = self.group(group_id)?.append_entries(request.into()).await.map_err(internal)?;
+        // A member that rejects the sender's vote does not accept it as the leader.
+        if !matches!(result, Err(AppendError::HigherVote(_))) {
+            self.rejoins.accepted(group_id);
+        }
         Ok(Response::new(result.into()))
     }
 

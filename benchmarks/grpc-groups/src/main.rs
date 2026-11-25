@@ -1,6 +1,6 @@
 //! Measure Raft groups whose members run in separate processes and talk over gRPC, in steady
-//! operation and through the crash of a node. The README describes the scenarios and the fields
-//! that a run prints.
+//! operation and through the crash or the hang of a node. The README describes the scenarios and
+//! the fields that a run prints.
 
 mod admin_service;
 mod clock;
@@ -14,6 +14,8 @@ mod phase;
 mod raft_config;
 mod raft_service;
 mod ready;
+mod rejoin_summary;
+mod rejoins;
 mod router;
 mod router_stats;
 mod scenario;

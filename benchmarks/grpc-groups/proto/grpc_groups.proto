@@ -123,6 +123,29 @@ message Takeovers {
   repeated Takeover takeovers = 1;
 }
 
+message ArmRejoinRequest {
+  // The CLOCK_MONOTONIC time, in nanoseconds, before which this node records nothing. The driver
+  // picks a time while the node is down, so that every event it records follows its return.
+  uint64 after_ns = 1;
+}
+
+// How this node's member of one group rejoined it, in CLOCK_MONOTONIC nanoseconds; 0 for not
+// yet.
+message Rejoin {
+  uint64 group_id = 1;
+  // Whether the member led the group when the rejoin was armed.
+  bool led = 2;
+  // When a member that led the group stopped reporting `Leader`.
+  uint64 stepdown_ns = 3;
+  // When the member first replied to an AppendEntries request without rejecting the sender's
+  // vote, or led the group in a term above the one it had when the rejoin was armed.
+  uint64 rejoined_ns = 4;
+}
+
+message Rejoins {
+  repeated Rejoin rejoins = 1;
+}
+
 service Admin {
   // Connect to the peers, and create this node's member of each group.
   rpc Setup(SetupRequest) returns (google.protobuf.Empty) {}
@@ -138,8 +161,15 @@ service Admin {
   rpc EndWindow(google.protobuf.Empty) returns (WindowReport) {}
 
   rpc GetLeaders(google.protobuf.Empty) returns (Leaders) {}
+  rpc GetTerms(google.protobuf.Empty) returns (Terms) {}
 
-  // Watch this node's members of the groups whose leader is about to fail.
+  // Watch this node's members of the groups whose leader is about to fail, until DisarmFailover.
   rpc ArmFailover(ArmFailoverRequest) returns (google.protobuf.Empty) {}
   rpc GetTakeovers(google.protobuf.Empty) returns (Takeovers) {}
+  rpc DisarmFailover(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+
+  // Record how this node rejoins its groups once it returns from a fault, until DisarmRejoin.
+  rpc ArmRejoin(ArmRejoinRequest) returns (google.protobuf.Empty) {}
+  rpc GetRejoins(google.protobuf.Empty) returns (Rejoins) {}
+  rpc DisarmRejoin(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }

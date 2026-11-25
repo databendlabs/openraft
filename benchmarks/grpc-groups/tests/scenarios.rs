@@ -96,3 +96,40 @@ fn test_crash_measures_the_failover_of_the_groups_node_1_led() {
         "heartbeats to node 1 fail: {degraded:?}"
     );
 }
+
+#[test]
+fn test_hang_measures_the_failover_and_the_rejoin_of_node_1() {
+    let lines = run(&[
+        "--scenario",
+        "hang",
+        "--groups",
+        "6",
+        "--settle-secs",
+        "1",
+        "--window-secs",
+        "2",
+    ]);
+
+    let phases = lines.iter().map(|line| line["phase"].as_str()).collect::<Vec<_>>();
+    assert_eq!(vec!["baseline", "failover", "degraded", "rejoin", "after"], phases);
+
+    let failover = &lines[1];
+    assert_eq!("2", failover["affected"]);
+    assert_eq!("0", failover["unrecovered"]);
+
+    let degraded = &lines[2];
+    assert!(
+        number(degraded, "hb_failed") > 0.0,
+        "heartbeats to the stopped node 1 time out: {degraded:?}"
+    );
+
+    // Node 1 resumes as the leader of groups 0 and 3, which have new leaders by then.
+    let rejoin = &lines[3];
+    assert_eq!("0", rejoin["unrejoined"], "got: {rejoin:?}");
+    assert!(number(rejoin, "stepdown_max_ms") >= 0.0, "got: {rejoin:?}");
+    assert!(number(rejoin, "rejoin_max_ms") >= 0.0, "got: {rejoin:?}");
+    assert!(number(rejoin, "disrupted") <= 6.0, "got: {rejoin:?}");
+
+    let after = &lines[4];
+    assert!(number(after, "appends/s") > 0.0, "got: {after:?}");
+}

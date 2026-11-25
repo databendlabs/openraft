@@ -12,6 +12,7 @@ use crate::protobuf::admin_server::AdminServer;
 use crate::protobuf::group_raft_server::GroupRaftServer;
 use crate::raft_config;
 use crate::raft_service::RaftService;
+use crate::rejoins::Rejoins;
 use crate::router::Router;
 
 #[derive(Debug, clap::Args)]
@@ -48,8 +49,9 @@ async fn serve(id: u64, config: Arc<Config>) -> anyhow::Result<()> {
     stdout.flush()?;
 
     let groups = Arc::new(OnceLock::new());
-    let raft_service = RaftService::new(groups.clone());
-    let admin_service = AdminService::new(id, config, Router::default(), groups);
+    let rejoins = Rejoins::default();
+    let raft_service = RaftService::new(groups.clone(), rejoins.clone());
+    let admin_service = AdminService::new(id, config, Router::default(), groups, rejoins);
 
     // A heartbeat and its reply take a few bytes each. Send them at once, rather than waiting for
     // more data as Nagle's algorithm would.

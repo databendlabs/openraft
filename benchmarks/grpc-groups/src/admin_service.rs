@@ -22,6 +22,7 @@ use crate::group_network::GroupNetwork;
 use crate::protobuf as pb;
 use crate::protobuf::admin_server::Admin;
 use crate::ready::is_ready_leader;
+use crate::rejoins::Rejoins;
 use crate::router::Router;
 use crate::takeovers::Takeovers;
 use crate::window::Window;
@@ -29,8 +30,9 @@ use crate::window::Window;
 /// How long a node waits for the groups it initialized to elect it and commit an entry.
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// How long a node watches a group whose leader is about to fail. The watch starts before the
-/// fault, so it lasts longer than the 30 s that the driver waits after it.
+/// How long a node watches a group whose leader is about to fail, unless the driver disarms the
+/// watch when `failover` ends. The watch starts before the fault, so it lasts longer than the
+/// 30 s that the driver waits after it.
 const TAKEOVER_LIMIT: Duration = Duration::from_secs(40);
 
 /// Carries out the driver's requests on one node.
@@ -47,10 +49,19 @@ pub(crate) struct AdminService {
 
     window: Mutex<Option<Window>>,
     takeovers: Takeovers,
+
+    /// Shared with the Raft server, which reports the AppendEntries requests the members accept.
+    rejoins: Rejoins,
 }
 
 impl AdminService {
-    pub(crate) fn new(id: u64, config: Arc<Config>, router: Router, groups: Arc<OnceLock<Vec<Raft>>>) -> Self {
+    pub(crate) fn new(
+        id: u64,
+        config: Arc<Config>,
+        router: Router,
+        groups: Arc<OnceLock<Vec<Raft>>>,
+        rejoins: Rejoins,
+    ) -> Self {
         Self {
             id,
             config,
@@ -59,6 +70,7 @@ impl AdminService {
             nodes: OnceLock::new(),
             window: Mutex::new(None),
             takeovers: Takeovers::default(),
+            rejoins,
         }
     }
 
@@ -191,6 +203,10 @@ impl Admin for AdminService {
         }))
     }
 
+    async fn get_terms(&self, _request: Request<()>) -> Result<Response<pb::Terms>, Status> {
+        Ok(Response::new(terms(self.groups()?)))
+    }
+
     async fn arm_failover(&self, request: Request<pb::ArmFailoverRequest>) -> Result<Response<()>, Status> {
         let group_ids = request.into_inner().group_ids;
         let groups = self.groups()?;
@@ -201,6 +217,28 @@ impl Admin for AdminService {
 
     async fn get_takeovers(&self, _request: Request<()>) -> Result<Response<pb::Takeovers>, Status> {
         Ok(Response::new(self.takeovers.recorded()))
+    }
+
+    async fn disarm_failover(&self, _request: Request<()>) -> Result<Response<()>, Status> {
+        self.takeovers.disarm();
+        Ok(Response::new(()))
+    }
+
+    async fn arm_rejoin(&self, request: Request<pb::ArmRejoinRequest>) -> Result<Response<()>, Status> {
+        let after_ns = request.into_inner().after_ns;
+        let groups = self.groups()?;
+
+        self.rejoins.arm(groups, after_ns).map_err(internal)?;
+        Ok(Response::new(()))
+    }
+
+    async fn get_rejoins(&self, _request: Request<()>) -> Result<Response<pb::Rejoins>, Status> {
+        Ok(Response::new(self.rejoins.recorded()))
+    }
+
+    async fn disarm_rejoin(&self, _request: Request<()>) -> Result<Response<()>, Status> {
+        self.rejoins.disarm();
+        Ok(Response::new(()))
     }
 }
 

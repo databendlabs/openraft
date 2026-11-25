@@ -1,12 +1,15 @@
 # gRPC groups
 
 This benchmark measures Raft groups whose members run in separate processes and talk over gRPC,
-in steady operation and through the crash of a node. It implements the first part of the design
-agreed in [#2458](https://github.com/databendlabs/openraft/issues/2458#issuecomment-7138083103).
+in steady operation and through the crash or the hang of a node. It implements the design agreed
+in [#2458](https://github.com/databendlabs/openraft/issues/2458#issuecomment-7138083103), except
+for the `partition` scenario and writes, which
+[#2515](https://github.com/databendlabs/openraft/issues/2515) adds.
 
 - **Processes.** `grpc-groups run` is the driver. It starts `--nodes` processes of
-  `grpc-groups node`, the same binary, on localhost, controls them through an admin gRPC service,
-  and kills node 1 in `crash` with `SIGKILL`.
+  `grpc-groups node`, the same binary, on localhost, and controls them through an admin gRPC
+  service. It kills node 1 in `crash` with `SIGKILL`, and in `hang` stops it with `SIGSTOP` and
+  later resumes it with `SIGCONT`.
 - **Groups.** Each node holds one member of each of `--groups` groups. Node `g % nodes + 1`
   initializes group `g` and becomes its leader, so each node first leads the same share of the
   groups.
@@ -30,12 +33,12 @@ cargo run --release --manifest-path benchmarks/grpc-groups/Cargo.toml -- run --s
 | Option           | Default  | Meaning                                                      |
 |------------------|----------|--------------------------------------------------------------|
 | `--scenario`     | `steady` | What happens once the groups have settled: see below.        |
-| `--nodes`        | 3        | The node processes. `crash` needs 3 or more.                 |
+| `--nodes`        | 3        | The node processes. `crash` and `hang` need 3 or more.       |
 | `--groups`       | 1000     | The groups.                                                  |
 | `--workers`      | 4        | The worker threads of the tokio runtime of each node.        |
 | `--settle-secs`  | 10       | Seconds to wait once every group has a leader.               |
 | `--measure-secs` | 30       | Seconds of the `measure` window of `steady`.                 |
-| `--window-secs`  | 10       | Seconds of each window of `crash`: `baseline` and `degraded`. |
+| `--window-secs`  | 10       | Seconds of each other window: `baseline`, `degraded` and `after`. `hang` needs 1 or more. |
 
 ## Scenarios and phases
 
@@ -44,26 +47,31 @@ over one heartbeat interval, so that the heartbeats of different groups are not 
 leader of each group has committed its blank entry, the run waits `--settle-secs`. Nothing is
 written to the groups.
 
-`steady` then measures one window, `measure`. `crash` runs these phases:
+`steady` then measures one window, `measure`. `crash` and `hang` run these phases, and only `hang`
+the last two:
 
 | Phase      | Starts                    | Ends                                                         |
 |------------|---------------------------|--------------------------------------------------------------|
 | `baseline` | after the settle period   | after `--window-secs`                                        |
-| `failover` | when the driver kills node 1 with `SIGKILL` | when each group that node 1 led has a leader that committed an entry of its term, or after 30 s |
+| `failover` | when the driver kills node 1 with `SIGKILL`, or stops it with `SIGSTOP` | when each group that node 1 led has a leader that committed an entry of its term, or after 30 s |
 | `degraded` |                           | after `--window-secs`, without node 1                       |
+| `rejoin`   | when the driver resumes node 1 with `SIGCONT` | when node 1 has rejoined every group, as `rejoin_*` below defines, or after 30 s |
+| `after`    |                           | after `--window-secs`, with node 1                           |
 
 A crashed node stays down: its in-memory stores lost its vote, which Raft requires a node to keep.
+A stopped node keeps its state and its connections, but runs nothing, its timers included. The
+other nodes get no reply from it, so openraft drops their requests to it at their timeout.
 
-The driver and the nodes stamp the fault and the takeovers with `CLOCK_MONOTONIC`, which all
-processes on one host share.
+The driver and the nodes stamp the fault, the takeovers, the resume and the rejoins with
+`CLOCK_MONOTONIC`, which all processes on one host share.
 
 ## Fields
 
 Each phase prints one line of tab-separated `name=value` fields. Every line begins with
 `scenario`, `phase`, `nodes` and `groups`.
 
-The windows, `measure`, `baseline` and `degraded`, report these over the node processes that are
-running. Counts and rates are summed, and percentiles cover the samples of all nodes:
+The windows, `measure`, `baseline`, `degraded` and `after`, report these over the node processes
+that are running. Counts and rates are summed, and percentiles cover the samples of all nodes:
 
 | Field | Meaning |
 |---|---|
@@ -86,23 +94,43 @@ idle, `ack_age` therefore ranges from one round trip to one heartbeat interval p
 | Field | Meaning |
 |---|---|
 | `affected` | how many groups node 1 led |
-| `elect_p50_ms`, `elect_p90_ms`, `elect_p99_ms`, `elect_max_ms` | from the kill until a surviving member reports `ServerState::Leader` |
+| `elect_p50_ms`, `elect_p90_ms`, `elect_p99_ms`, `elect_max_ms` | from the fault until a surviving member reports `ServerState::Leader` |
 | `ready_p50_ms`, `ready_p90_ms`, `ready_p99_ms`, `ready_max_ms` | until that leader commits the blank entry of its term, after which writes can commit |
 | `retried` | groups that needed more than one term, as after a split vote |
 | `unrecovered` | groups that had no such leader when the phase ended |
 | `moved` | other groups whose leader changed; 0 is expected |
 
-A percentile of the failover times is exact, by the nearest rank. A percentile of a window is
-within 1.6% of the true value: it comes from a log-scale histogram.
+`rejoin` covers every group. Node 1 records the times itself, and only from about 500 ms after the
+fault on, while it is still stopped, so that each time follows its resume:
+
+| Field | Meaning |
+|---|---|
+| `stepdown_p99_ms`, `stepdown_max_ms` | from the resume until node 1 stops reporting `Leader` in a group that it led when it stopped |
+| `rejoin_p99_ms`, `rejoin_max_ms` | until node 1 first replies to an AppendEntries request of the group without rejecting the sender's vote, or leads the group in a new term |
+| `unrejoined` | groups that node 1 had not rejoined when the phase ended |
+| `disrupted` | groups whose highest term grew during the phase. Each held an election, so its leader stepped down, even if it won again. |
+
+A percentile of the failover and rejoin times is exact, by the nearest rank. A percentile of a
+window is within 1.6% of the true value: it comes from a log-scale histogram.
 
 ## Expected values
 
 - A follower campaigns once `leader_lease`, which equals `election_timeout_max` (300 ms), plus
   its election timeout (150 to 300 ms) has passed since its leader last reached it. With a
-  heartbeat every 50 ms, the first survivor of a group campaigns 400 to 600 ms after the kill.
+  heartbeat every 50 ms, the first survivor of a group campaigns 400 to 600 ms after the fault.
   `elect_*` values far outside that range at idle need an explanation before any comparison.
 - At idle, each leader sends a heartbeat to each follower about every 50 ms. idle-groups measured
   about 35,000 AppendEntries requests per second for 1,000 groups with local followers.
+- In `hang`, node 1 resumes long past the election deadline of each group it followed. With
+  `enable_pre_vote` off, the default, it raises the term of most of them: in 5 runs at 1,000
+  groups, `disrupted` was 628 to 666 of the 666 groups that node 1 followed, and node 1 took 303 to
+  620 ms to rejoin every group. With `-- --enable-pre-vote true`, `disrupted` was 0 in 4 runs, and
+  node 1 rejoined every group within 79 to 83 ms.
+- In `degraded`, `hang` counts about 2.3 more tasks per group than `crash`, at 300 and 1,000
+  groups and with windows of 2 s and 6 s alike. Requests to the stopped node 1 stay in flight
+  until openraft drops them at their timeout, while requests to a crashed node fail at once.
+  hyper's HTTP/2 client runs each request in flight on a task, and its body on a second one
+  while the connection cannot send it.
 
 ## Measuring a change
 

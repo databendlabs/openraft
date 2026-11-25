@@ -48,7 +48,8 @@ phase, with the smallest and the largest run in parentheses.
   334 tasks of the benchmark itself. Each survivor watches each group that node 1 led until it
   takes the group over or 40 s pass, so when `degraded` ends, the survivor that did not take a
   group over still watches it. With 300 groups, a run with 5 s windows ended `degraded` with
-  5,516 tasks, and one with 45 s windows with 5,416.
+  5,516 tasks, and one with 45 s windows with 5,416. The driver has since ended the watchers with
+  `failover`: a later `crash` run at 1,000 groups ended `degraded` with 18,016 tasks.
 - Heartbeats failed in 8 of the 20 windows before the crash, at most 0.67% of the requests of a
   window. Each of those windows also had a reply slower than 50 ms, the `heartbeat_interval`
   after which openraft drops a heartbeat; the other 12 had no reply slower than 46 ms.

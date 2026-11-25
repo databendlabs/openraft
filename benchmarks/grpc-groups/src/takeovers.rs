@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use openraft::ServerState;
 use openraft::async_runtime::WatchReceiver;
+use tokio::task::AbortHandle;
 
 use crate::Raft;
 use crate::clock;
@@ -16,21 +17,34 @@ use crate::ready::is_ready_leader;
 pub(crate) struct Takeovers {
     /// The takeover of each group, by group id, once this node's member became its leader.
     records: Arc<Mutex<BTreeMap<u64, pb::Takeover>>>,
+
+    /// The watchers that [`Self::arm()`] started, which [`Self::disarm()`] ends.
+    watchers: Arc<Mutex<Vec<AbortHandle>>>,
 }
 
 impl Takeovers {
     /// Watch the members of `groups` with the ids `group_ids`, for at most `limit`: record when one
     /// becomes leader, and when it then commits an entry of its term.
     pub(crate) fn arm(&self, groups: &[Raft], group_ids: &[u64], limit: Duration) -> anyhow::Result<()> {
+        let mut watchers = self.watchers.lock().expect("no thread panics while it holds the lock");
         for &group_id in group_ids {
             let index = usize::try_from(group_id)?;
             let Some(raft) = groups.get(index).cloned() else {
                 anyhow::bail!("no group {group_id}");
             };
             let records = self.records.clone();
-            tokio::spawn(watch_takeover(raft, group_id, limit, records));
+            let watcher = tokio::spawn(watch_takeover(raft, group_id, limit, records));
+            watchers.push(watcher.abort_handle());
         }
         Ok(())
+    }
+
+    /// End the watchers, so that the members that took over no group stop waiting until `limit`.
+    pub(crate) fn disarm(&self) {
+        let mut watchers = self.watchers.lock().expect("no thread panics while it holds the lock");
+        for watcher in watchers.drain(..) {
+            watcher.abort();
+        }
     }
 
     /// Return the takeovers recorded so far.

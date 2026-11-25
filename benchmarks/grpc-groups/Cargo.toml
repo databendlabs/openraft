@@ -1,6 +1,6 @@
 [package]
 name = "bench-grpc-groups"
-description = "Measure Raft groups whose members run in separate processes and talk over gRPC, in steady operation and through the crash of a node"
+description = "Measure Raft groups whose members run in separate processes and talk over gRPC, in steady operation and through the crash or the hang of a node"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"

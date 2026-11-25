@@ -475,8 +475,8 @@ verify-bench-durable-rocks:
 	cargo test --manifest-path benchmarks/durable/Cargo.toml --all-targets --all-features
 	cargo clippy --no-deps --manifest-path benchmarks/durable/Cargo.toml --all-targets --all-features -- -D warnings
 
-# Raft groups across node processes over gRPC, through the crash of a node (#2458). The tests run
-# each scenario with a few groups.
+# Raft groups across node processes over gRPC, through the crash or the hang of a node (#2458).
+# The tests run each scenario with a few groups.
 verify-bench-grpc-groups:
 	cargo test --manifest-path benchmarks/grpc-groups/Cargo.toml --all-targets
 	cargo clippy --no-deps --manifest-path benchmarks/grpc-groups/Cargo.toml --all-targets -- -D warnings

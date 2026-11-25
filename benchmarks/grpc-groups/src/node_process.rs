@@ -53,6 +53,28 @@ impl NodeProcess {
         self.child.wait()?;
         Ok(())
     }
+
+    /// Stop the node with `SIGSTOP`, as a hang would: it keeps its connections and its state, but
+    /// runs nothing, its timers included, until [`Self::resume()`].
+    pub(crate) fn stop(&self) -> anyhow::Result<()> {
+        self.signal(libc::SIGSTOP).context("stop the node with SIGSTOP")
+    }
+
+    /// Resume the node with `SIGCONT` after [`Self::stop()`].
+    pub(crate) fn resume(&self) -> anyhow::Result<()> {
+        self.signal(libc::SIGCONT).context("resume the node with SIGCONT")
+    }
+
+    fn signal(&self, signal: libc::c_int) -> std::io::Result<()> {
+        let pid = libc::pid_t::try_from(self.child.id()).map_err(std::io::Error::other)?;
+        // SAFETY: `kill()` reads only its arguments, and `pid` is a child of this process that it
+        // has not waited for, so the pid still names that child.
+        let ret = unsafe { libc::kill(pid, signal) };
+        if ret != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
 }
 
 impl Drop for NodeProcess {

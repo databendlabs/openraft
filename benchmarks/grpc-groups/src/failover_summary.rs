@@ -110,7 +110,7 @@ impl fmt::Display for FailoverSummary {
 }
 
 /// Return the `p` percentile of `sorted`, `p` from 0 to 1, by the nearest rank.
-fn percentile(sorted: &[u64], p: f64) -> Option<u64> {
+pub(crate) fn percentile(sorted: &[u64], p: f64) -> Option<u64> {
     if sorted.is_empty() {
         return None;
     }
@@ -119,7 +119,7 @@ fn percentile(sorted: &[u64], p: f64) -> Option<u64> {
 }
 
 /// Format nanoseconds as milliseconds with one decimal.
-fn millis(nanos: Option<u64>) -> String {
+pub(crate) fn millis(nanos: Option<u64>) -> String {
     nanos.map_or_else(|| "n/a".to_string(), |nanos| format!("{:.1}", nanos as f64 / 1e6))
 }
 
