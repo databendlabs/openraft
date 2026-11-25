@@ -201,6 +201,13 @@ use crate::vote::raft_vote::RaftVoteExt;
 /// in the example above. The macro adds the `where T: OptionalSend + 'static` bound that
 /// [`RaftTypeConfig`] declares for it, so an entry does not write its own `where` clause.
 ///
+/// Attributes before the type name, such as a doc comment or `#[derive(Hash)]`, apply to the
+/// generated struct. A `#[cfg(...)]` among them also applies to its [`RaftTypeConfig`]
+/// implementation, so a declaration whose `cfg` is false leaves neither item. Every other
+/// attribute, `#[cfg_attr(...)]` included, applies to the struct only. A macro that forwards a
+/// `cfg` to this one must pass it as tokens, such as with `$(#[$($attr:tt)*])*`: a `cfg` forwarded
+/// as a `meta` fragment applies to the struct only.
+///
 /// Types can be omitted, and the following default type will be used:
 /// - `D`:              `String`
 /// - `R`:              `String`
@@ -235,17 +242,22 @@ use crate::vote::raft_vote::RaftVoteExt;
 macro_rules! declare_raft_types {
     // Add a trailing colon to    `declare_raft_types(MyType)`,
     // Make it the standard form: `declare_raft_types(MyType:)`.
-    ($(#[$outer:meta])* $visibility:vis $id:ident) => {
-        $crate::declare_raft_types!($(#[$outer])* $visibility $id:);
+    // Attributes pass as tokens, so that the main entry still finds a `cfg` among them.
+    ($(#[$($outer:tt)*])* $visibility:vis $id:ident) => {
+        $crate::declare_raft_types!($(#[$($outer)*])* $visibility $id:);
     };
 
     // The main entry of this macro
-    ($(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident $(<$type_param:ident>)? = $type:ty),* $(,)? ) => {
-        $(#[$outer])*
+    // Attributes are matched as tokens, not as `meta` fragments: a fragment is opaque to later
+    // matching, so a `cfg` in one could not be picked out.
+    ($(#[$($outer:tt)*])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident $(<$type_param:ident>)? = $type:ty),* $(,)? ) => {
+        $(#[$($outer)*])*
         #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
         $visibility struct $id {}
 
-        impl $crate::RaftTypeConfig for $id {
+        // The impl takes only the `cfg` attributes of the struct: a disabled struct must leave no
+        // impl behind, and other attributes, such as `derive`, do not apply to an impl.
+        $crate::__declare_raft_types_cfg!([$(#[$($outer)*])*] [] impl $crate::RaftTypeConfig for $id {
             // `expand!(KEYED, ...)` ignores the duplicates of a type name.
             // Thus by appending default types after user defined types,
             // the absent user defined types are filled with default types.
@@ -273,7 +285,29 @@ macro_rules! declare_raft_types {
                 (ErrorSource    , , , $crate::impls::BoxedErrorSource               ),
             );
 
-        }
+        });
+    };
+}
+
+/// Emits an item under only the `#[cfg(...)]` attributes of an attribute list.
+///
+/// `__declare_raft_types_cfg!([attributes] [] item)` moves each `#[cfg(...)]` of `attributes` into
+/// the second list and drops every other attribute, then emits `item` under the collected ones.
+/// `declare_raft_types!` gates its `RaftTypeConfig` impl with it.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __declare_raft_types_cfg {
+    ([#[cfg($($predicate:tt)*)] $($attrs:tt)*] [$($cfgs:tt)*] $($item:tt)*) => {
+        $crate::__declare_raft_types_cfg!([$($attrs)*] [$($cfgs)* #[cfg($($predicate)*)]] $($item)*);
+    };
+
+    ([#[$($attr:tt)*] $($attrs:tt)*] [$($cfgs:tt)*] $($item:tt)*) => {
+        $crate::__declare_raft_types_cfg!([$($attrs)*] [$($cfgs)*] $($item)*);
+    };
+
+    ([] [$($cfgs:tt)*] $($item:tt)*) => {
+        $($cfgs)*
+        $($item)*
     };
 }
 

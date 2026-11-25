@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use std::fmt;
+use std::hash::Hash;
 
 use openraft_rt_tokio::TokioRuntime;
 
@@ -97,6 +98,38 @@ declare_raft_types!(
         AsyncRuntime = TokioRuntime,
 );
 
+declare_raft_types!(
+    /// Its `cfg` holds, so the struct also gets the `derive` that an impl does not accept.
+    #[cfg(test)]
+    #[derive(Hash)]
+    pub(crate) CfgEnabled:
+        D = u64,
+        AsyncRuntime = TokioRuntime,
+);
+
+declare_raft_types!(
+    #[cfg(not(test))]
+    CfgDisabled:
+        D = u64,
+        AsyncRuntime = TokioRuntime,
+);
+
+// The default `AsyncRuntime` exists only with `tokio-rt`.
+declare_raft_types!(
+    #[cfg(feature = "tokio-rt")]
+    CfgEnabledWithoutColon
+);
+
+declare_raft_types!(
+    #[cfg(not(test))]
+    CfgDisabledWithoutColon
+);
+
+// These reuse the names of the disabled declarations: a struct left behind would conflict with
+// them, and an impl left behind would require the derives they lack.
+struct CfgDisabled;
+struct CfgDisabledWithoutColon;
+
 #[test]
 fn test_payload_type() {
     fn assert_payload<C, P>()
@@ -120,6 +153,22 @@ fn test_generic_types() {
     assert_generic_types::<All, crate::impls::OneshotResponder<All, u64>, Vec<u64>>();
     #[cfg(feature = "tokio-rt")]
     assert_generic_types::<Empty, crate::impls::ProgressResponder<Empty, u64>, crate::impls::InlineBatch<u64>>();
+}
+
+#[test]
+fn test_cfg_inside_invocation() {
+    fn assert_type_config<C>()
+    where C: RaftTypeConfig {
+    }
+
+    fn assert_hash<C>()
+    where C: Hash {
+    }
+
+    assert_type_config::<CfgEnabled>();
+    assert_hash::<CfgEnabled>();
+    #[cfg(feature = "tokio-rt")]
+    assert_type_config::<CfgEnabledWithoutColon>();
 }
 
 #[test]
