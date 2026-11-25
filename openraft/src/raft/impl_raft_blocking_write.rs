@@ -354,6 +354,11 @@ where
     /// [`Wait::replication`] when the application needs to distinguish these outcomes or impose
     /// a timeout.
     ///
+    /// The wait also ends, and this method returns the response, once the effective membership
+    /// gives the node no [`NodeRole::ReceiveLogs`]. The leader sends no log to a node without this
+    /// role, for example a re-added voter that only votes, so replication to it may never catch up.
+    /// [`Wait::replication`] keeps waiting for such a node until its timeout.
+    ///
     /// If blocking is `false`, this function returns at once as successfully setting up the
     /// replication.
     ///
@@ -382,6 +387,7 @@ where
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     /// [`Config::replication_lag_threshold`]: crate::Config::replication_lag_threshold
     /// [`Wait::replication`]: crate::metrics::Wait::replication
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
     ///
     /// Generic wrappers must carry the optional capability bound:
     ///
@@ -414,6 +420,10 @@ where
     ///     raft.add_learner(id, node, true).await.unwrap();
     /// }
     /// ```
+    #[since(
+        version = "0.10.2",
+        change = "with `blocking`, stops waiting for a node without `ReceiveLogs`"
+    )]
     #[since(
         version = "0.10.0",
         change = "requires the optional RaftMembershipEditOps capability"

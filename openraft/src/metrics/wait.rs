@@ -10,6 +10,7 @@ use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::core::replication_lag;
+use crate::membership::RaftMembershipExt;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
@@ -176,6 +177,53 @@ where C: RaftTypeConfig
 
         Self::check_replication(&metrics, &node_id, min_index, max_lag)?;
         Ok(metrics)
+    }
+
+    /// Wait for replication to `node_id` as [`Self::replication()`] does, while `node_id` receives
+    /// logs.
+    ///
+    /// The leader sends no log to a node without [`NodeRole::ReceiveLogs`], such as a read voter
+    /// that only votes, so replication to it may never catch up. Once metrics as fresh as
+    /// `min_index` show `node_id` without this role in the effective membership, the wait returns
+    /// `Ok(None)`, unless the same metrics show replication caught up. Every metrics report is
+    /// checked, the first one included, so a membership change that takes the role away during
+    /// the wait ends it too.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    pub(crate) async fn replication_while_receiving_logs(
+        &self,
+        node_id: C::NodeId,
+        min_index: Option<u64>,
+        max_lag: u64,
+    ) -> Result<Option<RaftMetrics<C>>, ReplicationWaitError> {
+        let metrics = self
+            .metrics(
+                |m| {
+                    let caught_up = Self::check_replication(m, &node_id, min_index, max_lag);
+                    caught_up != Ok(false) || Self::receives_no_logs(m, &node_id, min_index)
+                },
+                format!("replication to {node_id} reaches {min_index:?} with lag <= {max_lag} while it receives logs"),
+            )
+            .await?;
+
+        let caught_up = Self::check_replication(&metrics, &node_id, min_index, max_lag)?;
+        Ok(caught_up.then_some(metrics))
+    }
+
+    /// Returns whether metrics as fresh as `min_index` show `node_id` without
+    /// [`NodeRole::ReceiveLogs`] in the effective membership.
+    ///
+    /// Older metrics may predate the membership entry at `min_index`, so they tell nothing about
+    /// the role of `node_id`.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    fn receives_no_logs(metrics: &RaftMetrics<C>, node_id: &C::NodeId, min_index: Option<u64>) -> bool {
+        if metrics.last_log_index < min_index {
+            return false;
+        }
+
+        let membership = metrics.membership_config.membership();
+        !membership.receives_logs(node_id)
     }
 
     fn check_replication(
