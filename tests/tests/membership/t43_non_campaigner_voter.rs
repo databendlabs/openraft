@@ -8,13 +8,16 @@ use openraft::SnapshotPolicy;
 use openraft::Vote;
 use openraft::alias::AsyncRuntimeOf;
 use openraft::alias::EntryOf;
+use openraft::async_runtime::Select2;
 use openraft::async_runtime::WatchReceiver;
 use openraft::entry::RaftEntry;
 use openraft::membership::NodeRole;
 use openraft::testing::log_id;
 use openraft::type_config::TypeConfigExt;
+use openraft_membership::ExplicitChange;
 use openraft_membership::ExplicitMembership;
 
+use crate::fixtures::WAIT_TIMEOUT;
 use crate::fixtures::custom_membership::TestCluster;
 use crate::fixtures::custom_membership::cluster_config;
 use crate::fixtures::ut_harness;
@@ -114,6 +117,111 @@ async fn non_campaigner_voter_leads_only_through_transfer() -> Result<()> {
             let applied = cluster.applied(node_id);
             assert_eq!(want, applied, "node {node_id}");
         }
+    }
+
+    Ok(())
+}
+
+/// A blocking re-add of a voter without `ReceiveLogs` returns once its entry commits, and keeps
+/// the voter's role.
+///
+/// Node 1 needs the vote of node 2 to win, but sends node 2 no log, so replication to node 2 never
+/// reaches the re-add entry.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn blocking_re_add_of_voter_without_receive_logs_returns() -> Result<()> {
+    let membership = ExplicitMembership::new([btreeset! {1, 2}], [btreeset! {1}], btreeset! {1, 2})?;
+    let membership = membership.with_roles(btreemap! {2 => NodeRole::Empty})?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2},
+        membership.clone(),
+    )
+    .await?;
+    let leader = cluster.raft(1);
+
+    tracing::info!("--- node 1 wins term 1 with the vote of node 2, and commits its blank entry alone");
+    {
+        leader.trigger().elect(false).await?;
+        leader.wait(timeout()).applied_index(Some(1), "node 1 commits its blank entry").await?;
+    }
+
+    tracing::info!(
+        log_index = 2,
+        "--- a blocking re-add of node 2 returns the committed entry, which keeps every role"
+    );
+    {
+        let adding = leader.add_learner(2, (), true);
+        let response = TypeConfig::timeout(WAIT_TIMEOUT, adding).await??;
+        assert_eq!(log_id::<TypeConfig>(1, 1, 2), response.log_id);
+        assert_eq!(Some(membership), response.membership);
+    }
+
+    Ok(())
+}
+
+/// A blocking re-add that waits for a learner returns once a membership change takes `ReceiveLogs`
+/// from the learner and keeps it in the membership.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn blocking_re_add_returns_once_target_stops_receiving_logs() -> Result<()> {
+    let membership = ExplicitMembership::new([btreeset! {1}], [btreeset! {1}], btreeset! {1, 2})?;
+    let cluster = TestCluster::<TypeConfig>::start(
+        cluster_config(SnapshotPolicy::Never),
+        btreeset! {1, 2},
+        membership.clone(),
+    )
+    .await?;
+    let leader = cluster.raft(1);
+
+    tracing::info!("--- node 1 wins term 1, and learner 2 stores its blank entry");
+    {
+        leader.trigger().elect(false).await?;
+        leader.wait(timeout()).applied_index(Some(1), "node 1 commits its blank entry").await?;
+        cluster.raft(2).wait(timeout()).log_index(Some(1), "learner 2 stores the blank entry").await?;
+    }
+
+    tracing::info!(
+        log_index = 2,
+        "--- cut learner 2 off; a blocking re-add of it commits, but cannot catch up"
+    );
+    let mut adding = {
+        cluster.cut_links(btreeset! {(1, 2)});
+
+        let mut adding = Box::pin(leader.add_learner(2, (), true));
+        let wait = leader.wait(timeout());
+        let applied = wait.applied_index(Some(2), "node 1 applies the re-add");
+        match TypeConfig::select2(adding.as_mut(), applied).await {
+            Select2::First(res) => panic!("the re-add returned while learner 2 is cut off: {res:?}"),
+            Select2::Second(res) => res?,
+        };
+        adding
+    };
+
+    tracing::info!(
+        log_index = 2,
+        "--- the state machine answered the re-add before node 1 reported it applied, \
+         so one poll receives the answer and starts the wait for learner 2"
+    );
+    {
+        let polled = futures::poll!(adding.as_mut());
+        assert!(polled.is_pending(), "the re-add waits for learner 2 to catch up");
+    }
+
+    tracing::info!(
+        log_index = 3,
+        "--- take ReceiveLogs from learner 2; the pending re-add returns its committed entry"
+    );
+    {
+        let change = ExplicitChange::default().with_roles(btreemap! {2 => NodeRole::Empty});
+        let response = leader.change_membership(change, true).await?;
+        assert_eq!(log_id::<TypeConfig>(1, 1, 3), response.log_id);
+        let want = membership.clone().with_roles(btreemap! {2 => NodeRole::Empty})?;
+        assert_eq!(Some(want), response.membership);
+
+        let response = TypeConfig::timeout(WAIT_TIMEOUT, adding).await??;
+        assert_eq!(log_id::<TypeConfig>(1, 1, 2), response.log_id);
+        assert_eq!(Some(membership), response.membership);
     }
 
     Ok(())
