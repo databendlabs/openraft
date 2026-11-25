@@ -56,23 +56,17 @@ fn eng() -> Engine<UTConfig> {
 }
 
 #[test]
-fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
-    // Snapshot will not be installed because new `last_log_id` is less or equal current
-    // `snapshot_meta.last_log_id`.
-    //
-    // It responds once the log IO of the current leader up to the snapshot is flushed.
-
+fn test_skipped_snapshot_advances_log_io_after_leader_change() -> anyhow::Result<()> {
     let mut eng = eng();
-
-    let curr_vote = *eng.state.vote_ref();
-
+    let leader_vote = Vote::new_committed(5, 2);
+    let snapshot_log_id = log_id(2, 1, 2);
     let (tx, _rx) = UTConfig::<()>::oneshot();
 
     eng.handle_install_full_snapshot(
-        curr_vote,
+        leader_vote,
         SnapshotOf::<UTConfig, ()> {
             meta: SnapshotMetaOf::<UTConfig> {
-                last_log_id: Some(log_id(1, 1, 2)),
+                last_log_id: Some(snapshot_log_id),
                 last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
             },
             snapshot: (),
@@ -88,15 +82,26 @@ fn test_handle_install_full_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         eng.state.snapshot_meta
     );
 
+    let vote_io = IOId::new(&leader_vote);
+    let io_id = IOId::new_log_io(leader_vote.to_committed(), Some(snapshot_log_id));
+    let accepted = eng.state.accepted_log_io();
+    assert_eq!(Some(&io_id), accepted);
     let (dummy_tx, _rx) = UTConfig::<()>::oneshot();
+    let commands = eng.output.take_commands();
     assert_eq!(
-        vec![Command::FailPendingReads, Command::Respond {
-            when: Some(Condition::IOFlushed {
-                io_id: LogIOId::new(Vote::new(4, 1).to_committed(), Some(log_id(1, 1, 2))).to_io_id(),
-            }),
-            resp: Respond::new(SnapshotResponse::new(curr_vote), dummy_tx),
-        },],
-        eng.output.take_commands()
+        vec![
+            Command::FailPendingReads,
+            Command::SaveVote { vote: leader_vote },
+            Command::UpdateIOProgress {
+                when: Some(Condition::IOFlushed { io_id: vote_io }),
+                io_id: io_id.clone(),
+            },
+            Command::Respond {
+                when: Some(Condition::IOFlushed { io_id }),
+                resp: Respond::new(SnapshotResponse::new(leader_vote), dummy_tx),
+            },
+        ],
+        commands
     );
 
     Ok(())

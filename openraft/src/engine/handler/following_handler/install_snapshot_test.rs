@@ -60,6 +60,9 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
     // Snapshot will not be installed because new `last_log_id` is less or equal current
     // `snapshot_meta.last_log_id`. The reply waits for the flush of the logs it covers.
     let mut eng = eng();
+    let vote = *eng.state.vote_ref();
+    let vote_io = IOId::new(&vote);
+    eng.state.log_progress_mut().try_update_all(vote_io.clone());
 
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
@@ -69,8 +72,8 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         snapshot: (),
     });
 
-    let io_id = LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(2, 1, 2))).to_io_id();
-    assert_eq!(Some(Condition::IOFlushed { io_id }), cond);
+    let io_id = IOId::new_log_io(vote.to_committed(), Some(log_id(2, 1, 2)));
+    assert_eq!(Some(Condition::IOFlushed { io_id: io_id.clone() }), cond);
 
     assert_eq!(
         SnapshotMetaOf::<UTConfig> {
@@ -79,7 +82,16 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert!(eng.output.take_commands().is_empty());
+    let accepted = eng.state.accepted_log_io();
+    assert_eq!(Some(&io_id), accepted);
+    let commands = eng.output.take_commands();
+    assert_eq!(
+        vec![Command::UpdateIOProgress {
+            when: Some(Condition::IOFlushed { io_id: vote_io }),
+            io_id,
+        }],
+        commands
+    );
 
     Ok(())
 }
@@ -92,17 +104,20 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
     // Although in this case the state machine is not affected.
     // The reply waits for the flush of the logs it covers.
     let mut eng = eng();
+    let leader = eng.state.vote_ref().to_committed();
+    let heartbeat_io = IOId::new_log_io(leader.clone(), Some(log_id(2, 1, 3)));
+    eng.state.log_progress_mut().try_update_all(heartbeat_io.clone());
 
     let cond = eng.following_handler().install_full_snapshot(SnapshotOf::<UTConfig, ()> {
         meta: SnapshotMetaOf::<UTConfig> {
-            last_log_id: Some(log_id(4, 1, 5)),
+            last_log_id: Some(log_id(2, 1, 4)),
             last_membership: StoredMembershipOf::<UTConfig>::new(Some(log_id(1, 1, 1)), m1234()),
         },
         snapshot: (),
     });
 
-    let io_id = LogIOId::new(Vote::new(2, 1).to_committed(), Some(log_id(4, 1, 5))).to_io_id();
-    assert_eq!(Some(Condition::IOFlushed { io_id }), cond);
+    let io_id = IOId::new_log_io(leader, Some(log_id(2, 1, 4)));
+    assert_eq!(Some(Condition::IOFlushed { io_id: io_id.clone() }), cond);
 
     assert_eq!(
         SnapshotMetaOf::<UTConfig> {
@@ -111,7 +126,16 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
         },
         eng.state.snapshot_meta
     );
-    assert!(eng.output.take_commands().is_empty());
+    let accepted = eng.state.accepted_log_io();
+    assert_eq!(Some(&io_id), accepted);
+    let commands = eng.output.take_commands();
+    assert_eq!(
+        vec![Command::UpdateIOProgress {
+            when: Some(Condition::IOFlushed { io_id: heartbeat_io }),
+            io_id,
+        }],
+        commands
+    );
 
     Ok(())
 }

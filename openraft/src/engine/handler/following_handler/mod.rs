@@ -253,9 +253,8 @@ where
     /// Refer to [`snapshot_replication`](crate::docs::protocol::replication::snapshot_replication)
     /// for the reason the following workflow is needed.
     ///
-    /// The method processes the given `snapshot` and updates the internal state of the node based
-    /// on the snapshot's metadata. It checks if the `snapshot` is newer than the currently
-    /// committed snapshot. If not, it does nothing.
+    /// A snapshot that the local committed prefix already covers can advance log I/O progress
+    /// for the current leader.
     ///
     /// It returns the condition about when the snapshot is installed and can proceed with the
     /// commands that depend on the state of the snapshot.
@@ -282,14 +281,20 @@ where
                 snap_last_log_id.display(),
                 self.state.local_committed().display()
             );
-            // `local_committed` follows the accepted log IO, not the flushed one: the logs up to the
-            // snapshot may still be on their way to storage, or a snapshot that covers them may
-            // still be installing. A reply tells the leader that this node stores them, so it waits
-            // until the IO of this leader up to the snapshot, or a later IO, is flushed: IOs are
-            // flushed in the order they are submitted.
-            return snap_last_log_id.map(|last| Condition::IOFlushed {
-                io_id: LogIOId::new(self.leader_vote.to_committed(), Some(last)).to_io_id(),
-            });
+            let last = snap_last_log_id?;
+            let io_id = IOId::new_log_io(self.leader_vote.clone(), Some(last));
+            let previous = self.state.accept_log_io(io_id.clone());
+
+            // The committed prefix already matches the leader. Advance its I/O marker after
+            // the preceding I/O has flushed, including SaveVote on a leader change.
+            if Some(&io_id) > previous.as_ref() {
+                let when = previous.map(|io_id| Condition::IOFlushed { io_id });
+                self.output.push_command(Command::UpdateIOProgress {
+                    when,
+                    io_id: io_id.clone(),
+                });
+            }
+            return Some(Condition::IOFlushed { io_id });
         }
 
         // snapshot_last_log_id cannot be None
