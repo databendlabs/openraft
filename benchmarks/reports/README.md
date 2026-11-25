@@ -9,3 +9,4 @@ Each report lives in its own directory, named `<date>-<subject>`. A directory ho
 | date       | report                                                      | summary |
 | :--        | :--                                                         | :--     |
 | 2026-11-17 | [v0.10.0 vs main](2026-11-17-v0.10.0-vs-main/report-full.md) | `benchmarks/minimal` writes with simulated append, fsync, network, and apply delays. No change with a fast state machine; 2.2× to 4.8× more writes/s when apply is the bottleneck. |
+| 2026-11-25 | [Apply lag on main](2026-11-25-apply-lag/report-full.md)     | `benchmarks/minimal` leader stage latencies, paced and saturated, with slow `apply()` calls. Commit does not wait for apply; commit to apply takes 1.4 to 1.9 calls of 500 µs or more at every load, and grows with load only for a cost per entry. |
