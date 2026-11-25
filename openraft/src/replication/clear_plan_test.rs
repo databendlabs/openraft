@@ -11,6 +11,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use futures_util::Stream;
 use futures_util::StreamExt;
 
@@ -19,6 +20,7 @@ use crate::OptionalSend;
 use crate::RaftLogReader;
 use crate::RaftNetworkFactory;
 use crate::async_runtime::MpscReceiver;
+use crate::async_runtime::MpscSender;
 use crate::async_runtime::WatchReceiver;
 use crate::async_runtime::WatchSender;
 use crate::base::BoxFuture;
@@ -56,6 +58,8 @@ use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::JoinHandleOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
+use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::OneshotSenderOf;
 use crate::type_config::alias::SnapshotOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchReceiverOf;
@@ -125,14 +129,25 @@ impl RaftLogStorage<C> for GatedLog {
 }
 
 /// How [`PullingNetwork`] runs a session.
-#[derive(Clone, Copy)]
 enum Session {
     /// The response stream ends after the request stream does.
     Answer,
     /// The session fails at once with an RPC error.
     Fail,
+    /// The response stream fails after a storage read has started.
+    FailAfterRead,
     /// The transport never finishes opening the stream.
     Hang,
+    /// The test controls each upload and its response independently.
+    Capture {
+        sessions: MpscSenderOf<C, CapturedSession>,
+        fail_first_open: bool,
+    },
+}
+
+struct CapturedSession {
+    upload: BoxStream<'static, AppendEntriesRequest<C>>,
+    close_response: OneshotSenderOf<C, ()>,
 }
 
 /// A transport that polls the request stream on a task of its own, as a gRPC client does, and
@@ -147,6 +162,7 @@ struct PullingNetwork {
     /// Turns `true` once the request stream has ended.
     ended: Arc<WatchSenderOf<C, bool>>,
     session: Session,
+    reads: WatchReceiverOf<C, u64>,
 }
 
 impl RaftNetworkFactory<C> for PullingNetwork {
@@ -174,9 +190,32 @@ impl RaftNetworkV2<C> for PullingNetwork {
             return Box::pin(std::future::pending());
         }
 
+        if let Session::Capture {
+            sessions,
+            fail_first_open,
+        } = &self.session
+        {
+            let fail_open = *fail_first_open && opened == 1;
+            let (close_response, closed) = C::oneshot();
+            let session = CapturedSession {
+                upload: Box::pin(input),
+                close_response,
+            };
+            return Box::pin(async move {
+                if sessions.send(session).await.is_err() || fail_open {
+                    return Err(RPCError::Unreachable(Unreachable::from_string("stream open failed")));
+                }
+
+                let response = futures_util::stream::once(closed).filter_map(|_| futures_util::future::ready(None));
+                let response: BoxStream<'s, _> = Box::pin(response);
+                Ok(response)
+            });
+        }
+
         let mut poll = self.poll.clone();
         let pulled = self.pulled.clone();
         let ended = self.ended.clone();
+        let (session_ended, mut session_end_rx) = C::watch_channel(false);
         #[allow(clippy::let_underscore_future)]
         let _ = C::spawn(async move {
             if poll.wait_until_ge(&true).await.is_err() {
@@ -188,18 +227,26 @@ impl RaftNetworkV2<C> for PullingNetwork {
                 pulled.send(count).ok();
             }
             ended.send(true).ok();
+            session_ended.send(true).ok();
         });
 
-        let responses: BoxStream<'s, Result<AppendResult<C>, RPCError<C>>> = if let Session::Fail = self.session {
-            let error = RPCError::Unreachable(Unreachable::from_string("node 2 is down"));
-            Box::pin(futures_util::stream::once(futures_util::future::ready(Err(error))))
-        } else {
-            let mut ended = self.ended.subscribe();
-            let end = async move {
-                ended.wait_until_ge(&true).await.ok();
+        let mut reads = self.reads.clone();
+        let responses: BoxStream<'s, Result<AppendResult<C>, RPCError<C>>> =
+            if matches!(self.session, Session::Fail | Session::FailAfterRead) {
+                let wait_read = matches!(self.session, Session::FailAfterRead);
+                let error = RPCError::Unreachable(Unreachable::from_string("node 2 is down"));
+                Box::pin(futures_util::stream::once(async move {
+                    if wait_read {
+                        reads.wait_until_ge(&1).await.unwrap();
+                    }
+                    Err(error)
+                }))
+            } else {
+                let end = async move {
+                    session_end_rx.wait_until_ge(&true).await.ok();
+                };
+                Box::pin(futures_util::stream::once(end).filter_map(|()| futures_util::future::ready(None)))
             };
-            Box::pin(futures_util::stream::once(end).filter_map(|()| futures_util::future::ready(None)))
-        };
         Box::pin(futures_util::future::ready(Ok(responses)))
     }
 
@@ -292,6 +339,7 @@ fn spawn_replication(open_reads: bool, poll: bool, session: Session) -> (Harness
         pulled: Arc::new(pulled_tx),
         ended: Arc::new(ended_tx),
         session,
+        reads: reads.clone(),
     };
     let log = GatedLog {
         reads: Arc::new(reads_tx),
@@ -394,13 +442,11 @@ fn clear_is_confirmed_once_a_running_read_returns() {
     });
 }
 
-/// After a session fails, a transport that polls the request stream on a task of its own may still
-/// start a read for the plan while the replication task waits for RaftCore. The task confirms the
-/// clear that follows only once that read returns.
+/// A read started before its session failed still holds back confirmation of a clear.
 #[test]
 fn clear_is_confirmed_once_a_read_that_outlived_its_session_returns() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(false, false, Session::Fail);
+        let (mut h, _channels) = spawn_replication(false, true, Session::FailAfterRead);
         let plan = InflightId::new(1);
         let clear = InflightId::new(2);
 
@@ -408,17 +454,6 @@ fn clear_is_confirmed_once_a_read_that_outlived_its_session_returns() {
         {
             h.replicate_tx.send(Some(Replicate::new_logs_since(Some(log_id(1, 1, 5)), plan))).unwrap();
             expect_failed(&mut h.notifications, plan).await;
-        }
-
-        tracing::info!(
-            "--- with the task waiting for RaftCore, the transport polls the stream, whose read the log holds"
-        );
-        {
-            // Let the task go back to waiting for RaftCore after the error, so that the read starts
-            // while it waits.
-            C::sleep(Duration::from_millis(50)).await;
-            h.poll.send(true).unwrap();
-            C::timeout(TEST_TIMEOUT, h.reads.wait_until_ge(&1)).await.unwrap().unwrap();
         }
 
         tracing::info!("--- RaftCore clears the plan: no confirmation while the read runs");
@@ -519,18 +554,14 @@ fn unfinished_commit_probe_is_resumed() {
 #[test]
 fn closed_task_returns_once_a_running_read_returns() {
     C::run(async {
-        let (mut h, _channels) = spawn_replication(false, false, Session::Fail);
+        let (mut h, _channels) = spawn_replication(false, true, Session::FailAfterRead);
         let plan = InflightId::new(1);
 
-        tracing::info!("--- a plan's session fails, then the transport polls the stream, whose read the log holds");
+        tracing::info!("--- a plan starts a read, then its session fails while the log holds the read");
         {
             h.replicate_tx.send(Some(Replicate::new_logs_since(Some(log_id(1, 1, 5)), plan))).unwrap();
             expect_failed(&mut h.notifications, plan).await;
 
-            // Let the task go back to waiting for RaftCore after the error, so that the read starts
-            // while it waits.
-            C::sleep(Duration::from_millis(50)).await;
-            h.poll.send(true).unwrap();
             C::timeout(TEST_TIMEOUT, h.reads.wait_until_ge(&1)).await.unwrap().unwrap();
         }
 
@@ -580,5 +611,100 @@ fn closed_task_does_not_wait_for_a_stream_being_opened() {
             assert!(closed.is_err(), "expect the task to return because it was closed");
             assert_eq!(0, *h.reads.borrow_watched());
         }
+    });
+}
+
+/// Response EOF releases an upload that is already waiting for more logs.
+#[test]
+fn response_eof_releases_idle_upload() {
+    C::run(async {
+        let (sessions, mut captures) = C::mpsc(2);
+        let (h, _channels) = spawn_replication(true, false, Session::Capture {
+            sessions,
+            fail_first_open: false,
+        });
+        let idle = Replicate::new_logs_since(Some(log_id(1, 1, 20)), InflightId::new(1));
+
+        tracing::info!("--- wait for logs beyond the submitted index, then close the response of that upload");
+        {
+            h.replicate_tx.send(Some(idle)).unwrap();
+            let mut session = C::timeout(TEST_TIMEOUT, captures.recv()).await.unwrap().unwrap();
+            let pending = session.upload.next().now_or_never();
+            assert!(pending.is_none(), "the upload should wait for more logs");
+
+            drop(session.close_response);
+            let request = C::timeout(TEST_TIMEOUT, session.upload.next()).await.expect("EOF must release the upload");
+            assert!(request.is_none(), "the upload should end at EOF");
+        }
+    });
+}
+
+/// An upload retained after an open error must end while its replacement holds the state lock.
+#[test]
+fn failed_open_releases_upload_while_replacement_reads() {
+    C::run(async {
+        let (sessions, mut captures) = C::mpsc(2);
+        let (mut h, _channels) = spawn_replication(false, false, Session::Capture {
+            sessions,
+            fail_first_open: true,
+        });
+
+        tracing::info!("--- retain the upload from the failed open");
+        let mut failed = {
+            let plan = InflightId::new(1);
+            let logs = Replicate::new_logs_since(Some(log_id(1, 1, 5)), plan);
+            h.replicate_tx.send(Some(logs)).unwrap();
+            let session = C::timeout(TEST_TIMEOUT, captures.recv()).await.unwrap().unwrap();
+            expect_failed(&mut h.notifications, plan).await;
+            session
+        };
+
+        tracing::info!("--- poll the failed upload while the replacement holds the log reader");
+        {
+            let prev = Some(log_id(1, 1, 8));
+            let logs = Replicate::new_logs_since(prev, InflightId::new(2));
+            h.replicate_tx.send(Some(logs)).unwrap();
+            let mut replacement = C::timeout(TEST_TIMEOUT, captures.recv()).await.unwrap().unwrap();
+            let pending = replacement.upload.next().now_or_never();
+            assert!(pending.is_none(), "the replacement should wait for storage");
+            C::timeout(TEST_TIMEOUT, h.reads.wait_until_ge(&1)).await.unwrap().unwrap();
+
+            let request = C::timeout(TEST_TIMEOUT, failed.upload.next())
+                .await
+                .expect("the failed upload must end without waiting for storage");
+            assert!(request.is_none(), "the failed upload should end without a request");
+
+            h.open_reads.send(true).unwrap();
+            let request = C::timeout(TEST_TIMEOUT, replacement.upload.next()).await.unwrap().unwrap();
+            let entries = vec![EntryOf::<C>::new_blank(log_id(1, 1, 9))];
+            assert_eq!(prev, request.prev_log_id);
+            assert_eq!(entries, request.entries);
+        }
+    });
+}
+
+/// A completed read must not give the dead session a request, even before RaftCore changes its
+/// plan.
+#[test]
+fn failed_session_discards_a_running_read_result() {
+    C::run(async {
+        let (mut h, _channels) = spawn_replication(false, true, Session::FailAfterRead);
+        let plan = InflightId::new(1);
+        h.replicate_tx.send(Some(Replicate::new_logs_since(Some(log_id(1, 1, 5)), plan))).unwrap();
+        expect_failed(&mut h.notifications, plan).await;
+
+        tracing::info!("--- let the failed session's read finish without clearing or replacing its plan");
+        h.open_reads.send(true).unwrap();
+        let ended = C::timeout(TEST_TIMEOUT, h.ended.wait_until_ge(&true)).await;
+        assert!(
+            ended.is_ok(),
+            "failed session keeps reading after its running read returns"
+        );
+        assert_eq!(
+            *h.pulled.borrow_watched(),
+            0,
+            "the completed read belongs to an ended session"
+        );
+        assert_eq!(*h.reads.borrow_watched(), 1);
     });
 }

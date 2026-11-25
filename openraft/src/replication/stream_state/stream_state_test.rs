@@ -14,9 +14,11 @@ use crate::core::SharedReplicateBatch;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
 use crate::entry::RaftEntry;
+use crate::errors::ReplicationClosed;
 use crate::log_id_range::LogIdRange;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
+use crate::raft::AppendEntriesRequest;
 use crate::raft_state::IOId;
 use crate::replication::backoff_state::BackoffState;
 use crate::replication::event_watcher::EventWatcher;
@@ -101,6 +103,14 @@ impl RaftLogStorage<UTConfig> for PrefixStore {
     }
 }
 
+impl StreamState<UTConfig, PrefixStore> {
+    /// Exercise the plan and task lifetime with an open transport session.
+    async fn next_request_in_session(&mut self) -> Result<Option<AppendEntriesRequest<UTConfig>>, ReplicationClosed> {
+        let (_session_tx, mut session_rx) = UTConfig::<()>::watch_channel(());
+        self.next_request(&mut session_rx).await
+    }
+}
+
 #[test]
 fn probe_stops_after_storage_limited_prefix() {
     UTConfig::<()>::run(async {
@@ -159,7 +169,7 @@ fn probe_stops_after_storage_limited_prefix() {
 
             tracing::info!("--- the first generated request completes the probe payload");
             {
-                let request = state.next_request().await.unwrap().unwrap();
+                let request = state.next_request_in_session().await.unwrap().unwrap();
                 assert_eq!(Some(log_id(1, 1, 52)), request.prev_log_id);
                 let expected_entries = if empty_first {
                     vec![]
@@ -174,7 +184,7 @@ fn probe_stops_after_storage_limited_prefix() {
             tracing::info!("--- the stream ends after one request");
             {
                 let reads = state.log_reader.reads.len();
-                assert!(state.next_request().await.unwrap().is_none());
+                assert!(state.next_request_in_session().await.unwrap().is_none());
                 assert_eq!(reads, state.log_reader.reads.len());
             }
         }
@@ -274,7 +284,7 @@ fn stale_stream_does_not_mix_votes_and_later_commits() {
                 (state, publisher, channels)
             };
 
-            let result = state.next_request().await;
+            let result = state.next_request_in_session().await;
             let _publishers = publisher.join().unwrap();
             let generated = result.unwrap();
 
@@ -377,7 +387,7 @@ fn logs_since_ends_once_its_plan_is_cleared() {
         let (mut state, replicate_tx, _cancel_tx, _channels) =
             new_stream(payload, Some(inflight_id), Some(inflight_id));
         let reads = {
-            let request = state.next_request().await.unwrap().unwrap();
+            let request = state.next_request_in_session().await.unwrap().unwrap();
             assert_eq!(Some(log_id(1, 1, 5)), request.prev_log_id);
             assert_eq!(vec![EntryOf::<UTConfig>::new_blank(log_id(1, 1, 6))], request.entries);
             state.log_reader.reads.len()
@@ -387,7 +397,7 @@ fn logs_since_ends_once_its_plan_is_cleared() {
         {
             replicate_tx.send(Some(clear.clone())).unwrap();
 
-            let request = state.next_request().await.unwrap();
+            let request = state.next_request_in_session().await.unwrap();
             assert!(request.is_none(), "expect no request, got {:?}", request);
             assert_eq!(reads, state.log_reader.reads.len(), "no read after the plan is cleared");
         }
@@ -403,7 +413,7 @@ fn logs_since_ends_once_its_plan_is_cleared() {
             let clear_plan = async {
                 replicate_tx.send(Some(clear)).unwrap();
             };
-            let (request, ()) = futures_util::future::join(state.next_request(), clear_plan).await;
+            let (request, ()) = futures_util::future::join(state.next_request_in_session(), clear_plan).await;
             let request = request.unwrap();
             assert!(request.is_none(), "expect no request, got {:?}", request);
             assert!(state.log_reader.reads.is_empty());
@@ -422,7 +432,7 @@ fn logs_since_ends_once_its_plan_is_replaced() {
         let (mut state, _replicate_tx, _cancel_tx, _channels) =
             new_stream(payload, Some(InflightId::new(1)), Some(InflightId::new(2)));
 
-        let request = state.next_request().await.unwrap();
+        let request = state.next_request_in_session().await.unwrap();
         assert!(request.is_none(), "expect no request, got {:?}", request);
         assert!(state.log_reader.reads.is_empty());
     });
@@ -439,10 +449,10 @@ fn one_shot_probe_sends_without_a_current_plan() {
         };
         let (mut state, _replicate_tx, _cancel_tx, _channels) = new_stream(payload, None, None);
 
-        let request = state.next_request().await.unwrap().unwrap();
+        let request = state.next_request_in_session().await.unwrap().unwrap();
         assert_eq!(matching, request.prev_log_id);
         assert!(request.entries.is_empty());
-        assert!(state.next_request().await.unwrap().is_none());
+        assert!(state.next_request_in_session().await.unwrap().is_none());
     });
 }
 
@@ -492,11 +502,45 @@ fn read_that_outlives_its_plan_is_not_sent() {
                     };
                     state.log_reader.during_read = Some(during_read);
 
-                    let request = state.next_request().await.unwrap();
+                    let request = state.next_request_in_session().await.unwrap();
                     assert!(request.is_none(), "expect no request, got {:?}", request);
                     assert_eq!(1, state.log_reader.reads.len());
                 }
             }
         }
+    });
+}
+
+/// Session EOF can interrupt the wait between reading a request and sending it.
+#[test]
+fn session_end_interrupts_backoff() {
+    use futures_util::FutureExt;
+
+    use crate::network::Backoff;
+
+    UTConfig::<()>::run(async {
+        let id = InflightId::new(1);
+        let payload = Payload::LogsSince {
+            prev: Some(log_id(1, 1, 5)),
+        };
+        let (mut state, _replicate_tx, _cancel_tx, _channels) = new_stream(payload, Some(id), Some(id));
+        let (session_tx, mut session_rx) = UTConfig::<()>::watch_channel(());
+        *state.backoff_consumer.inner.lock().unwrap() = Some(Backoff::new(std::iter::repeat(Duration::from_secs(60))));
+
+        tracing::info!("--- end the session while the generated request waits for retry backoff");
+        {
+            let mut next = Box::pin(state.next_request(&mut session_rx));
+            let pending = next.as_mut().now_or_never();
+            assert!(pending.is_none(), "the request should wait in backoff");
+
+            drop(session_tx);
+            let stopped = UTConfig::<()>::timeout(Duration::from_secs(1), next).await;
+            assert!(
+                matches!(stopped, Ok(Ok(None))),
+                "the canceled request yielded {stopped:?}"
+            );
+        }
+
+        assert_eq!(vec![(6, 21)], state.log_reader.reads);
     });
 }
