@@ -253,8 +253,9 @@ unchanged. `RaftEntry` and `RaftPayload` no longer take type parameters, and
 - `LogId`, `Vote`, `Entry` and `RaftServerMetrics` no longer implement
   `Default`. Build them explicitly, as in `LogId::new(leader_id, index)`, or
   store an `Option`.
-- `MessageSummary` is replaced by `Display`: replace `t.summary()` with
-  `t.to_string()`. `summary()` remains only for `Option<T>` and `&[T]`.
+- For `Display` values, replace `t.summary()` with `t.to_string()`.
+  Version 0.10.2 removes `MessageSummary`. Format options and slices explicitly
+  to preserve their previous output.
 
 ## Log storage and state machine
 

@@ -30,7 +30,6 @@ use openraft::LogIndexOptionExt;
 use openraft::LogState;
 use openraft::Membership;
 use openraft::MembershipState;
-use openraft::MessageSummary;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::OptionalSend;
