@@ -128,3 +128,8 @@ CPU includes the cost of tonic, which two builds of openraft share. A difference
 builds comes from the change, but the absolute numbers are not openraft's alone. CPU and the
 round-trip percentiles also change with the load of the machine: compare them over several runs,
 and report the load average.
+
+## Results
+
+[results.md](results.md) has the baseline at 51592651, and how far the medians of two builds of
+the same code differ in a comparison of 5 rounds.
