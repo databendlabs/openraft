@@ -159,7 +159,8 @@ fn probe_stops_after_storage_limited_prefix() {
 
             tracing::info!("--- the first generated request completes the probe payload");
             {
-                let request = state.next_request().await.unwrap().unwrap();
+                let request =
+                    state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap().unwrap();
                 assert_eq!(Some(log_id(1, 1, 52)), request.prev_log_id);
                 let expected_entries = if empty_first {
                     vec![]
@@ -174,7 +175,7 @@ fn probe_stops_after_storage_limited_prefix() {
             tracing::info!("--- the stream ends after one request");
             {
                 let reads = state.log_reader.reads.len();
-                assert!(state.next_request().await.unwrap().is_none());
+                assert!(state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap().is_none());
                 assert_eq!(reads, state.log_reader.reads.len());
             }
         }
@@ -274,7 +275,7 @@ fn stale_stream_does_not_mix_votes_and_later_commits() {
                 (state, publisher, channels)
             };
 
-            let result = state.next_request().await;
+            let result = state.next_request(&mut state.replication_context.cancel_rx.clone()).await;
             let _publishers = publisher.join().unwrap();
             let generated = result.unwrap();
 
@@ -377,7 +378,7 @@ fn logs_since_ends_once_its_plan_is_cleared() {
         let (mut state, replicate_tx, _cancel_tx, _channels) =
             new_stream(payload, Some(inflight_id), Some(inflight_id));
         let reads = {
-            let request = state.next_request().await.unwrap().unwrap();
+            let request = state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap().unwrap();
             assert_eq!(Some(log_id(1, 1, 5)), request.prev_log_id);
             assert_eq!(vec![EntryOf::<UTConfig>::new_blank(log_id(1, 1, 6))], request.entries);
             state.log_reader.reads.len()
@@ -387,7 +388,7 @@ fn logs_since_ends_once_its_plan_is_cleared() {
         {
             replicate_tx.send(Some(clear.clone())).unwrap();
 
-            let request = state.next_request().await.unwrap();
+            let request = state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap();
             assert!(request.is_none(), "expect no request, got {:?}", request);
             assert_eq!(reads, state.log_reader.reads.len(), "no read after the plan is cleared");
         }
@@ -403,7 +404,11 @@ fn logs_since_ends_once_its_plan_is_cleared() {
             let clear_plan = async {
                 replicate_tx.send(Some(clear)).unwrap();
             };
-            let (request, ()) = futures_util::future::join(state.next_request(), clear_plan).await;
+            let (request, ()) = futures_util::future::join(
+                state.next_request(&mut state.replication_context.cancel_rx.clone()),
+                clear_plan,
+            )
+            .await;
             let request = request.unwrap();
             assert!(request.is_none(), "expect no request, got {:?}", request);
             assert!(state.log_reader.reads.is_empty());
@@ -422,7 +427,7 @@ fn logs_since_ends_once_its_plan_is_replaced() {
         let (mut state, _replicate_tx, _cancel_tx, _channels) =
             new_stream(payload, Some(InflightId::new(1)), Some(InflightId::new(2)));
 
-        let request = state.next_request().await.unwrap();
+        let request = state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap();
         assert!(request.is_none(), "expect no request, got {:?}", request);
         assert!(state.log_reader.reads.is_empty());
     });
@@ -439,10 +444,10 @@ fn one_shot_probe_sends_without_a_current_plan() {
         };
         let (mut state, _replicate_tx, _cancel_tx, _channels) = new_stream(payload, None, None);
 
-        let request = state.next_request().await.unwrap().unwrap();
+        let request = state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap().unwrap();
         assert_eq!(matching, request.prev_log_id);
         assert!(request.entries.is_empty());
-        assert!(state.next_request().await.unwrap().is_none());
+        assert!(state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap().is_none());
     });
 }
 
@@ -492,11 +497,62 @@ fn read_that_outlives_its_plan_is_not_sent() {
                     };
                     state.log_reader.during_read = Some(during_read);
 
-                    let request = state.next_request().await.unwrap();
+                    let request = state.next_request(&mut state.replication_context.cancel_rx.clone()).await.unwrap();
                     assert!(request.is_none(), "expect no request, got {:?}", request);
                     assert_eq!(1, state.log_reader.reads.len());
                 }
             }
+        }
+    });
+}
+
+/// Neither retry backoff nor a quorum-loss quiet period may keep an ended session's request.
+#[test]
+fn session_end_interrupts_send_waits() {
+    use futures_util::FutureExt;
+
+    use crate::engine::quorum_loss_probe::QuorumLossProbe;
+    use crate::network::Backoff;
+
+    UTConfig::<()>::run(async {
+        for backoff in [false, true] {
+            tracing::info!(
+                backoff,
+                "--- hold a generated request in a send wait, then end its session"
+            );
+            let id = InflightId::new(1);
+            let payload = Payload::LogsSince {
+                prev: Some(log_id(1, 1, 5)),
+            };
+            let (mut state, _replicate_tx, _cancel_tx, _channels) = new_stream(payload, Some(id), Some(id));
+            let (session_tx, mut session_rx) = UTConfig::<()>::watch_channel(());
+            let (probe_tx, probe_rx) = UTConfig::<()>::watch_channel(Some(QuorumLossProbe {
+                quorum_acked_at: UTConfig::<()>::now(),
+                leader_lease: Duration::ZERO,
+                interval: Duration::from_secs(60),
+            }));
+            if backoff {
+                *state.backoff_consumer.inner.lock().unwrap() =
+                    Some(Backoff::new(std::iter::repeat(Duration::from_secs(60))));
+            } else {
+                state.replication_context.quorum_loss_probe_rx = probe_rx;
+            }
+            let mut next = Box::pin(state.next_request(&mut session_rx));
+            assert!(
+                next.as_mut().now_or_never().is_none(),
+                "the request must reach its send wait"
+            );
+            drop(session_tx);
+            let stopped = UTConfig::<()>::timeout(Duration::from_secs(1), next).await;
+            assert!(
+                matches!(stopped, Ok(Ok(None))),
+                "session end must discard the queued request: {stopped:?}"
+            );
+            assert!(
+                !state.log_reader.reads.is_empty(),
+                "the canceled request must have reached storage before its send wait"
+            );
+            drop(probe_tx);
         }
     });
 }

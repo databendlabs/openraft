@@ -25,6 +25,7 @@ use crate::storage::RaftLogStorage;
 use crate::type_config::TypeConfigExt;
 use crate::type_config::alias::EntryOf;
 use crate::type_config::alias::LogIdOf;
+use crate::type_config::alias::WatchReceiverOf;
 
 /// Mutable state for generating AppendEntries requests in a replication stream.
 ///
@@ -66,16 +67,20 @@ where
 {
     /// Generates the next AppendEntries request from the current log range.
     ///
-    /// Returns `Ok(None)` when there are no more entries to send.
+    /// Returns `Ok(None)` when there are no more entries to send or this session has ended.
     /// After each call, the payload is advanced or cleared according to its completion rule.
-    pub(crate) async fn next_request(&mut self) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
+    pub(crate) async fn next_request(
+        &mut self,
+        session_rx: &mut WatchReceiverOf<C, ()>,
+    ) -> Result<Option<AppendEntriesRequest<C>>, ReplicationClosed> {
         // An empty range still sends one RPC and is then cleared by `update_sent()`.
-        let Some(log_id_range) = self.get_log_id_range().await else {
+        let Some(Some(log_id_range)) = C::cancellable_by(self.get_log_id_range(), session_rx.changed()).await else {
             return Ok(None);
         };
 
         tracing::debug!("{}: log_id_range: {}", func_name!(), log_id_range);
 
+        // A storage read must finish before confirm_clear or task exit can release its logs.
         let res = self.read_log_entries(log_id_range).await;
         let (entries, sending_range) = match res {
             Ok(Some(x)) => x,
@@ -129,8 +134,14 @@ where
 
         tracing::debug!("next_request: AppendEntries: {}", payload);
 
-        self.backoff_if_enabled().await;
-        self.replication_context.wait_for_send_period().await?;
+        let wait = async {
+            self.backoff_if_enabled().await;
+            self.replication_context.wait_for_send_period().await
+        };
+        let Some(ready) = C::cancellable_by(wait, session_rx.changed()).await else {
+            return Ok(None);
+        };
+        ready?;
 
         Ok(Some(payload))
     }
