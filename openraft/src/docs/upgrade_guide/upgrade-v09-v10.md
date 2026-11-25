@@ -360,8 +360,9 @@ still needed, `?` converts an `io::Error` into one.
 ### Custom entry and payload types
 
 - A custom entry type implements `RaftEntry` with `type CommittedLeaderId` and
-  `type Payload`, and `new()`, `log_id_parts()`, `set_log_id()` and
-  `get_membership()`. The `FromAppData` trait is removed.
+  `type Payload`, and `new()`, `log_id_parts()` and `get_membership()`.
+  The `FromAppData` trait is removed. Version 0.10.2 removes `set_log_id()`
+  from `RaftEntry`. Supply the log ID when constructing the entry with `new()`.
 - A custom payload type implements `RaftPayload` with `type D` and
   `type Membership`, and `blank()`, `with_normal()`, `with_membership()` and
   `get_membership()`, which returns an owned membership. `is_blank()` is

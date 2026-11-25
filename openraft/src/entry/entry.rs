@@ -92,10 +92,6 @@ where
         (&self.log_id.leader_id, self.log_id.index)
     }
 
-    fn set_log_id(&mut self, new: LogId<CLID>) {
-        self.log_id = new;
-    }
-
     fn get_membership(&self) -> Option<P::Membership> {
         self.payload.get_membership()
     }

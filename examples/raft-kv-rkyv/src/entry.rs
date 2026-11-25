@@ -10,7 +10,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::payload::Payload;
 
-/// The entry's log ID can change without rewriting its application archive.
+/// An entry stores its log ID separately from its application archive.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Entry {
     pub(crate) log_id: LogId,
@@ -33,10 +33,6 @@ impl RaftEntry for Entry {
 
     fn log_id_parts(&self) -> (&CommittedLeaderId, u64) {
         (&self.log_id.leader_id, self.log_id.index)
-    }
-
-    fn set_log_id(&mut self, new: LogId) {
-        self.log_id = new;
     }
 
     fn get_membership(&self) -> Option<Membership> {

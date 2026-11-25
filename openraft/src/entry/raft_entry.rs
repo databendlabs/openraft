@@ -13,17 +13,17 @@ use crate::vote::RaftCommittedLeaderId;
 ///
 /// # Methods to inherit
 ///
-/// An implementation defines [`new`](Self::new), [`log_id_parts`](Self::log_id_parts),
-/// [`set_log_id`](Self::set_log_id) and [`get_membership`](Self::get_membership). It should
-/// inherit the defaults of [`new_blank`](Self::new_blank), [`new_normal`](Self::new_normal),
-/// [`new_membership`](Self::new_membership), [`log_id`](Self::log_id) and [`index`](Self::index),
-/// which are built on those four.
+/// An implementation defines [`new`](Self::new), [`log_id_parts`](Self::log_id_parts)
+/// and [`get_membership`](Self::get_membership). It should inherit the defaults of
+/// [`new_blank`](Self::new_blank), [`new_normal`](Self::new_normal),
+/// [`new_membership`](Self::new_membership), [`log_id`](Self::log_id) and [`index`](Self::index).
 ///
 /// The five defaults are bounded by `where Self: Final`, a marker private to Openraft, but the
 /// bound does not prevent an override: Rust lets an implementation leave out a `where` clause of
 /// the trait method. An override must return what the default returns, as each of these methods
 /// states. Openraft reads the log id of an entry through `log_id_parts()`, `log_id()` and
 /// `index()`, so an entry whose accessors disagree gives Openraft inconsistent log ids.
+#[since(version = "0.10.2", change = "removed `set_log_id`")]
 #[since(
     version = "0.10.0",
     change = "replaced `D`, `NodeId`, and `Node` associated types with `Payload`"
@@ -64,10 +64,6 @@ where Self: OptionalFeatures + Debug + Display
     /// components directly without requiring a `LogId` field in their data structure.
     #[since(version = "0.10.0")]
     fn log_id_parts(&self) -> (&Self::CommittedLeaderId, u64);
-
-    /// Set the log ID of this entry.
-    #[since(version = "0.10.0", change = "use owned argument log id")]
-    fn set_log_id(&mut self, new: LogId<Self::CommittedLeaderId>);
 
     /// Return `Some(Membership)` if this entry contains a membership payload.
     #[since(version = "0.10.0", change = "derive membership type from `Payload`")]

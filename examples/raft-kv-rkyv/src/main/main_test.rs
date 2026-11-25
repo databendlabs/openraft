@@ -1,13 +1,9 @@
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
-use openraft::entry::RaftEntry;
 use openraft::storage::RaftStateMachine;
-use openraft::vote::RaftLeaderId;
 
 use super::ArchiveBuffer;
 use super::Cluster;
-use super::Entry;
-use super::LogId;
 use super::Snapshot;
 use super::StateMachine;
 use super::codec::Codec;
@@ -160,21 +156,5 @@ async fn persistent_node_replays_after_restart_and_catches_up() -> anyhow::Resul
         }
         cluster.shutdown().await?;
     }
-    Ok(())
-}
-
-#[test]
-fn changing_log_id_preserves_the_application_archive() -> anyhow::Result<()> {
-    let data = ArchiveBuffer::new("key", "value")?;
-    let first = LogId::new(openraft::impls::leader_id_adv::LeaderId::new(1, 1), 2);
-    let next = LogId::new(openraft::impls::leader_id_adv::LeaderId::new(2, 1), 3);
-    let mut entry = Entry::new(first, Payload::Normal(data.clone()));
-    entry.set_log_id(next);
-    assert_eq!(next, entry.log_id());
-    let Payload::Normal(buffer) = entry.payload else {
-        unreachable!();
-    };
-    assert_eq!(data.bytes().as_ptr(), buffer.bytes().as_ptr());
-    assert_eq!(data.bytes(), buffer.bytes());
     Ok(())
 }

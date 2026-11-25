@@ -39,11 +39,6 @@ impl RaftEntry for pb::Entry {
         (&self.term, self.index)
     }
 
-    fn set_log_id(&mut self, new: LogIdOf<TypeConfig>) {
-        self.term = new.leader_id;
-        self.index = new.index;
-    }
-
     fn get_membership(&self) -> Option<typ::Membership> {
         self.membership.clone().map(Into::into)
     }
