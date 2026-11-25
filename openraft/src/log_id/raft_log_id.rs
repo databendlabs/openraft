@@ -7,6 +7,7 @@ use crate::vote::RaftCommittedLeaderId;
 /// Log id is the globally unique identifier of a log entry.
 ///
 /// Equal log id means the same log entry.
+#[since(version = "0.10.2", change = "removed `to_type`")]
 #[since(
     version = "0.10.0",
     change = "removed `C: RaftTypeConfig` generic parameter, added `CommittedLeaderId` associated type"
@@ -33,12 +34,6 @@ where Self: Eq + Clone + fmt::Debug
 
     /// Returns the index of the log id.
     fn index(&self) -> u64;
-
-    /// Converts this log ID into another type that implements [`RaftLogId`].
-    fn to_type<T>(&self) -> T
-    where T: RaftLogId<CommittedLeaderId = Self::CommittedLeaderId> {
-        T::new(self.committed_leader_id().clone(), self.index())
-    }
 
     /// Returns the parts of this log ID as a tuple of (committed_leader_id, index).
     fn log_id_parts(&self) -> (&Self::CommittedLeaderId, u64) {

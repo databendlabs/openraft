@@ -180,21 +180,6 @@ mod tests {
     }
 
     #[test]
-    fn test_to_type_log_id_to_tuple() {
-        let log_id = super::LogId::<TestCLID>::new_term_index(5, 100);
-        let tuple: (u64, u64) = log_id.to_type();
-        assert_eq!((5, 100), tuple);
-    }
-
-    #[test]
-    fn test_to_type_tuple_to_log_id() {
-        let tuple: (u64, u64) = (5, 100);
-        let log_id: super::LogId<TestCLID> = tuple.to_type();
-        assert_eq!(100, log_id.index());
-        assert_eq!(5, **log_id.committed_leader_id());
-    }
-
-    #[test]
     fn test_log_id_parts() {
         let log_id = super::LogId::<TestCLID>::new_term_index(5, 100);
         let (leader_id, index) = log_id.log_id_parts();
