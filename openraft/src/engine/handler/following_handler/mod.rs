@@ -282,13 +282,18 @@ where
                 snap_last_log_id.display(),
                 self.state.local_committed().display()
             );
-            // `local_committed` follows the accepted log IO, not the flushed one: the logs up to the
-            // snapshot may still be on their way to storage, or a snapshot that covers them may
-            // still be installing. A reply tells the leader that this node stores them, so it waits
-            // until the IO of this leader up to the snapshot, or a later IO, is flushed: IOs are
-            // flushed in the order they are submitted.
-            return snap_last_log_id.map(|last| Condition::IOFlushed {
-                io_id: LogIOId::new(self.leader_vote.to_committed(), Some(last)).to_io_id(),
+            // Committed logs can still be unflushed. Wait for their IO, but no later than
+            // the accepted IO: after a vote change or restart it may only contain the vote.
+            // Saving that vote serializes preceding log writes; an installing snapshot blocks
+            // subsequent commands until it is flushed.
+            return snap_last_log_id.map(|last| {
+                let mut io_id = LogIOId::new(self.leader_vote.to_committed(), Some(last)).to_io_id();
+                if let Some(accepted) = self.state.accepted_log_io()
+                    && accepted < &io_id
+                {
+                    io_id = accepted.clone();
+                }
+                Condition::IOFlushed { io_id }
             });
         }
 
