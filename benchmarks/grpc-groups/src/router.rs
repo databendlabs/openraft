@@ -27,6 +27,7 @@ use tonic::transport::Channel;
 use tonic::transport::Endpoint;
 
 use crate::C;
+use crate::append_batcher::AppendBatcher;
 use crate::partition::Partition;
 use crate::protobuf as pb;
 use crate::protobuf::group_raft_client::GroupRaftClient;
@@ -34,9 +35,14 @@ use crate::router_stats::RouterStats;
 
 /// Sends the Raft requests of every group on this node to the node of their target member, over
 /// one gRPC channel per peer node, which all groups share, and counts them.
+///
+/// With `--batch-heartbeats`, it sends the AppendEntries requests without entries through an
+/// [`AppendBatcher`], which sends them to each node in batches, each through a router that does
+/// not batch.
 #[derive(Clone, Default)]
 pub(crate) struct Router {
     inner: Arc<RouterInner>,
+    batcher: Option<AppendBatcher>,
 }
 
 #[derive(Default)]
@@ -50,6 +56,20 @@ struct RouterInner {
 }
 
 impl Router {
+    /// Create a router, which sends the AppendEntries requests without entries in batches with
+    /// `batch_heartbeats`.
+    pub(crate) fn new(batch_heartbeats: bool) -> Self {
+        let router = Self::default();
+        if !batch_heartbeats {
+            return router;
+        }
+        let batcher = AppendBatcher::spawn(router.clone());
+        Self {
+            batcher: Some(batcher),
+            ..router
+        }
+    }
+
     /// Open a channel to each of `peers`, which maps a node id to its address. A channel connects
     /// on its first request.
     pub(crate) fn connect(&self, peers: &BTreeMap<u64, String>) -> anyhow::Result<()> {
@@ -78,6 +98,22 @@ impl Router {
         let client = self.inner.clients.get().and_then(|clients| clients.get(&target));
         client.cloned().ok_or_else(|| Unreachable::from_string(format!("no channel to node {target}")))
     }
+
+    /// Send `requests` to `target` in one `AppendBatch` call, and return their results, one per
+    /// request.
+    pub(crate) async fn append_batch(
+        &self,
+        target: u64,
+        requests: Vec<pb::GroupAppendRequest>,
+    ) -> Result<Vec<pb::GroupAppendResult>, RPCError<C>> {
+        // Each request waited out a cut before it joined the batch. A batch that a cut began
+        // after waits for the heal too.
+        self.partition().hold().await;
+        let mut client = self.client(target).map_err(RPCError::Unreachable)?;
+        self.stats().count_rpc();
+        let response = client.append_batch(pb::GroupAppendBatch { requests }).await.map_err(rpc_error)?;
+        Ok(response.into_inner().results)
+    }
 }
 
 impl GroupRouter<C, u64> for Router {
@@ -95,18 +131,24 @@ impl GroupRouter<C, u64> for Router {
         let heartbeat = rpc.entries.is_empty().then(|| HeartbeatTimer::start(stats));
 
         self.partition().hold().await;
-        let mut client = self.client(target).map_err(RPCError::Unreachable)?;
         let request = pb::GroupAppendRequest {
             group_id,
             request: Some(rpc.into()),
         };
-        stats.count_rpc();
-        let response = client.append(request).await.map_err(rpc_error)?;
+        let response = match &self.batcher {
+            // A request without entries, mostly a heartbeat, waits for the next batch to its node.
+            Some(batcher) if heartbeat.is_some() => batcher.append(target, request).await?,
+            _ => {
+                let mut client = self.client(target).map_err(RPCError::Unreachable)?;
+                stats.count_rpc();
+                client.append(request).await.map_err(rpc_error)?.into_inner()
+            }
+        };
 
         if let Some(heartbeat) = heartbeat {
             heartbeat.replied();
         }
-        append_result(response.into_inner())
+        append_result(response)
     }
 
     async fn vote(
@@ -236,7 +278,7 @@ fn append_result(response: raftpb::AppendEntriesResponse) -> Result<AppendResult
 
 /// A node that is down refuses the connection, which tonic reports as `Unavailable`. Openraft
 /// backs off from an unreachable target, rather than retrying it at once.
-fn rpc_error(status: Status) -> RPCError<C> {
+pub(crate) fn rpc_error(status: Status) -> RPCError<C> {
     if status.code() == Code::Unavailable {
         RPCError::Unreachable(Unreachable::new(&status))
     } else {

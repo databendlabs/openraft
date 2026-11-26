@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use futures::future::join_all;
 use openraft::raft::AppendError;
 use raft_kv_memstore_grpc::protobuf as raftpb;
 use raft_kv_memstore_grpc::typ::Snapshot;
@@ -14,6 +15,7 @@ use tonic::Status;
 use crate::Raft;
 use crate::partition::Partition;
 use crate::protobuf as pb;
+use crate::protobuf::group_append_result::Result as BatchResult;
 use crate::protobuf::group_raft_server::GroupRaft;
 use crate::rejoins::Rejoins;
 
@@ -43,6 +45,19 @@ impl RaftService {
         let group = usize::try_from(group_id).ok().and_then(|index| groups.get(index));
         group.ok_or_else(|| Status::not_found(format!("no group {group_id}")))
     }
+
+    /// Pass `request` to this node's member of its group, and return the member's reply.
+    async fn append_to_group(&self, request: pb::GroupAppendRequest) -> Result<raftpb::AppendEntriesResponse, Status> {
+        let pb::GroupAppendRequest { group_id, request } = request;
+        let request = request.ok_or_else(|| Status::invalid_argument("no AppendEntries request"))?;
+
+        let result = self.group(group_id)?.append_entries(request.into()).await.map_err(internal)?;
+        // A member that rejects the sender's vote does not accept it as the leader.
+        if !matches!(result, Err(AppendError::HigherVote(_))) {
+            self.rejoins.accepted(group_id);
+        }
+        Ok(result.into())
+    }
 }
 
 #[tonic::async_trait]
@@ -51,16 +66,34 @@ impl GroupRaft for RaftService {
         &self,
         request: Request<pb::GroupAppendRequest>,
     ) -> Result<Response<raftpb::AppendEntriesResponse>, Status> {
-        let pb::GroupAppendRequest { group_id, request } = request.into_inner();
-        let request = request.ok_or_else(|| Status::invalid_argument("no AppendEntries request"))?;
+        self.partition.hold().await;
+        let response = self.append_to_group(request.into_inner()).await?;
+        Ok(Response::new(response))
+    }
+
+    async fn append_batch(
+        &self,
+        request: Request<pb::GroupAppendBatch>,
+    ) -> Result<Response<pb::GroupAppendBatchResponse>, Status> {
+        let requests = request.into_inner().requests;
 
         self.partition.hold().await;
-        let result = self.group(group_id)?.append_entries(request.into()).await.map_err(internal)?;
-        // A member that rejects the sender's vote does not accept it as the leader.
-        if !matches!(result, Err(AppendError::HigherVote(_))) {
-            self.rejoins.accepted(group_id);
-        }
-        Ok(Response::new(result.into()))
+        // The members handle the requests at the same time, as they would handle separate calls.
+        let results = join_all(requests.into_iter().map(|request| self.append_to_group(request))).await;
+
+        let result = |result: Result<raftpb::AppendEntriesResponse, Status>| {
+            let result = match result {
+                Ok(response) => BatchResult::Response(response),
+                Err(status) => BatchResult::Error(pb::GroupAppendError {
+                    code: status.code() as i32,
+                    message: status.message().to_string(),
+                }),
+            };
+            pb::GroupAppendResult { result: Some(result) }
+        };
+        Ok(Response::new(pb::GroupAppendBatchResponse {
+            results: results.into_iter().map(result).collect(),
+        }))
     }
 
     async fn vote(&self, request: Request<pb::GroupVoteRequest>) -> Result<Response<raftpb::VoteResponse>, Status> {

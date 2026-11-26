@@ -8,6 +8,7 @@ use std::process::Stdio;
 use anyhow::Context;
 use tonic::transport::Channel;
 
+use crate::batching::Batching;
 use crate::protobuf::admin_client::AdminClient;
 
 /// A node process that the driver started, with a client of its admin service.
@@ -19,11 +20,18 @@ pub(crate) struct NodeProcess {
 }
 
 impl NodeProcess {
-    /// Start node `id`, with `workers` tokio threads and the openraft `Config` flags
-    /// `raft_args`, and connect to its admin service.
-    pub(crate) async fn start(id: u64, workers: usize, raft_args: &[String]) -> anyhow::Result<Self> {
+    /// Start node `id`, with `workers` tokio threads, the heartbeat options `batching` and the
+    /// openraft `Config` flags `raft_args`, and connect to its admin service.
+    pub(crate) async fn start(
+        id: u64,
+        workers: usize,
+        batching: Batching,
+        raft_args: &[String],
+    ) -> anyhow::Result<Self> {
         let mut command = Command::new(std::env::current_exe()?);
-        command.args(["node", "--id", &id.to_string(), "--workers", &workers.to_string(), "--"]);
+        command.args(["node", "--id", &id.to_string(), "--workers", &workers.to_string()]);
+        command.args(batching.flags());
+        command.arg("--");
         command.args(raft_args);
         // The node exits once its stdin closes, which happens when this process exits.
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit());

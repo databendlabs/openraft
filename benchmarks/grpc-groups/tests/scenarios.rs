@@ -62,6 +62,32 @@ fn test_steady_measures_the_heartbeats_between_the_nodes() {
 }
 
 #[test]
+fn test_batched_heartbeats_take_fewer_calls_than_requests() {
+    let lines = run(&[
+        "--scenario",
+        "steady",
+        "--groups",
+        "6",
+        "--settle-secs",
+        "1",
+        "--measure-secs",
+        "2",
+        "--batch-heartbeats",
+        "--node-heartbeat-timer",
+    ]);
+
+    assert_eq!(1, lines.len(), "got: {lines:?}");
+    let measure = &lines[0];
+    assert!(number(measure, "appends/s") > 0.0, "got: {measure:?}");
+    assert!(
+        number(measure, "rpcs/s") < number(measure, "appends/s"),
+        "the heartbeats of a node's leaders to one node share a call, got: {measure:?}"
+    );
+    assert!(number(measure, "hb_rtt_p50_us") > 0.0, "got: {measure:?}");
+    assert_eq!("0", measure["elections"], "every group keeps its leader");
+}
+
+#[test]
 fn test_write_rate_writes_to_every_group_in_steady() {
     let lines = run(&[
         "--scenario",

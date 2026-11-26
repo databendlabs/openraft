@@ -3,11 +3,14 @@
 //! scenarios and the fields that a run prints.
 
 mod admin_service;
+mod append_batcher;
+mod batching;
 mod clock;
 mod driver;
 mod duration_histogram;
 mod failover_summary;
 mod group_network;
+mod heartbeat_timer;
 mod node;
 mod node_process;
 mod partition;

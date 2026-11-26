@@ -8,6 +8,7 @@ use tonic::transport::Server;
 use tonic::transport::server::TcpIncoming;
 
 use crate::admin_service::AdminService;
+use crate::batching::Batching;
 use crate::protobuf::admin_server::AdminServer;
 use crate::protobuf::group_raft_server::GroupRaftServer;
 use crate::raft_config;
@@ -25,6 +26,9 @@ pub(crate) struct NodeArgs {
     #[arg(long, default_value_t = 4)]
     workers: usize,
 
+    #[command(flatten)]
+    batching: Batching,
+
     /// openraft `Config` flags, after `--`.
     #[arg(last = true)]
     raft_args: Vec<String>,
@@ -33,14 +37,18 @@ pub(crate) struct NodeArgs {
 /// Serve the Raft requests of the peer nodes and the requests of the driver, until the driver
 /// closes the stdin of this process.
 pub(crate) fn run(args: NodeArgs) -> anyhow::Result<()> {
-    let config = raft_config::parse(&args.raft_args)?;
+    let mut config = Arc::unwrap_or_clone(raft_config::parse(&args.raft_args)?);
+    if args.batching.node_heartbeat_timer {
+        // The node's timer triggers the heartbeats of all groups instead.
+        config.enable_heartbeat = false;
+    }
     let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(args.workers).enable_all().build()?;
 
     exit_when_stdin_closes();
-    runtime.block_on(serve(args.id, config))
+    runtime.block_on(serve(args.id, Arc::new(config), args.batching))
 }
 
-async fn serve(id: u64, config: Arc<Config>) -> anyhow::Result<()> {
+async fn serve(id: u64, config: Arc<Config>, batching: Batching) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
 
     // The driver reads the address of this node from the first line of its stdout.
@@ -50,9 +58,9 @@ async fn serve(id: u64, config: Arc<Config>) -> anyhow::Result<()> {
 
     let groups = Arc::new(OnceLock::new());
     let rejoins = Rejoins::default();
-    let router = Router::default();
+    let router = Router::new(batching.batch_heartbeats);
     let raft_service = RaftService::new(groups.clone(), rejoins.clone(), router.partition().clone());
-    let admin_service = AdminService::new(id, config, router, groups, rejoins);
+    let admin_service = AdminService::new(id, config, batching, router, groups, rejoins);
 
     // A heartbeat and its reply take a few bytes each. Send them at once, rather than waiting for
     // more data as Nagle's algorithm would.

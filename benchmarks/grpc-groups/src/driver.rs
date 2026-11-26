@@ -8,6 +8,7 @@ use futures::future::try_join_all;
 use tokio::time::Instant;
 use tokio::time::sleep;
 
+use crate::batching::Batching;
 use crate::clock;
 use crate::failover_summary::FailoverSummary;
 use crate::failover_summary::ready_groups;
@@ -70,6 +71,9 @@ pub(crate) struct RunArgs {
     #[arg(long, default_value_t = 0)]
     write_rate: u64,
 
+    #[command(flatten)]
+    batching: Batching,
+
     /// openraft `Config` flags for every node, after `--`, such as `-- --enable-pre-vote true`.
     #[arg(last = true)]
     raft_args: Vec<String>,
@@ -99,7 +103,7 @@ pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
 async fn run_scenario(args: &RunArgs) -> anyhow::Result<()> {
     let mut nodes = Vec::new();
     for id in 1..=args.nodes {
-        nodes.push(NodeProcess::start(id, args.workers, &args.raft_args).await?);
+        nodes.push(NodeProcess::start(id, args.workers, args.batching, &args.raft_args).await?);
     }
 
     set_up_groups(&nodes, args.groups).await?;

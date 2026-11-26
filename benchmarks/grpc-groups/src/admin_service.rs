@@ -18,7 +18,9 @@ use tonic::Response;
 use tonic::Status;
 
 use crate::Raft;
+use crate::batching::Batching;
 use crate::group_network::GroupNetwork;
+use crate::heartbeat_timer::trigger_heartbeats;
 use crate::protobuf as pb;
 use crate::protobuf::admin_server::Admin;
 use crate::ready::is_ready_leader;
@@ -41,6 +43,10 @@ const TAKEOVER_LIMIT: Duration = Duration::from_secs(40);
 pub(crate) struct AdminService {
     id: u64,
     config: Arc<Config>,
+
+    /// Whether one timer triggers the heartbeats of all groups, with `--node-heartbeat-timer`.
+    node_heartbeat_timer: bool,
+
     router: Router,
 
     /// This node's member of each group, by group id, set at setup.
@@ -63,6 +69,7 @@ impl AdminService {
     pub(crate) fn new(
         id: u64,
         config: Arc<Config>,
+        batching: Batching,
         router: Router,
         groups: Arc<OnceLock<Vec<Raft>>>,
         rejoins: Rejoins,
@@ -70,6 +77,7 @@ impl AdminService {
         Self {
             id,
             config,
+            node_heartbeat_timer: batching.node_heartbeat_timer,
             router,
             groups,
             nodes: OnceLock::new(),
@@ -140,6 +148,11 @@ impl Admin for AdminService {
         let already = self.groups.set(rafts).is_err() || self.nodes.set(nodes).is_err();
         if already {
             return Err(Status::failed_precondition("the node is set up only once"));
+        }
+
+        if self.node_heartbeat_timer {
+            let interval = Duration::from_millis(self.config.heartbeat_interval);
+            tokio::spawn(trigger_heartbeats(self.groups()?.to_vec(), interval));
         }
         Ok(Response::new(()))
     }

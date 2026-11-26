@@ -18,7 +18,8 @@ writes. It implements the design agreed in
   group id. A heartbeat reaches the router as one `append_entries()` call, through the default
   `RaftNetworkV2::stream_append()`, and openraft drops it if no reply comes within
   `heartbeat_interval`. The same default sends a group's replication to each follower one
-  request at a time.
+  request at a time. Each request is one gRPC call, unless `--batch-heartbeats` sends the
+  heartbeats to a node together: see [Batching heartbeats](#batching-heartbeats).
 - **Types and stores.** The protobuf messages, their conversions and the in-memory stores come
   from `examples/raft-kv-memstore-grpc`.
 - **Config.** The groups use openraft's default `Config`. Flags after `--` set its fields on
@@ -40,6 +41,8 @@ cargo run --release --manifest-path benchmarks/grpc-groups/Cargo.toml -- run --s
 | `--measure-secs` | 30       | Seconds of the `measure` window of `steady`.                 |
 | `--window-secs`  | 10       | Seconds of each other window: `baseline`, `degraded` and `after`. `hang` and `partition` need 1 or more. |
 | `--write-rate`   | 0        | Writes per second to each group, from the settle period on: see below. |
+| `--batch-heartbeats` | off  | Send the AppendEntries requests without entries to each node in batches: see [Batching heartbeats](#batching-heartbeats). |
+| `--node-heartbeat-timer` | off | Trigger the heartbeats of all groups of a node from one timer: see [Batching heartbeats](#batching-heartbeats). |
 
 ## Scenarios and phases
 
@@ -86,6 +89,27 @@ shows up as latency rather than as fewer writes. Two kinds of writes are not mad
   would. Only a writer that could not run falls this far behind: without this rule, a stopped
   node 1 would send the writes of its whole stop at the resume, to groups it no longer leads.
 
+## Batching heartbeats
+
+Two options, both off by default, batch the heartbeats as `examples/multi-raft-kv` does:
+
+- `--batch-heartbeats`: the router of each node collects the AppendEntries requests without
+  entries, mostly heartbeats, that arrive within 1 ms of the first one, up to 1,024 requests. It
+  sends those for each target node in one `AppendBatch` call. The target node passes the
+  requests to their groups at the same time, and replies once each has a result, with one result
+  per request.
+- `--node-heartbeat-timer`: each node turns off the heartbeat timer of each group, with
+  `enable_heartbeat`, and triggers the heartbeats of all its groups from one timer every
+  `heartbeat_interval`, so that the heartbeats of its leaders reach the router at about the same
+  time. Without it, the timer of each leader starts when the group elects it, and the driver
+  spreads the initializations over one heartbeat interval.
+
+With batching, `rpcs/s` falls below `appends/s`, since several requests share a call. `hb_rtt_*`
+times each request from its arrival at the router, so it includes the wait for its batch.
+
+[`measure_change.py`](#measuring-a-change) compares two builds, and cannot compare these options
+with a build that has none. Run one build with and without them in turns instead.
+
 ## Fields
 
 Each phase prints one line of tab-separated `name=value` fields. Every line begins with
@@ -100,9 +124,9 @@ and percentiles cover the samples of all nodes:
 | `cpu%` | the CPU time of the nodes during the window, as a share of one core |
 | `memory_mib`, `memory_kib/group` | the memory of the nodes at the end, as in idle-groups: on macOS the physical footprint, on Linux `VmRSS` plus `VmSwap` |
 | `tasks`, `tasks/group` | the tasks alive in the tokio runtimes of the nodes at the end |
-| `appends/s`, `rpcs/s` | AppendEntries requests that the routers sent, and the gRPC calls that carried them. They are equal until heartbeats are batched. |
+| `appends/s`, `rpcs/s` | AppendEntries requests that the routers sent, and the gRPC calls that carried them. They are equal unless `--batch-heartbeats` sends several requests in one call. |
 | `votes/s` | Vote and PreVote requests |
-| `hb_rtt_p50_us`, `hb_rtt_p99_us`, `hb_rtt_max_us` | the round trip of each AppendEntries request without entries that got a reply, timed in the sending router |
+| `hb_rtt_p50_us`, `hb_rtt_p99_us`, `hb_rtt_max_us` | the round trip of each AppendEntries request without entries that got a reply, timed in the sending router from the arrival of the request |
 | `hb_failed` | those that got no reply: openraft dropped them at their timeout, `heartbeat_interval`, or the transport failed them |
 | `ack_age_p50_ms`, `ack_age_p99_ms`, `ack_age_max_ms` | `now - heartbeat[follower]` on each leader, sampled every 100 ms. `degraded` leaves node 1 out. |
 | `quorum_age_max_ms` | the largest `now - last_quorum_acked` that the same samples saw. A leader refuses writes once this reaches `leader_lease`, 300 ms by default. |

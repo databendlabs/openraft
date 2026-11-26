@@ -8,12 +8,38 @@ import "raft.proto";
 package grpcgroups;
 
 // ---
-// --- Raft requests between the nodes, each to one group of the target node.
+// --- Raft requests between the nodes, each to one group of the target node, except a batch.
 // ---
 
 message GroupAppendRequest {
   uint64 group_id = 1;
   openraftpb.AppendEntriesRequest request = 2;
+}
+
+// AppendEntries requests to groups of one node, in one call: with `--batch-heartbeats`, the
+// requests without entries that a router collected for that node.
+message GroupAppendBatch {
+  repeated GroupAppendRequest requests = 1;
+}
+
+// The result of one request of a batch.
+message GroupAppendResult {
+  oneof result {
+    openraftpb.AppendEntriesResponse response = 1;
+    GroupAppendError error = 2;
+  }
+}
+
+// The status that the request would have failed with in a call of its own.
+message GroupAppendError {
+  // The gRPC status code, as `tonic::Code` numbers it.
+  int32 code = 1;
+  string message = 2;
+}
+
+message GroupAppendBatchResponse {
+  // One result per request, in the order of the requests.
+  repeated GroupAppendResult results = 1;
 }
 
 message GroupVoteRequest {
@@ -31,6 +57,8 @@ message GroupSnapshotRequest {
 
 service GroupRaft {
   rpc Append(GroupAppendRequest) returns (openraftpb.AppendEntriesResponse) {}
+  // Pass each request of a batch to its group, and reply once every request has a result.
+  rpc AppendBatch(GroupAppendBatch) returns (GroupAppendBatchResponse) {}
   rpc Vote(GroupVoteRequest) returns (openraftpb.VoteResponse) {}
   rpc PreVote(GroupVoteRequest) returns (openraftpb.VoteResponse) {}
   rpc Snapshot(GroupSnapshotRequest) returns (openraftpb.SnapshotResponse) {}
