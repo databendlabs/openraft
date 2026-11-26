@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -10,6 +11,12 @@ use anyerror::AnyError;
 use futures_util::FutureExt;
 use futures_util::Stream;
 use futures_util::StreamExt;
+use tracing::Event;
+use tracing::Level;
+use tracing::Metadata;
+use tracing::Subscriber;
+use tracing::span;
+use tracing::subscriber::NoSubscriber;
 
 use super::HeartbeatWorker;
 use crate::Config;
@@ -26,6 +33,7 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::UTLeaderId;
 use crate::engine::testing::log_id;
 use crate::error::RPCError;
+use crate::errors::NetworkError;
 use crate::errors::Unreachable;
 use crate::impls::Vote;
 use crate::network::NetStreamAppend;
@@ -293,6 +301,10 @@ fn unreachable() -> RPCError<C> {
     RPCError::Unreachable(Unreachable::new(&AnyError::error("unreachable")))
 }
 
+fn network_error() -> RPCError<C> {
+    RPCError::Network(NetworkError::new(&AnyError::error("network error")))
+}
+
 /// Sends one heartbeat through a worker on `scripts`, then closes its event channel, so the
 /// worker stops once it has handled the heartbeat. Returns the heartbeat and every notification
 /// the worker sent, in order.
@@ -452,22 +464,37 @@ fn test_success_and_conflict_are_reported_once() {
     });
 }
 
-/// No response, a failed setup and a failed response report nothing, and the worker goes on.
+/// No response, and a setup or a response that fails or times out, report nothing, and the worker
+/// goes on.
 #[test]
 fn test_heartbeat_without_a_response_reports_nothing() {
     C::run(async {
         let cases = [
             ("empty stream", Script::respond(vec![], Tail::End)),
-            ("failed setup", Script {
+            ("unreachable at setup", Script {
                 setup_error: Some(unreachable()),
                 responses: vec![],
                 tail: Tail::End,
             }),
-            ("failed response", Script {
+            ("unreachable response", Script {
                 setup_error: None,
                 responses: vec![Err(unreachable())],
                 tail: Tail::Pending,
             }),
+            ("network error at setup", Script {
+                setup_error: Some(network_error()),
+                responses: vec![],
+                tail: Tail::End,
+            }),
+            ("network error response", Script {
+                setup_error: None,
+                responses: vec![Err(network_error())],
+                tail: Tail::Pending,
+            }),
+            (
+                "no response before the deadline",
+                Script::respond(vec![], Tail::Pending),
+            ),
         ];
         for (case, script) in cases {
             tracing::info!(case, "--- a heartbeat without a response");
@@ -526,6 +553,152 @@ fn test_higher_vote_waits_for_a_full_notification_channel() {
         assert_higher_vote(&second);
         C::timeout(TEST_TIMEOUT, join).await.unwrap().unwrap();
     });
+}
+
+/// A reply that an error follows is reported: the target replied.
+#[test]
+fn test_reply_before_an_error_is_reported() {
+    C::run(async {
+        let script = Script {
+            setup_error: None,
+            responses: vec![Ok(Ok(None)), Err(unreachable())],
+            tail: Tail::End,
+        };
+        let (heartbeat, notifications) = run_heartbeat(vec![script]).await;
+
+        assert_eq!(1, notifications.len());
+        assert_progress(&notifications[0], &heartbeat);
+    });
+}
+
+/// A tracing subscriber that records the level and the message of every event.
+struct EventRecorder {
+    events: Arc<Mutex<Vec<(Level, String)>>>,
+}
+
+impl Subscriber for EventRecorder {
+    fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, _span: &span::Attributes<'_>) -> span::Id {
+        span::Id::from_u64(1)
+    }
+
+    fn record(&self, _span: &span::Id, _values: &span::Record<'_>) {}
+
+    fn record_follows_from(&self, _span: &span::Id, _follows: &span::Id) {}
+
+    fn event(&self, event: &Event<'_>) {
+        let mut message = MessageField(String::new());
+        event.record(&mut message);
+        let level = *event.metadata().level();
+        self.events.lock().unwrap().push((level, message.0));
+    }
+
+    fn enter(&self, _span: &span::Id) {}
+
+    fn exit(&self, _span: &span::Id) {}
+}
+
+/// The `message` field of an event.
+struct MessageField(String);
+
+impl tracing::field::Visit for MessageField {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
+        if field.name() == "message" {
+            self.0 = format!("{value:?}");
+        }
+    }
+}
+
+/// Only the first of the heartbeats that fail in a row logs a warning, whatever the failure. The
+/// later ones log at debug level, and the next reply logs at info level how many failed.
+#[test]
+fn test_only_the_first_failure_in_a_row_warns() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let recorder = EventRecorder { events: events.clone() };
+
+    // tracing caches whether each log statement is enabled when a thread first runs it. With one
+    // subscriber installed, it decides by the subscriber of that thread, so a statement that a test
+    // thread without one runs first would be cached as disabled on this thread too. With a second
+    // one installed before the recorder, every event asks the subscriber of its own thread.
+    let _second = tracing::Dispatch::new(NoSubscriber::default());
+
+    // `run()` polls the future on this thread, and the future polls the worker inline, so the
+    // worker logs to the recorder.
+    tracing::subscriber::with_default(recorder, || {
+        C::run(async {
+            let scripts = VecDeque::from([
+                Script {
+                    setup_error: Some(unreachable()),
+                    responses: vec![],
+                    tail: Tail::End,
+                },
+                Script {
+                    setup_error: None,
+                    responses: vec![Err(network_error())],
+                    tail: Tail::End,
+                },
+                Script::respond(vec![], Tail::End),
+                Script::respond(vec![Ok(None)], Tail::End),
+                Script::respond(vec![], Tail::Pending),
+            ]);
+            let (tx_notification, _rx_notification) = C::mpsc(16);
+            let (event_tx, rx) = C::watch_channel(None);
+            let config = Config {
+                heartbeat_interval: SCRIPTED_HEARTBEAT_MS,
+                ..Config::default()
+            };
+            let worker = HeartbeatWorker {
+                id: 1,
+                leader_vote: leader_vote(),
+                stream_id: StreamId::new(1),
+                rx,
+                network: ScriptedNetwork { scripts },
+                target: 2,
+                node: (),
+                config: Arc::new(config),
+                tx_notification,
+            };
+            let (_cancel, future) = worker.run();
+            let mut future = std::pin::pin!(future);
+            let event = |round| HeartbeatEvent {
+                time: SendStamp::new(C::now(), round),
+                matching: None,
+                cluster_committed: None,
+            };
+
+            tracing::info!("--- three heartbeats fail, each for another reason, then a fourth gets a reply");
+            {
+                for round in 1..=4 {
+                    event_tx.send(Some(event(round))).unwrap();
+                    let pending = future.as_mut().now_or_never();
+                    assert_eq!(None, pending, "the worker waits for the next heartbeat");
+                }
+            }
+
+            tracing::info!("--- the next heartbeat gets no response before its deadline");
+            {
+                event_tx.send(Some(event(5))).unwrap();
+                drop(event_tx);
+                C::timeout(TEST_TIMEOUT, future).await.unwrap();
+            }
+        })
+    });
+
+    let events = events.lock().unwrap();
+    let logged: Vec<_> = events
+        .iter()
+        .filter(|(_, message)| message.contains("heartbeat failed") || message.contains("target replied"))
+        .collect();
+    let levels: Vec<_> = logged.iter().map(|(level, _)| *level).collect();
+    assert_eq!(
+        vec![Level::WARN, Level::DEBUG, Level::DEBUG, Level::INFO, Level::WARN],
+        levels
+    );
+    let replied = &logged[3].1;
+    assert!(replied.contains("after 3 failed heartbeats"), "got: {replied}");
 }
 
 /// A type config on [`HookRuntime`]: Tokio, with a watch receiver that can run a hook right after

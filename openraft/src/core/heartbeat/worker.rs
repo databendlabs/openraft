@@ -11,6 +11,7 @@ use crate::Config;
 use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
+use crate::core::heartbeat::errors::HeartbeatFailure;
 use crate::core::heartbeat::errors::RaftCoreClosed;
 use crate::core::heartbeat::event::HeartbeatEvent;
 use crate::core::notification::Notification;
@@ -89,6 +90,11 @@ where
     }
 
     async fn do_run(mut self) -> Result<(), RaftCoreClosed> {
+        // The heartbeats that failed in a row since the target last replied. Only the first of them
+        // logs a warning, so that a target that is down, and fails every heartbeat, logs one warning
+        // instead of one per heartbeat.
+        let mut failed_in_row: u64 = 0;
+
         loop {
             tracing::debug!("{} is waiting for a new heartbeat event.", self);
 
@@ -130,8 +136,31 @@ where
 
             tracing::debug!("{} sent a heartbeat: {}, reply: {:?}", self, heartbeat, reply);
 
-            if let Some(reply) = reply {
-                self.handle_stream_result(reply, &heartbeat).await?;
+            match reply {
+                Ok(reply) => {
+                    if failed_in_row > 0 {
+                        tracing::info!("{} target replied after {} failed heartbeats", self, failed_in_row);
+                        failed_in_row = 0;
+                    }
+                    self.handle_stream_result(reply, &heartbeat).await?;
+                }
+                Err(failure) if failed_in_row == 0 => {
+                    failed_in_row = 1;
+                    tracing::warn!(
+                        "{} heartbeat failed; until the target replies, failures log at debug level: {}",
+                        self,
+                        failure
+                    );
+                }
+                Err(failure) => {
+                    failed_in_row += 1;
+                    tracing::debug!(
+                        "{} heartbeat failed again, {} in a row: {}",
+                        self,
+                        failed_in_row,
+                        failure
+                    );
+                }
             }
         }
     }
@@ -142,32 +171,27 @@ where
     /// matters most is returned: a higher vote, then a conflict, then a success. The stream is
     /// polled to its end, which lets the network close the connection cleanly. Each wait is
     /// bounded by `deadline` on its own, and a response is kept once it is received, so a stream
-    /// that is slow to end cannot discard it. Returns `None`, after logging why, when no response
-    /// arrived.
+    /// that is slow to end cannot discard it. When no response arrives, it returns why, for the
+    /// caller to log.
     async fn send_heartbeat<S>(
         &mut self,
         input: S,
         option: RPCOption,
         deadline: InstantOf<C>,
-    ) -> Option<AppendResult<C>>
+    ) -> Result<AppendResult<C>, HeartbeatFailure<C>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
         // The response stream borrows the network, so the messages below name the fields that
         // `Display` would print.
         let (id, target) = (&self.id, &self.target);
+        let timeout = option.hard_ttl();
 
         let opened = C::timeout_at(deadline, self.network.stream_append(input, option)).await;
         let mut output = match opened {
             Ok(Ok(output)) => output,
-            Ok(Err(error)) => {
-                tracing::warn!("id={} target={} failed to send a heartbeat: {}", id, target, error);
-                return None;
-            }
-            Err(_elapsed) => {
-                tracing::warn!("id={} target={} timed out sending a heartbeat", id, target);
-                return None;
-            }
+            Ok(Err(error)) => return Err(HeartbeatFailure::Rpc(error)),
+            Err(_elapsed) => return Err(HeartbeatFailure::Timeout(timeout)),
         };
 
         let mut reply: Option<AppendResult<C>> = None;
@@ -176,18 +200,24 @@ where
             let result = match next {
                 Ok(Some(Ok(result))) => result,
                 Ok(Some(Err(error))) => {
-                    tracing::warn!("id={} target={} heartbeat response failed: {}", id, target, error);
-                    break;
+                    let Some(reply) = reply else {
+                        return Err(HeartbeatFailure::Rpc(error));
+                    };
+                    tracing::warn!(
+                        "id={} target={} heartbeat response failed after a reply: {}",
+                        id,
+                        target,
+                        error
+                    );
+                    return Ok(reply);
                 }
-                Ok(None) => {
-                    if reply.is_none() {
-                        tracing::warn!("id={} target={} heartbeat stream ended without a response", id, target);
-                    }
-                    break;
-                }
+                Ok(None) => return reply.ok_or(HeartbeatFailure::NoResponse),
                 Err(_elapsed) => {
+                    let Some(reply) = reply else {
+                        return Err(HeartbeatFailure::Timeout(timeout));
+                    };
                     tracing::warn!("id={} target={} heartbeat responses did not end in time", id, target);
-                    break;
+                    return Ok(reply);
                 }
             };
 
@@ -195,7 +225,6 @@ where
                 reply = Some(result);
             }
         }
-        reply
     }
 
     /// Handle the stream append result, send appropriate notifications.
