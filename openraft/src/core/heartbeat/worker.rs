@@ -13,7 +13,12 @@ use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::heartbeat::errors::RaftCoreClosed;
 use crate::core::heartbeat::event::HeartbeatEvent;
+use crate::core::heartbeat::heartbeat_backoff::HeartbeatBackoff;
 use crate::core::notification::Notification;
+use crate::display_ext::DisplayInstantExt;
+use crate::errors::RPCError;
+use crate::errors::Unreachable;
+use crate::network::NetBackoff;
 use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
 use crate::progress::stream_id::StreamId;
@@ -75,7 +80,7 @@ where
 impl<C, N> HeartbeatWorker<C, N>
 where
     C: RaftTypeConfig,
-    N: NetStreamAppend<C>,
+    N: NetStreamAppend<C> + NetBackoff<C>,
 {
     pub(crate) fn run(self) -> (CancelHandleOf<C>, impl Future<Output = ()> + OptionalSend) {
         let (cancel, future) = C::cancellable(self.do_run());
@@ -89,6 +94,11 @@ where
     }
 
     async fn do_run(mut self) -> Result<(), RaftCoreClosed> {
+        // The backoff while the target is unreachable. It is a local because `Backoff` is not
+        // `Sync`: as a field, it would make the `&self` that the awaits below hold not `Send`, and
+        // so the worker future too.
+        let mut backoff: Option<HeartbeatBackoff<C>> = None;
+
         loop {
             tracing::debug!("{} is waiting for a new heartbeat event.", self);
 
@@ -106,6 +116,18 @@ where
             let Some(heartbeat) = heartbeat else {
                 continue;
             };
+
+            if let Some(active) = &backoff
+                && !active.is_due(heartbeat.time.time)
+            {
+                tracing::debug!(
+                    "{} skips heartbeat {}: the target is unreachable, heartbeats resume at {}",
+                    self,
+                    heartbeat,
+                    active.retry_at().display()
+                );
+                continue;
+            }
 
             let timeout = Duration::from_millis(self.config.heartbeat_interval);
             let option = RPCOption::new(timeout);
@@ -130,10 +152,47 @@ where
 
             tracing::debug!("{} sent a heartbeat: {}, reply: {:?}", self, heartbeat, reply);
 
-            if let Some(reply) = reply {
-                self.handle_stream_result(reply, &heartbeat).await?;
+            match reply {
+                Ok(Some(reply)) => {
+                    if backoff.take().is_some() {
+                        tracing::info!("{} target replied, heartbeats no longer back off", self);
+                    }
+                    self.handle_stream_result(reply, &heartbeat).await?;
+                }
+                Ok(None) => {}
+                Err(unreachable) => self.back_off(&mut backoff, heartbeat.time.time, unreachable),
             }
         }
+    }
+
+    /// Skips the heartbeats created within the next backoff delay, after the heartbeat created at
+    /// `failed_at` found the target unreachable.
+    ///
+    /// The first failure creates `backoff` and logs a warning, and the later ones log at debug
+    /// level. The delays are those of the network's [`backoff()`](NetBackoff::backoff), or of
+    /// [`Config::backoff`] when that returns `None`, each at most `election_timeout_min`, so that
+    /// a target that comes back gets a heartbeat within about an election timeout.
+    fn back_off(&self, backoff: &mut Option<HeartbeatBackoff<C>>, failed_at: InstantOf<C>, error: Unreachable<C>) {
+        if let Some(active) = backoff {
+            active.defer(failed_at);
+            tracing::debug!(
+                "{} target is still unreachable, heartbeats resume at {}: {}",
+                self,
+                active.retry_at().display(),
+                error
+            );
+            return;
+        }
+
+        let delays = self.network.backoff().unwrap_or_else(|| self.config.build_backoff());
+        let max_delay = Duration::from_millis(self.config.election_timeout_min);
+        let started = backoff.insert(HeartbeatBackoff::new(delays, max_delay, failed_at));
+        tracing::warn!(
+            "{} target is unreachable, heartbeats back off until it replies, the next at {}: {}",
+            self,
+            started.retry_at().display(),
+            error
+        );
     }
 
     /// Sends one heartbeat and reads the responses that arrive before `deadline`.
@@ -142,14 +201,15 @@ where
     /// matters most is returned: a higher vote, then a conflict, then a success. The stream is
     /// polled to its end, which lets the network close the connection cleanly. Each wait is
     /// bounded by `deadline` on its own, and a response is kept once it is received, so a stream
-    /// that is slow to end cannot discard it. Returns `None`, after logging why, when no response
-    /// arrived.
+    /// that is slow to end cannot discard it. Returns `Ok(None)` when no response arrived, after
+    /// logging why. An [`Unreachable`] error that ends the heartbeat before any response is
+    /// returned instead, without a log: the caller logs it at the level that its backoff calls for.
     async fn send_heartbeat<S>(
         &mut self,
         input: S,
         option: RPCOption,
         deadline: InstantOf<C>,
-    ) -> Option<AppendResult<C>>
+    ) -> Result<Option<AppendResult<C>>, Unreachable<C>>
     where
         S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
     {
@@ -160,13 +220,14 @@ where
         let opened = C::timeout_at(deadline, self.network.stream_append(input, option)).await;
         let mut output = match opened {
             Ok(Ok(output)) => output,
+            Ok(Err(RPCError::Unreachable(unreachable))) => return Err(unreachable),
             Ok(Err(error)) => {
                 tracing::warn!("id={} target={} failed to send a heartbeat: {}", id, target, error);
-                return None;
+                return Ok(None);
             }
             Err(_elapsed) => {
                 tracing::warn!("id={} target={} timed out sending a heartbeat", id, target);
-                return None;
+                return Ok(None);
             }
         };
 
@@ -175,6 +236,7 @@ where
             let next = C::timeout_at(deadline, output.next()).await;
             let result = match next {
                 Ok(Some(Ok(result))) => result,
+                Ok(Some(Err(RPCError::Unreachable(unreachable)))) if reply.is_none() => return Err(unreachable),
                 Ok(Some(Err(error))) => {
                     tracing::warn!("id={} target={} heartbeat response failed: {}", id, target, error);
                     break;
@@ -195,7 +257,7 @@ where
                 reply = Some(result);
             }
         }
-        reply
+        Ok(reply)
     }
 
     /// Handle the stream append result, send appropriate notifications.

@@ -26,8 +26,11 @@ use crate::engine::testing::UTConfig;
 use crate::engine::testing::UTLeaderId;
 use crate::engine::testing::log_id;
 use crate::error::RPCError;
+use crate::errors::NetworkError;
 use crate::errors::Unreachable;
 use crate::impls::Vote;
+use crate::network::Backoff;
+use crate::network::NetBackoff;
 use crate::network::NetStreamAppend;
 use crate::network::RPCOption;
 use crate::progress::stream_id::StreamId;
@@ -103,6 +106,12 @@ impl NetStreamAppend<C> for TestNetwork {
         });
         let output: BoxStream<'s, _> = Box::pin(output);
         Box::pin(async move { Ok(output) })
+    }
+}
+
+impl NetBackoff<C> for TestNetwork {
+    fn backoff(&self) -> Option<Backoff> {
+        None
     }
 }
 
@@ -279,6 +288,12 @@ impl NetStreamAppend<C> for ScriptedNetwork {
     }
 }
 
+impl NetBackoff<C> for ScriptedNetwork {
+    fn backoff(&self) -> Option<Backoff> {
+        None
+    }
+}
+
 const SCRIPTED_HEARTBEAT_MS: u64 = 100;
 
 fn leader_vote() -> CommittedVoteOf<C> {
@@ -291,6 +306,10 @@ fn higher_vote() -> VoteOf<C> {
 
 fn unreachable() -> RPCError<C> {
     RPCError::Unreachable(Unreachable::new(&AnyError::error("unreachable")))
+}
+
+fn network_error() -> RPCError<C> {
+    RPCError::Network(NetworkError::new(&AnyError::error("network error")))
 }
 
 /// Sends one heartbeat through a worker on `scripts`, then closes its event channel, so the
@@ -452,20 +471,31 @@ fn test_success_and_conflict_are_reported_once() {
     });
 }
 
-/// No response, a failed setup and a failed response report nothing, and the worker goes on.
+/// No response, and a setup or a response that fails as unreachable or with a network error,
+/// report nothing, and the worker goes on.
 #[test]
 fn test_heartbeat_without_a_response_reports_nothing() {
     C::run(async {
         let cases = [
             ("empty stream", Script::respond(vec![], Tail::End)),
-            ("failed setup", Script {
+            ("unreachable at setup", Script {
                 setup_error: Some(unreachable()),
                 responses: vec![],
                 tail: Tail::End,
             }),
-            ("failed response", Script {
+            ("unreachable response", Script {
                 setup_error: None,
                 responses: vec![Err(unreachable())],
+                tail: Tail::Pending,
+            }),
+            ("network error at setup", Script {
+                setup_error: Some(network_error()),
+                responses: vec![],
+                tail: Tail::End,
+            }),
+            ("network error response", Script {
+                setup_error: None,
+                responses: vec![Err(network_error())],
                 tail: Tail::Pending,
             }),
         ];
@@ -476,6 +506,22 @@ fn test_heartbeat_without_a_response_reports_nothing() {
                 assert_eq!(0, notifications.len(), "{case} must report nothing");
             }
         }
+    });
+}
+
+/// A reply that an `Unreachable` error follows is reported: the target replied.
+#[test]
+fn test_reply_before_an_unreachable_error_is_reported() {
+    C::run(async {
+        let script = Script {
+            setup_error: None,
+            responses: vec![Ok(Ok(None)), Err(unreachable())],
+            tail: Tail::End,
+        };
+        let (heartbeat, notifications) = run_heartbeat(vec![script]).await;
+
+        assert_eq!(1, notifications.len());
+        assert_progress(&notifications[0], &heartbeat);
     });
 }
 
@@ -525,6 +571,134 @@ fn test_higher_vote_waits_for_a_full_notification_channel() {
         let second = C::timeout(TEST_TIMEOUT, rx_notification.recv()).await.unwrap().unwrap();
         assert_higher_vote(&second);
         C::timeout(TEST_TIMEOUT, join).await.unwrap().unwrap();
+    });
+}
+
+/// A network whose target answers a heartbeat when the next of `answers` is `true`, and is
+/// unreachable otherwise.
+struct OutageNetwork {
+    answers: VecDeque<bool>,
+
+    /// The index of the `prev_log_id` of every heartbeat sent, in order.
+    sent: Arc<Mutex<Vec<u64>>>,
+
+    /// The delays that `backoff()` returns, or `None` to use `Config::backoff`.
+    delays: Option<Vec<Duration>>,
+}
+
+impl NetStreamAppend<C> for OutageNetwork {
+    fn stream_append<'s, S>(
+        &'s mut self,
+        mut input: S,
+        _option: RPCOption,
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+    {
+        let request = input.next().now_or_never().flatten().expect("the heartbeat is ready");
+        let matching = request.prev_log_id.expect("every heartbeat has a matching log id");
+        self.sent.lock().unwrap().push(matching.index);
+
+        let answered = self.answers.pop_front().expect("an answer for every heartbeat");
+        if !answered {
+            return Box::pin(async { Err(unreachable()) });
+        }
+        let output: BoxStream<'s, _> = Box::pin(futures_util::stream::iter([Ok(Ok(None))]));
+        Box::pin(async move { Ok(output) })
+    }
+}
+
+impl NetBackoff<C> for OutageNetwork {
+    fn backoff(&self) -> Option<Backoff> {
+        let delays = self.delays.clone()?;
+        Some(Backoff::new(delays.into_iter()))
+    }
+}
+
+/// The interval between the creation times of the heartbeats of [`send_spaced_heartbeats`].
+const SPACING_MS: u64 = 50;
+
+/// Sends `count` heartbeats, created `SPACING_MS` apart, one at a time to a worker whose target
+/// answers as `answers` says, and returns the indices of the heartbeats that the worker sent.
+///
+/// Heartbeat `k` has the matching log id at index `k`. The network's backoff has the delays
+/// `delays`, or none when it is `None`.
+async fn send_spaced_heartbeats(
+    answers: impl IntoIterator<Item = bool>,
+    delays: Option<Vec<Duration>>,
+    config: Config,
+    count: u64,
+) -> Vec<u64> {
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let network = OutageNetwork {
+        answers: answers.into_iter().collect(),
+        sent: sent.clone(),
+        delays,
+    };
+    let (tx_notification, _rx_notification) = C::mpsc(16);
+    let (event_tx, rx) = C::watch_channel(None);
+    let worker = HeartbeatWorker {
+        id: 1,
+        leader_vote: leader_vote(),
+        stream_id: StreamId::new(1),
+        rx,
+        network,
+        target: 2,
+        node: (),
+        config: Arc::new(config),
+        tx_notification,
+    };
+    let (_cancel, future) = worker.run();
+    let mut future = std::pin::pin!(future);
+
+    let start = C::now();
+    for k in 0..count {
+        let heartbeat = HeartbeatEvent {
+            time: SendStamp::new(start + Duration::from_millis(k * SPACING_MS), k + 1),
+            matching: Some(log_id(1, 1, k)),
+            cluster_committed: None,
+        };
+        event_tx.send(Some(heartbeat)).unwrap();
+        let pending = future.as_mut().now_or_never();
+        assert_eq!(None, pending, "the worker waits for the next heartbeat");
+    }
+    sent.lock().unwrap().clone()
+}
+
+/// After a heartbeat finds the target unreachable, the worker skips the heartbeats created within
+/// the next delay of the network's backoff, each delay at most `election_timeout_min`, until the
+/// target replies.
+///
+/// Heartbeat 0 waits 100 ms, so 1 is skipped. Heartbeat 2 waits 200 ms, cut to 150 ms, so 3 and 4
+/// are skipped. The reply to 5 ends the backoff, so 6 starts a new one, which waits 100 ms again.
+#[test]
+fn test_unreachable_target_backs_off_heartbeats() {
+    C::run(async {
+        let config = Config {
+            election_timeout_min: 150,
+            ..Config::default()
+        };
+        let answers = [false, false, true, false, true];
+        let delays = vec![Duration::from_millis(100), Duration::from_millis(200)];
+
+        let sent = send_spaced_heartbeats(answers, Some(delays), config, 9).await;
+        assert_eq!(vec![0, 2, 5, 6, 8], sent);
+    });
+}
+
+/// When the network has no backoff, the delays of `Config::backoff` space out the heartbeats to
+/// an unreachable target.
+#[test]
+fn test_unreachable_target_backs_off_with_config_backoff() {
+    C::run(async {
+        let config = Config {
+            backoff: Some("100ms 100ms 100ms".to_string()),
+            election_timeout_min: 150,
+            ..Config::default()
+        };
+
+        let sent = send_spaced_heartbeats([false, false, false], None, config, 5).await;
+        assert_eq!(vec![0, 2, 4], sent, "every heartbeat that is sent waits 100 ms");
     });
 }
 
@@ -583,6 +757,12 @@ impl NetStreamAppend<HookConfig> for RecordingNetwork {
         });
         let output: BoxStream<'s, _> = Box::pin(output);
         Box::pin(async move { Ok(output) })
+    }
+}
+
+impl NetBackoff<HookConfig> for RecordingNetwork {
+    fn backoff(&self) -> Option<Backoff> {
+        None
     }
 }
 

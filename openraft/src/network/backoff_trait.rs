@@ -24,7 +24,9 @@ where C: RaftTypeConfig
     /// When a [`Unreachable`](`crate::error::Unreachable`) error is returned from the `Network`
     /// methods, Openraft does not retry connecting to a node immediately. Instead, it sleeps
     /// for a while and retries. The duration of the sleep is determined by the backoff
-    /// instance.
+    /// instance. Heartbeats wait for each delay too, but for at most
+    /// [`Config::election_timeout_min`](crate::Config::election_timeout_min): the Leader skips
+    /// the heartbeats to the node until the delay has passed.
     ///
     /// The backoff returns the ith sleep interval before the ith retry. Make it infinite: after
     /// it ends, Openraft keeps retrying with a fixed delay, as [`Backoff`] describes. The
@@ -33,6 +35,7 @@ where C: RaftTypeConfig
     /// Return `None` to use the default backoff configured in
     /// [`Config::backoff`](crate::Config::backoff). Only this `None` selects that policy: a
     /// returned backoff that runs out does not fall back to it.
+    #[since(version = "0.10.2", change = "also spaces out heartbeats to an unreachable node")]
     #[since(
         version = "0.10.0",
         change = "changed return type to Option<Backoff>; None delegates to Config::backoff"

@@ -416,8 +416,15 @@ impl<C: RaftTypeConfig> NetworkError<C> {
 /// [`Config::backoff`] when the network provides none. A [`NetworkError`] instead is retried at
 /// once until several fail in a row.
 ///
+/// A heartbeat that gets this error backs off with the same delays, each at most
+/// [`Config::election_timeout_min`], so that a node that comes back gets a heartbeat soon: the
+/// Leader skips the heartbeats to the node until the delay after the failed one has passed, and
+/// sends every heartbeat again once the node replies.
+///
 /// [`backoff()`]: crate::network::RaftNetworkV2::backoff
 /// [`Config::backoff`]: crate::Config::backoff
+/// [`Config::election_timeout_min`]: crate::Config::election_timeout_min
+#[since(version = "0.10.2", change = "heartbeats back off from an unreachable node")]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("Unreachable node: {source}")]

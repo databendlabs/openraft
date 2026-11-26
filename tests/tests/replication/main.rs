@@ -9,6 +9,7 @@ mod t20_empty_log_entries;
 mod t40_receive_logs;
 mod t50_append_entries_backoff;
 mod t50_append_entries_backoff_rejoin;
+mod t50_heartbeat_backoff;
 mod t51_backoff_cleared_after_success;
 mod t52_reset_backoff;
 mod t60_feature_loosen_follower_log_revert;
