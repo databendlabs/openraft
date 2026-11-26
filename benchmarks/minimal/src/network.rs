@@ -33,6 +33,7 @@ use openraft::raft::TransferLeaderRequest;
 use openraft::raft::TransferLeaderResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use tokio::sync::watch;
 
 use crate::profile::Profile;
 use crate::store::LogStore;
@@ -71,6 +72,8 @@ pub struct Router {
     links: Arc<Mutex<Links>>,
     stores: Arc<Mutex<BTreeMap<u64, Arc<LogStore>>>>,
     machines: Arc<Mutex<BTreeMap<u64, Arc<StateMachineStore>>>>,
+    /// The nodes cut off from every other node, one bit per node ID.
+    cut: Arc<watch::Sender<u64>>,
 }
 
 impl Router {
@@ -89,6 +92,7 @@ impl Router {
             links: Arc::new(Mutex::new(BTreeMap::new())),
             stores: Arc::new(Mutex::new(BTreeMap::new())),
             machines: Arc::new(Mutex::new(BTreeMap::new())),
+            cut: Arc::new(watch::Sender::new(0)),
         }
     }
 
@@ -206,6 +210,22 @@ impl Router {
         self.table.lock().unwrap().get(&id).unwrap().clone()
     }
 
+    /// Cut `node` off from every other node, like a network partition around it.
+    ///
+    /// Every RPC from or to `node` fails as unreachable, and an open append stream between it and
+    /// another node ends at once: the requests and responses still in flight are lost. Only the
+    /// direct link of the empty control is cut; a serialized link of `--profile` is not.
+    #[openraft::macros::since(version = "0.10.2")]
+    pub fn cut_off(&self, node: NodeId) {
+        self.cut.send_modify(|cut| *cut |= cut_bit(node));
+    }
+
+    /// Reconnect `node` after [`Self::cut_off`].
+    #[openraft::macros::since(version = "0.10.2")]
+    pub fn reconnect(&self, node: NodeId) {
+        self.cut.send_modify(|cut| *cut &= !cut_bit(node));
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn new_cluster(&mut self, config: Arc<Config>, voter_ids: BTreeSet<NodeId>) -> anyhow::Result<()> {
         let mut rafts = BTreeMap::new();
@@ -294,18 +314,21 @@ impl RaftNetworkFactory<TypeConfig> for Router {
 
     async fn new_client(&mut self, target: NodeId, _node: &()) -> Self::Network {
         Network {
+            source: self.source,
             target,
             target_raft: self.table.lock().unwrap().get(&target).unwrap().clone(),
             delay: self.network_delay,
             request_link: self.link(self.source, target),
             response_link: self.link(target, self.source),
             capacity: self.profile.as_ref().map_or(PIPELINE_CAPACITY, |profile| profile.link_capacity),
+            cut: self.cut.subscribe(),
         }
     }
 }
 
 #[openraft::macros::since(version = "0.10.1", change = "optional bounded serialized transport")]
 pub struct Network {
+    source: NodeId,
     target: NodeId,
     target_raft: BenchRaft,
     /// One-way delay of every AppendEntries request and response.
@@ -313,6 +336,8 @@ pub struct Network {
     request_link: Option<Arc<WireLink>>,
     response_link: Option<Arc<WireLink>>,
     capacity: usize,
+    /// The nodes cut off by [`Router::cut_off`].
+    cut: watch::Receiver<u64>,
 }
 
 impl RaftNetworkV2<TypeConfig> for Network {
@@ -336,6 +361,9 @@ impl RaftNetworkV2<TypeConfig> for Network {
     where
         S: Stream<Item = AppendEntriesRequest<TypeConfig>> + OptionalSend + Unpin + 'static,
     {
+        if let Err(error) = self.check_cut() {
+            return Box::pin(future::ready(Err(RPCError::Unreachable(error))));
+        }
         if let (Some(request), Some(response)) = (&self.request_link, &self.response_link) {
             let request = request.clone();
             let response = response.clone();
@@ -402,11 +430,15 @@ impl RaftNetworkV2<TypeConfig> for Network {
             let responses: BoxStream<'s, _> = Box::pin(responses);
             return Box::pin(future::ready(Ok(responses)));
         }
-        let requests = delayed(input, self.delay);
+        let link = (self.source, self.target);
+        // A cut drops the requests on the wire and ends the follower's stream.
+        let requests = until_cut(delayed(input, self.delay), self.cut.clone(), link);
         let responses = delayed(self.target_raft.stream_append(requests), self.delay);
         let target = self.target;
         let responses =
             responses.map(move |result| result.map_err(|fatal| RPCError::Unreachable(unreachable(target, fatal))));
+        // A cut drops the responses on the wire, and the leader sees the stream fail at once.
+        let responses = fail_on_cut(responses, self.cut.clone(), link);
         let responses: BoxStream<'s, _> = Box::pin(responses);
         Box::pin(future::ready(Ok(responses)))
     }
@@ -418,6 +450,7 @@ impl RaftNetworkV2<TypeConfig> for Network {
         rpc: AppendEntriesRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<AppendResult<TypeConfig>, RPCError<TypeConfig>> {
+        self.check_cut()?;
         let rpc = self.send(rpc).await?;
         let result = self
             .target_raft
@@ -435,6 +468,8 @@ impl RaftNetworkV2<TypeConfig> for Network {
         cancel: impl Future<Output = ReplicationClosed> + OptionalSend + 'static,
         _option: RPCOption,
     ) -> Result<SnapshotResponse<TypeConfig>, StreamingError<TypeConfig>> {
+        self.check_cut()?;
+        let cut_off = wait_for_cut(self.cut.clone(), (self.source, self.target));
         let transfer = async {
             let data = snapshot_bytes(snapshot.snapshot);
             let request = (vote, snapshot.meta, data);
@@ -449,6 +484,7 @@ impl RaftNetworkV2<TypeConfig> for Network {
         tokio::pin!(cancel);
         tokio::select! {
             closed = &mut cancel => Err(StreamingError::Closed(closed)),
+            _ = cut_off => Err(StreamingError::Unreachable(self.cut_error())),
             result = transfer => result,
         }
     }
@@ -458,6 +494,7 @@ impl RaftNetworkV2<TypeConfig> for Network {
         rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
+        self.check_cut()?;
         let rpc = self.send(rpc).await?;
         let resp = self.target_raft.vote(rpc).await.map_err(|e| self.unreachable(e))?;
         self.receive(resp).await
@@ -468,6 +505,7 @@ impl RaftNetworkV2<TypeConfig> for Network {
         rpc: VoteRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig>> {
+        self.check_cut()?;
         let rpc = self.send(rpc).await?;
         let resp = self.target_raft.pre_vote(rpc).await.map_err(|e| self.unreachable(e))?;
         self.receive(resp).await
@@ -478,6 +516,7 @@ impl RaftNetworkV2<TypeConfig> for Network {
         req: TransferLeaderRequest<TypeConfig>,
         _option: RPCOption,
     ) -> Result<TransferLeaderResponse<TypeConfig>, RPCError<TypeConfig>> {
+        self.check_cut()?;
         let req = self.send(req).await?;
         let resp = self.target_raft.handle_transfer_leader(req).await.map_err(|e| self.unreachable(e))?;
         self.receive(resp).await
@@ -485,6 +524,18 @@ impl RaftNetworkV2<TypeConfig> for Network {
 }
 
 impl Network {
+    /// Fail an RPC between two nodes when [`Router::cut_off`] has cut one of them off.
+    fn check_cut(&self) -> Result<(), Unreachable<TypeConfig>> {
+        if is_cut(*self.cut.borrow(), (self.source, self.target)) {
+            return Err(self.cut_error());
+        }
+        Ok(())
+    }
+
+    fn cut_error(&self) -> Unreachable<TypeConfig> {
+        cut_error((self.source, self.target))
+    }
+
     async fn send<T>(&self, value: T) -> Result<T, RPCError<TypeConfig>>
     where T: serde::Serialize + serde::de::DeserializeOwned {
         let Some(link) = &self.request_link else {
@@ -513,6 +564,73 @@ impl Network {
 fn unreachable<E>(target: NodeId, error: E) -> Unreachable<TypeConfig>
 where E: fmt::Display {
     Unreachable::from_string(format!("target={}: {}", target, error))
+}
+
+/// The bit of `node` in the cut-off set of [`Router::cut_off`].
+fn cut_bit(node: NodeId) -> u64 {
+    assert!(node < 64, "node {node} cannot be cut off: only nodes 0 to 63 can");
+    1 << node
+}
+
+/// Whether the link between the two nodes of `link` crosses a cut, as when one of them is cut off.
+fn is_cut(cut: u64, link: (NodeId, NodeId)) -> bool {
+    let (source, target) = link;
+    cut & (cut_bit(source) | cut_bit(target)) != 0
+}
+
+fn cut_error(link: (NodeId, NodeId)) -> Unreachable<TypeConfig> {
+    let (source, target) = link;
+    unreachable(target, format!("the link {source}->{target} is cut"))
+}
+
+/// Return once `link` crosses a cut.
+async fn wait_for_cut(mut cut: watch::Receiver<u64>, link: (NodeId, NodeId)) {
+    // The returned `Ref` must not live across the await below.
+    let cut_off = cut.wait_for(|cut| is_cut(*cut, link)).await.is_ok();
+    if !cut_off {
+        // The router is gone, and no cut can come.
+        future::pending::<()>().await;
+    }
+}
+
+/// Yield the items of `input` until `link` crosses a cut, then end: the items still on the wire
+/// are lost.
+fn until_cut<T>(
+    input: impl Stream<Item = T> + Send + 'static,
+    cut: watch::Receiver<u64>,
+    link: (NodeId, NodeId),
+) -> BoxStream<'static, T>
+where
+    T: Send + 'static,
+{
+    Box::pin(input.take_until(wait_for_cut(cut, link)))
+}
+
+/// Yield the responses of `responses` until `link` crosses a cut, then fail with
+/// [`Unreachable`] and end, as a transport does when its connection drops.
+fn fail_on_cut<T>(
+    responses: impl Stream<Item = Result<T, RPCError<TypeConfig>>> + Send + 'static,
+    cut: watch::Receiver<u64>,
+    link: (NodeId, NodeId),
+) -> BoxStream<'static, Result<T, RPCError<TypeConfig>>>
+where
+    T: Send + 'static,
+{
+    let responses: BoxStream<'static, _> = Box::pin(responses);
+    let cut_off: BoxFuture<'static, ()> = Box::pin(wait_for_cut(cut, link));
+    let state = Some((responses, cut_off));
+    let output = stream::unfold(state, move |state| async move {
+        let (mut responses, mut cut_off) = state?;
+        tokio::select! {
+            biased;
+            _ = &mut cut_off => Some((Err(RPCError::Unreachable(cut_error(link))), None)),
+            response = responses.next() => {
+                let response = response?;
+                Some((response, Some((responses, cut_off))))
+            }
+        }
+    });
+    Box::pin(output)
 }
 
 /// Deliver every item of `input` `delay` after `input` yields it, like one direction of a
@@ -554,7 +672,43 @@ fn timeout() -> Option<Duration> {
 
 #[cfg(test)]
 mod tests {
+    use openraft::async_runtime::WatchReceiver;
+
     use super::*;
+    use crate::store::ClientRequest;
+
+    /// A cut-off follower receives nothing, the other two nodes keep committing, and after the
+    /// reconnection the follower catches up under the same leader.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_cut_off_follower_catches_up_after_it_is_reconnected() -> anyhow::Result<()> {
+        let config = Config {
+            enable_pre_vote: Some(true),
+            ..Config::default()
+        };
+        let mut router = Router::new();
+        router.new_cluster(Arc::new(config.validate()?), BTreeSet::from([0, 1, 2])).await?;
+        let leader = router.get_raft(0);
+        let follower = router.get_raft(2);
+
+        router.cut_off(2);
+        let mut last = None;
+        for _ in 0..100 {
+            let response = leader.client_write(ClientRequest::default()).await?;
+            last = Some(response.log_id.index());
+        }
+        let follower_log = follower.metrics().borrow_watched().last_log_index;
+        assert!(follower_log < last, "a cut-off follower received {follower_log:?}");
+
+        router.reconnect(2);
+        follower.wait(timeout()).applied_index_at_least(last, "the follower catches up").await?;
+        assert_eq!(Some(0), follower.metrics().borrow_watched().current_leader);
+        assert_eq!(Some(0), leader.metrics().borrow_watched().current_leader);
+
+        for raft in [leader, router.get_raft(1), follower] {
+            raft.shutdown().await?;
+        }
+        Ok(())
+    }
 
     #[tokio::test]
     async fn delayed_items_in_flight_do_not_wait_for_each_other() {

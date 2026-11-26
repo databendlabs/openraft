@@ -14,6 +14,7 @@ use super::arrival::Arrival;
 use super::arrival::Handler;
 use super::arrival::Task;
 use super::arrival::Workload;
+use super::catch_up::Timeline;
 use super::histogram::Histogram;
 use super::leader_change::Leaders;
 use super::pace;
@@ -34,6 +35,8 @@ pub(super) struct WriteWorkload {
     pub(super) epoch: Arc<OnceLock<Instant>>,
     pub(super) live: Arc<Live>,
     pub(super) history: Option<Arc<super::profile_history::History>>,
+    /// The phases of a run that cuts a follower off, which every completed write is counted in.
+    pub(super) timeline: Option<Arc<Timeline>>,
 }
 
 impl WriteWorkload {
@@ -74,7 +77,7 @@ impl WriteWorkload {
     fn spawn_sessions(&self) -> Vec<Task> {
         let n_client = self.config.n_client;
         let batch_size = self.config.batch_size;
-        let measure_latency = self.config.latency || self.config.read_clients > 0;
+        let measure_latency = self.config.latency || self.config.read_clients > 0 || self.timeline.is_some();
         let write_rate = self.config.write_rate;
         let mut handles = Vec::new();
         for client_id in 0..n_client {
@@ -83,6 +86,7 @@ impl WriteWorkload {
             let l = self.leader.clone();
             let start = self.start.clone();
             let epoch = self.epoch.clone();
+            let timeline = self.timeline.clone();
             let h = if batch_size <= 1 {
                 // Single write mode
                 tokio::spawn(async move {
@@ -103,6 +107,9 @@ impl WriteWorkload {
                             let nanos = elapsed.as_nanos();
                             let nanos = u64::try_from(nanos)?;
                             latencies.record(nanos);
+                            if let Some(timeline) = &timeline {
+                                timeline.record(nanos);
+                            }
                         }
                     }
                     let samples = Samples::from_completed(bounds, latencies, ops_per_client);
@@ -134,6 +141,9 @@ impl WriteWorkload {
                             let nanos = elapsed.as_nanos();
                             let nanos = u64::try_from(nanos)?;
                             latencies.record(nanos);
+                            if let Some(timeline) = &timeline {
+                                timeline.record(nanos);
+                            }
                         }
                     }
                     let samples = Samples::from_completed(bounds, latencies, ops_per_client);

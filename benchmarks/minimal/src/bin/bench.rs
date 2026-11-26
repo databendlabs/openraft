@@ -4,6 +4,8 @@
 
 #[path = "bench/apply_lag.rs"]
 mod apply_lag;
+#[path = "bench/catch_up.rs"]
+mod catch_up;
 #[path = "bench/leader_change.rs"]
 mod leader_change;
 #[path = "bench/read_workload.rs"]
@@ -154,6 +156,17 @@ struct Args {
     #[arg(long)]
     transfer_leader_after_ms: Option<u64>,
 
+    /// Cut follower 2 off from the other nodes this long after clients start, for
+    /// --cut-follower-ms, and report how it catches up once it is reconnected. Enables
+    /// `enable_pre_vote` unless --raft-config sets it, so that the cut-off follower does not raise
+    /// its term and depose the leader on its return.
+    #[arg(long)]
+    cut_follower_after_ms: Option<u64>,
+
+    /// How long follower 2 stays cut off (requires --cut-follower-after-ms).
+    #[arg(long)]
+    cut_follower_ms: Option<u64>,
+
     /// Delay before each log append returns, in microseconds.
     #[arg(long, default_value_t = 0)]
     append_delay_us: u64,
@@ -238,6 +251,8 @@ struct BenchConfig {
     pub allow_read_errors: bool,
     pub read_delay_ms: u64,
     pub transfer_leader_after_ms: Option<u64>,
+    pub cut_follower_after_ms: Option<u64>,
+    pub cut_follower_ms: Option<u64>,
     pub append_delay_us: u64,
     pub flush_delay_us: u64,
     pub network_delay_us: u64,
@@ -370,6 +385,8 @@ fn main() -> anyhow::Result<()> {
         allow_read_errors: args.allow_read_errors,
         read_delay_ms: args.read_delay_ms,
         transfer_leader_after_ms: args.transfer_leader_after_ms,
+        cut_follower_after_ms: args.cut_follower_after_ms,
+        cut_follower_ms: args.cut_follower_ms,
         append_delay_us: args.append_delay_us,
         flush_delay_us: args.flush_delay_us,
         network_delay_us: args.network_delay_us,
@@ -403,6 +420,7 @@ fn validate(args: &Args) -> anyhow::Result<()> {
     validate_arrivals(args)?;
     validate_reads(args)?;
     validate_leader_change(args)?;
+    validate_catch_up(args)?;
     ensure!(args.batch > 0, "batch must be positive");
     ensure!(args.client_workers > 0, "client-workers must be positive");
     ensure!(args.server_workers > 0, "server-workers must be positive");
@@ -506,6 +524,46 @@ fn validate_leader_change(args: &Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn validate_catch_up(args: &Args) -> anyhow::Result<()> {
+    match (args.cut_follower_after_ms, args.cut_follower_ms) {
+        (None, None) => return Ok(()),
+        (Some(_), Some(outage)) => ensure!(outage > 0, "cut-follower-ms must be positive"),
+        _ => anyhow::bail!("cut-follower-after-ms and cut-follower-ms go together"),
+    }
+    ensure!(
+        args.members > catch_up::CUT_NODE,
+        "cutting a follower off requires 3 or 5 members"
+    );
+    ensure!(args.clients > 0, "cutting a follower off requires write clients");
+    // The cut and the per-phase write latencies cover the direct link and the closed-loop writers.
+    ensure!(
+        !args.profile.profile,
+        "cutting a follower off does not support --profile"
+    );
+    ensure!(
+        !args.arrival.enabled(),
+        "cutting a follower off does not support arrival controls"
+    );
+    ensure!(
+        args.measurement.measurement_seconds.is_none(),
+        "cutting a follower off does not support --measurement-seconds"
+    );
+    // Its apply observer is the follower's only one.
+    ensure!(
+        !args.measurement.measure_apply,
+        "cutting a follower off does not support --measure-apply"
+    );
+    ensure!(
+        args.transfer_leader_after_ms.is_none(),
+        "cutting a follower off does not support transfer-leader-after-ms"
+    );
+    ensure!(
+        args.read_on_follower != Some(catch_up::CUT_NODE),
+        "cannot read on the follower that is cut off"
+    );
+    Ok(())
+}
+
 fn validate_schedule(args: &Args) -> anyhow::Result<()> {
     if args.measurement.measurement_seconds.is_some() {
         let bounds = args.measurement.bounds();
@@ -534,7 +592,9 @@ fn validate_schedule(args: &Args) -> anyhow::Result<()> {
         0.0
     };
     let transfer_seconds = args.transfer_leader_after_ms.map_or(0.0, |ms| ms as f64 / 1000.0);
-    let workload_seconds = write_seconds.max(read_seconds).max(transfer_seconds);
+    let cut_ms = args.cut_follower_after_ms.unwrap_or(0) + args.cut_follower_ms.unwrap_or(0);
+    let cut_seconds = cut_ms as f64 / 1000.0;
+    let workload_seconds = write_seconds.max(read_seconds).max(transfer_seconds).max(cut_seconds);
     let idle = Duration::from_millis(args.read_delay_ms);
     let seconds = idle.as_secs_f64() + workload_seconds;
     let within_timeout = seconds < WAIT_TIMEOUT.as_secs_f64();
@@ -605,13 +665,16 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
 
 fn create_cluster(server_rt: &Runtime, bench_config: &BenchConfig) -> anyhow::Result<(Router, BenchRaft)> {
     server_rt.block_on(async {
-        let config = Config {
+        let mut config = Config {
             election_timeout_min: 200,
             election_timeout_max: 2000,
             purge_batch_size: 1024,
             max_payload_entries: 1024,
             ..Default::default()
         };
+        if bench_config.cut_follower_ms.is_some() {
+            config.enable_pre_vote = Some(true);
+        }
         let config = configure(config, &bench_config.raft_config)?;
         let config = Arc::new(config);
 
@@ -650,7 +713,8 @@ async fn do_bench(
         || bench_config.read_clients > 0
         || bounds.end.is_some()
         || bench_config.profile.profile
-        || bench_config.measurement.pipeline_enabled();
+        || bench_config.measurement.pipeline_enabled()
+        || bench_config.cut_follower_ms.is_some();
     let client_count = usize::try_from(n_client)?;
     let read_clients = usize::try_from(bench_config.read_clients)?;
     let participants = client_count.checked_add(read_clients);
@@ -748,6 +812,7 @@ async fn do_bench(
         Some(workload) => workload.spawn_clients(),
         None => Vec::new(),
     };
+    let timeline = bench_config.cut_follower_ms.map(|_| Arc::new(catch_up::Timeline::new(epoch.clone())));
     let write_workload = WriteWorkload {
         config: Arc::new(bench_config.clone()),
         leader: leader.clone(),
@@ -756,6 +821,7 @@ async fn do_bench(
         epoch: epoch.clone(),
         live: write_live.clone(),
         history: history.clone(),
+        timeline: timeline.clone(),
     };
     let handles = write_workload.spawn_clients();
 
@@ -801,6 +867,20 @@ async fn do_bench(
         (Some(leaders), Some(after)) => Some(leaders.transfer_after(now, Duration::from_millis(after))),
         _ => None,
     };
+    let cut = match (
+        &timeline,
+        bench_config.cut_follower_after_ms,
+        bench_config.cut_follower_ms,
+    ) {
+        (Some(timeline), Some(after), Some(outage)) => Some(catch_up::spawn(
+            router.clone(),
+            timeline.clone(),
+            now,
+            Duration::from_millis(after),
+            Duration::from_millis(outage),
+        )),
+        _ => None,
+    };
     start.wait().await;
     let writes = collect_clients(handles);
     let reads = collect_clients(read_handles);
@@ -835,6 +915,15 @@ async fn do_bench(
     let follower_lag = match apply_lag {
         Some(apply_lag) => Some(apply_lag.finish().await?),
         None => None,
+    };
+    // The follower may still be catching up after the last write; wait for it outside `elapsed`.
+    let catch_up = match (cut, &timeline) {
+        (Some(cut), Some(timeline)) => {
+            let mut report = cut.await??;
+            report["writes"] = timeline.report();
+            Some(report)
+        }
+        _ => None,
     };
     let leader_change = match transfer {
         Some(mut transfer) => match bounds.deadline {
@@ -936,6 +1025,7 @@ async fn do_bench(
             "write_timing":timing,"config":bench_config,"local_lease_read_enabled":local,"runtime_stats":cfg!(feature="runtime-stats"),"compiled_features":compiled_features(),
             "profile":profile_report,"window":window,"monitoring":monitoring,"memory":memory,"apply_metrics":apply_metrics,
             "command_counts":command_counts,"resolved_raft_config":resolved_config,"follower_lag":follower_lag,"leader_change":leader_change});
+        report["catch_up"] = serde_json::to_value(&catch_up)?;
         report["apply_pipeline"] = serde_json::to_value(apply_pipeline)?;
         println!("{report}");
         return Ok(());
@@ -964,6 +1054,7 @@ async fn do_bench(
             "network_delay_us":bench_config.network_delay_us,"replication_read_delay_us":bench_config.replication_read_delay_us,
             "apply_read_delay_us":bench_config.apply_read_delay_us,"apply_io_delay_us":bench_config.apply_io_delay_us,
             "apply_entry_delay_us":bench_config.apply_entry_delay_us,"arrival":bench_config.arrival,"measurement":bench_config.measurement});
+        report["catch_up"] = serde_json::to_value(&catch_up)?;
         report["compiled_features"] = compiled_features();
         report["apply_pipeline"] = serde_json::to_value(apply_pipeline)?;
         println!("{report}");

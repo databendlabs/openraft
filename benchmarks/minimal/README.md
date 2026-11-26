@@ -284,6 +284,29 @@ target/release/bench --latency -c 256 -n 30k \
   --network-delay-us 500 --replication-read-delay-us 500
 ```
 
+### Follower catch-up
+
+`--cut-follower-after-ms` and `--cut-follower-ms` cut node 2 off from the other nodes for a
+while, then reconnect it. Every RPC from or to node 2 fails as `Unreachable` meanwhile, and node
+0 stays leader with node 1. The JSON report gains a `catch_up` object: how far behind node 2 was
+at the reconnection, when its log and its applied index reached the leader's committed index of
+that moment, the entries of its `apply()` calls until then, and the leader's writes/s and
+latency before the cut, during the outage, during catch-up, and after it.
+
+These runs turn on `enable_pre_vote`, so the cut-off node does not raise its term and depose the
+leader on its return. They require three or more members and write clients, and do not combine
+with `--profile`, `--transfer-leader-after-ms`, the arrival controls, `--measurement-seconds`,
+or `--measure-apply`. [The catch-up report](../reports/2026-11-26-follower-catch-up/report-full.md)
+measures it with the delay profiles above.
+
+```sh
+target/release/bench --latency -c 256 -n 50k --write-rate 10k \
+  --append-delay-us 20 --flush-delay-us 200 --network-delay-us 100 \
+  --apply-read-delay-us 50 --apply-io-delay-us 2000 \
+  --cut-follower-after-ms 1000 --cut-follower-ms 1000 \
+  --raft-config '{"snapshot_policy":"Never"}'
+```
+
 
 ## Run it
 
@@ -587,6 +610,8 @@ the source observer.
 --allow-read-errors Report read failures separately
 --read-delay-ms   Idle time after warmup, before measurement [default: 0]
 --transfer-leader-after-ms Move leadership from node 0 to node 1 after this delay; clients follow it
+--cut-follower-after-ms Cut node 2 off from the other nodes after this delay (requires --cut-follower-ms)
+--cut-follower-ms     How long node 2 stays cut off; the report says how it caught up
 --apply-read-delay-us Delay of the log read that loads each apply batch [default: 0]
 --apply-io-delay-us   State-machine I/O delay of each apply batch [default: 0]
 --network-delay-us    One-way delay of every AppendEntries request and response [default: 0]
