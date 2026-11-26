@@ -138,10 +138,15 @@ where
 
             match reply {
                 Ok(reply) => {
-                    if failed_in_row > 0 {
-                        tracing::info!("{} target replied after {} failed heartbeats", self, failed_in_row);
-                        failed_in_row = 0;
+                    // A reply after a single failure logs at debug level, so that an isolated
+                    // failure, which a loaded node sees often, logs its warning and nothing else
+                    // above debug level.
+                    match failed_in_row {
+                        0 => {}
+                        1 => tracing::debug!("{} target replied after 1 failed heartbeat", self),
+                        n => tracing::info!("{} target replied after {} failed heartbeats", self, n),
                     }
+                    failed_in_row = 0;
                     self.handle_stream_result(reply, &heartbeat).await?;
                 }
                 Err(failure) if failed_in_row == 0 => {

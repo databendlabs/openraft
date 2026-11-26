@@ -613,7 +613,8 @@ impl tracing::field::Visit for MessageField {
 }
 
 /// Only the first of the heartbeats that fail in a row logs a warning, whatever the failure. The
-/// later ones log at debug level, and the next reply logs at info level how many failed.
+/// later ones log at debug level. The next reply logs at info level how many failed, or at debug
+/// level after a single failure.
 #[test]
 fn test_only_the_first_failure_in_a_row_warns() {
     let events = Arc::new(Mutex::new(Vec::new()));
@@ -640,6 +641,7 @@ fn test_only_the_first_failure_in_a_row_warns() {
                     responses: vec![Err(network_error())],
                     tail: Tail::End,
                 },
+                Script::respond(vec![Ok(None)], Tail::End),
                 Script::respond(vec![], Tail::End),
                 Script::respond(vec![Ok(None)], Tail::End),
                 Script::respond(vec![], Tail::Pending),
@@ -669,9 +671,18 @@ fn test_only_the_first_failure_in_a_row_warns() {
                 cluster_committed: None,
             };
 
-            tracing::info!("--- three heartbeats fail, each for another reason, then a fourth gets a reply");
+            tracing::info!("--- two heartbeats fail, each for another reason, then a third gets a reply");
             {
-                for round in 1..=4 {
+                for round in 1..=3 {
+                    event_tx.send(Some(event(round))).unwrap();
+                    let pending = future.as_mut().now_or_never();
+                    assert_eq!(None, pending, "the worker waits for the next heartbeat");
+                }
+            }
+
+            tracing::info!("--- one heartbeat fails, then the next gets a reply");
+            {
+                for round in 4..=5 {
                     event_tx.send(Some(event(round))).unwrap();
                     let pending = future.as_mut().now_or_never();
                     assert_eq!(None, pending, "the worker waits for the next heartbeat");
@@ -680,7 +691,7 @@ fn test_only_the_first_failure_in_a_row_warns() {
 
             tracing::info!("--- the next heartbeat gets no response before its deadline");
             {
-                event_tx.send(Some(event(5))).unwrap();
+                event_tx.send(Some(event(6))).unwrap();
                 drop(event_tx);
                 C::timeout(TEST_TIMEOUT, future).await.unwrap();
             }
@@ -694,11 +705,20 @@ fn test_only_the_first_failure_in_a_row_warns() {
         .collect();
     let levels: Vec<_> = logged.iter().map(|(level, _)| *level).collect();
     assert_eq!(
-        vec![Level::WARN, Level::DEBUG, Level::DEBUG, Level::INFO, Level::WARN],
+        vec![
+            Level::WARN,
+            Level::DEBUG,
+            Level::INFO,
+            Level::WARN,
+            Level::DEBUG,
+            Level::WARN
+        ],
         levels
     );
-    let replied = &logged[3].1;
-    assert!(replied.contains("after 3 failed heartbeats"), "got: {replied}");
+    let after_two = &logged[2].1;
+    assert!(after_two.contains("after 2 failed heartbeats"), "got: {after_two}");
+    let after_one = &logged[4].1;
+    assert!(after_one.contains("after 1 failed heartbeat"), "got: {after_one}");
 }
 
 /// A type config on [`HookRuntime`]: Tokio, with a watch receiver that can run a hook right after
