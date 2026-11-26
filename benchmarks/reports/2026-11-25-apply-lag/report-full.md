@@ -10,7 +10,9 @@
   with 2 ms calls. It does not grow with load, because the worker applies the commits queued
   during a call in one following call. At saturation it varied from run to run. In 60 runs of
   the saturated 2 ms row it was 2.8 to 3.8 ms (1.4 to 1.9 calls) in 18 runs and 4.2 to 4.5 ms
-  (2.1 to 2.3 calls) in 42 runs.
+  (2.1 to 2.3 calls) in 42 runs. Traces show two ways the 256 clients' writes group into calls:
+  all 256 in every call, or two groups that take turns, where each write also waits for the
+  other group's call. The worker applies every loaded entry in the next call in both.
 - A cost per entry makes each call longer as the load rises, so the time from commit to apply
   grows with load. With 10 µs per entry it was 0.35 ms at 10,000 writes/s, 0.87 ms at 50,000
   writes/s, and 3.2 ms at saturation, where an apply command carried 179 entries on average.
@@ -87,6 +89,8 @@ about 2 s of writes.
   commands the leader sent after warmup. The worker merges the commands queued when it starts a
   batch into one `apply()` call, so an `apply()` call carries at least this many entries on
   average.
+- Calls count committed→applied in units of the nominal delay of one `apply()` call. On this
+  loaded machine a call took longer: traced calls of the 2 ms delay took about 2.55 ms.
 
 ## Results
 
@@ -163,7 +167,7 @@ committed→applied ranged from 2.8 to 4.5 ms over five runs. 60 more runs of th
 without and 30 with `--measure-apply`, interleaved at `ae7a4509`, settled on one of two values.
 In 18 runs it was 2.8 to 3.8 ms (1.4 to 1.9 calls), at 56,000 to 76,000 writes/s. In 42 runs it
 was 4.2 to 4.5 ms (2.1 to 2.3 calls), at 51,000 to 63,000 writes/s. In the slower runs an entry
-waits for about one more call; I did not trace why.
+waits for about one more call; "Two modes of the saturated 2 ms row" below shows why.
 
 **A cost per entry.** With 10 µs per entry, a call lasts 100 µs plus 10 µs for each of its
 entries, and larger batches make it longer. The per-entry work of an average apply command grew
@@ -205,6 +209,48 @@ not trace those runs. In every saturated row the backlog reached 256; one run of
 50,000 writes/s reached 296 on the leader, and in the slow rows a follower held up to 512
 committed but unapplied entries. With per-call costs, one `apply()` call took most of the
 backlog: the saturated 2 ms row applied 245 entries per call at p50.
+
+### Two modes of the saturated 2 ms row
+
+Eight more runs of the saturated 2 ms row, at `8e375e23`, traced the leader's log reads and
+`apply()` calls: the bench built with the `apply-pipeline` feature and run with
+`--measure-apply-pipeline`. The table covers the calls that ended during the measurement; the
+complete table is in `results/tables.md`.
+
+| pattern of calls | runs | writes/s       | committed→applied p50 µs | entries per `apply()` call                   | gap between calls p50 µs | reads during a call |
+| :--              | --:  | --:            | --:                      | :--                                          | --:                      | :--                 |
+| one group        | 2    | 73,759–73,938  | 2,783–2,796              | 256 in every call                            | 917–924                  | none                |
+| two groups       | 4    | 50,189–52,749  | 4,428–4,502              | alternating 91/165, 102/154, 49/207, 128/128 | 2                        | every read          |
+| both             | 2    | 33,442, 59,926 | 3,328, 2,945             | mostly 256 at the end of the run             | 1,090, 2                 | some                |
+
+A call of the 2 ms delay took 2.54 to 2.65 ms at p50 in these runs, at a load average of 24 to
+38: the blocking-pool sleep wakes late on a loaded machine. The call counts elsewhere in this
+report divide by the nominal delay.
+
+Each client has one write in flight, and an `apply()` call answers its writes when it returns.
+With one group, a call applies all 256 writes. The clients write again, the writes commit about
+0.8 ms later, and the worker is idle until it has read them: the gap of 0.92 ms. An entry waits
+for its read and one call, 2.8 ms, and the cluster does 256 writes per call and gap,
+256 / 3.47 ms = 74,000 writes/s.
+
+With two groups, whose sizes add up to 256, each group's writes commit while the other group's
+call runs. The worker starts the next call 2 µs after a call returns, with the writes it read
+during it, so an entry waits for the rest of the other group's call and then for its own: two
+calls minus the 0.8 ms to commit, 2 × 2.55 − 0.8 = 4.3 ms, against 4.4 to 4.5 ms measured. The
+cluster does 256 writes per two calls, 256 / 5.1 ms = 50,000 writes/s, whatever the sizes of the
+two groups, because each call costs the same.
+
+Both patterns keep themselves going. A group splits when some of its writes commit after the
+worker has started the call for the rest. Two groups merge only when a group's writes commit
+after the other group's call has returned, more than 1.7 ms late. The two runs that showed both
+patterns ended with mostly 256 entries per call.
+
+The worker does what it should in both patterns: it starts a call as soon as it has read
+entries, and the call applies every entry read by then. Holding back a call to wait for the
+other group would serve this closed loop, but it would delay every write when clients do not
+wait for their writes. The extra wait comes from a state machine that applies one batch at a
+time, at a fixed cost per call, under clients that wait for their writes. No change to the
+worker follows from it.
 
 ## What an earlier start of apply could save
 
@@ -266,3 +312,15 @@ $BENCH --latency -c 256 -n 20000 --write-rate 10000 $LAN --apply-io-delay-us 200
 Each run prints its stage latencies to stderr after `Final:`, and a JSON line to stdout with
 `operations_per_second`, `request_p50_ns`, `request_p99_ns` and `command_counts`. The `n`
 column of `results/tables.md` gives the write count of every row.
+
+To trace the leader's reads and `apply()` calls, as in "Two modes of the saturated 2 ms row":
+
+```sh
+(cd benchmarks/minimal && cargo build --release --no-default-features \
+   --features runtime-stats,apply-pipeline --bin bench)
+$BENCH --latency -c 256 -n 102912 $LAN --apply-io-delay-us 2000 \
+   --measure-apply-pipeline --trace-limit 4096
+```
+
+The spans of every node are in the JSON line at `apply_pipeline.<node>.traces`, each with its
+`kind` (`read` or `apply`), `start_ns`, `end_ns` and log `range`.
