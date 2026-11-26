@@ -214,8 +214,10 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse as DeprecatedAppendEntriesResponse;
 use openraft::raft::AppendError;
 use openraft::raft::AppendResult;
+use openraft::raft::AppliedProgress;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::ClientWriteResult;
+use openraft::raft::CommitProgress;
 use openraft::raft::ConflictHint;
 use openraft::raft::FlushPoint;
 #[allow(deprecated)]
@@ -223,13 +225,16 @@ use openraft::raft::InstallSnapshotRequest as DeprecatedInstallSnapshotRequest;
 #[allow(deprecated)]
 use openraft::raft::InstallSnapshotResponse as DeprecatedInstallSnapshotResponse;
 use openraft::raft::Leader;
+use openraft::raft::LogProgress;
 use openraft::raft::Raft as RaftModule;
 use openraft::raft::ReadPolicy as ReadPolicyModule;
 use openraft::raft::RuntimeConfigHandle;
+use openraft::raft::SnapshotProgress;
 use openraft::raft::SnapshotResponse;
 use openraft::raft::StreamAppendError;
 use openraft::raft::StreamAppendResult;
 use openraft::raft::TransferLeaderRequest;
+use openraft::raft::VoteProgress;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::raft::WatchChangeHandle as WatchChangeHandleModule;
@@ -389,6 +394,43 @@ mod compatible_edit {
         let response = raft.change_membership(change, true).await.unwrap();
         let payload = <Config as RaftTypeConfig>::Payload::blank();
         raft.append_membership(response.membership.unwrap(), payload, []).await.unwrap();
+    }
+}
+
+// The handles that `Raft::watch_*_progress()` return have public names, so an
+// application can keep them in fields and return them from functions.
+mod progress_handles {
+    use openraft::Raft;
+    use openraft::RaftTypeConfig;
+    use openraft::raft::AppliedProgress;
+    use openraft::raft::CommitProgress;
+    use openraft::raft::LogProgress;
+    use openraft::raft::SnapshotProgress;
+    use openraft::raft::VoteProgress;
+    use openraft::storage::RaftStateMachine;
+
+    struct ProgressHandles<C>
+    where C: RaftTypeConfig
+    {
+        log: LogProgress<C>,
+        vote: VoteProgress<C>,
+        commit: CommitProgress<C>,
+        snapshot: SnapshotProgress<C>,
+        applied: AppliedProgress<C>,
+    }
+
+    fn watch_progress<C, SM>(raft: &Raft<C, SM>) -> ProgressHandles<C>
+    where
+        C: RaftTypeConfig,
+        SM: RaftStateMachine<C>,
+    {
+        ProgressHandles {
+            log: raft.watch_log_progress(),
+            vote: raft.watch_vote_progress(),
+            commit: raft.watch_commit_progress(),
+            snapshot: raft.watch_snapshot_progress(),
+            applied: raft.watch_apply_progress(),
+        }
     }
 }
 

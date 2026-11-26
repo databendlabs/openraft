@@ -35,6 +35,8 @@ use crate::type_config::alias::WriteResponderOf;
 ///
 /// [`Raft::write_many()`]: crate::Raft::write_many
 /// [`WriteRequest`]: crate::raft::WriteRequest
+#[must_use = "write requests must be awaited to submit them"]
+#[since(version = "0.10.2", change = "marked #[must_use]")]
 #[since(version = "0.10.1")]
 pub struct WriteManyRequest<'a, C, F>
 where C: RaftTypeConfig

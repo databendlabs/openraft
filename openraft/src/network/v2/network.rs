@@ -52,20 +52,29 @@ use crate::type_config::alias::VoteOf;
 /// with a custom implementation (e.g. native gRPC bidirectional streaming or pipelined
 /// AppendEntries) — without giving up the convenience of `RaftNetworkV2` for the other RPCs.
 ///
-/// # Implementing sub-traits directly for optimal performance
+/// # Implementing the sub-traits directly
 ///
-/// For best performance — for example, native gRPC bidirectional streaming for
-/// AppendEntries — implement the individual sub-traits directly instead of `RaftNetworkV2`.
-/// These are the exact bounds required by [`RaftNetworkFactory::Network`], so any
-/// combination of direct impls satisfies the factory:
+/// A network type can implement the sub-traits directly instead of `RaftNetworkV2`. It must
+/// implement all of the traits that [`RaftNetworkFactory::Network`] requires:
 ///
-/// - [`NetAppend`] — unary AppendEntries
+/// - [`NetStreamAppend`] — stream-oriented AppendEntries, used by log replication and heartbeats
 /// - [`NetVote`] — RequestVote
 /// - [`NetSnapshot`] — full snapshot transfer
-/// - [`NetStreamAppend`] — stream-oriented AppendEntries (implement directly for native gRPC bidi
-///   streaming or pipelining)
 /// - [`NetTransferLeader`] — TransferLeader notification
 /// - [`NetBackoff`] — backoff strategy on `Unreachable`
+///
+/// The factory does not require [`NetAppend`], the unary AppendEntries interface. Openraft uses it
+/// only in [`stream_append_sequential`], the helper that builds stream-oriented AppendEntries out
+/// of unary calls, so implement [`NetAppend`] only to build [`NetStreamAppend`] with that helper.
+/// The `raft-kv-memstore-grpc` example streams AppendEntries natively, so it implements only the
+/// traits above, with no unary AppendEntries.
+///
+/// Either approach can provide native streaming: implement [`NetStreamAppend`] directly, or
+/// override [`stream_append`](Self::stream_append) as described above, because the blanket
+/// [`NetStreamAppend`] implementation forwards to the override. Throughput depends on how
+/// `stream_append` sends the requests, not on which trait it is implemented on. Implementing the
+/// sub-traits directly lets a network type leave out the unary
+/// [`append_entries`](Self::append_entries) that `RaftNetworkV2` requires.
 ///
 /// See the [network chapter of the guide](crate::docs::getting_started#4-implement-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
@@ -161,6 +170,16 @@ where C: RaftTypeConfig
     ///
     /// The output stream terminates when the input is exhausted or an error occurs.
     ///
+    /// The caller may drop the returned future before it resolves, or the output stream before it
+    /// ends, such as after the stream yields an error or a conflict, and then call
+    /// `stream_append()` again on the same `self`. A dropped call must leave `self` safe for the
+    /// next one: discard a connection that it left with a partial request or unread responses, and
+    /// stop the work that it moved to another task, even while that work waits for room to send.
+    /// The default implementation starts no task, and dropping its stream drops `input` and the
+    /// [`append_entries()`] call in progress, so a dropped `append_entries()` call must leave
+    /// `self` safe as well. The cancellation section of [`NetStreamAppend::stream_append`]
+    /// describes the rules.
+    ///
     /// # Note
     ///
     /// This method returns `BoxFuture` and `BoxStream` instead of `impl Future`/`impl Stream`
@@ -238,7 +257,12 @@ where C: RaftTypeConfig
     /// restart: the leader takes `Ok` as proof that the target installed it. See
     /// [`NetSnapshot::full_snapshot`] for what the leader records for each outcome.
     ///
-    /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission.
+    /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission. The
+    /// caller may also drop the returned future at any `.await`, whether or not `cancel` is ready,
+    /// and then call `full_snapshot()` again on the same `self`. A dropped call must leave `self`
+    /// safe for the next one: discard a connection that the call left with a partial request or an
+    /// unread reply, and stop the work that the call moved to another task. The cancellation
+    /// section of [`NetSnapshot::full_snapshot`] describes how.
     ///
     /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
     /// [`NetSnapshot::full_snapshot`]: crate::network::NetSnapshot::full_snapshot
@@ -253,6 +277,8 @@ where C: RaftTypeConfig
     /// Send TransferLeader message to the target node.
     ///
     /// The node received this message should pass it to [`Raft::handle_transfer_leader()`].
+    /// Return the [`TransferLeaderResponse`] that the target's call returned; the response type
+    /// describes what `Ok(())` and each error report.
     ///
     /// This method provides a default implementation that just returns [`Unreachable`] error to
     /// ignore it. In case the application did not implement it, other nodes just wait for the

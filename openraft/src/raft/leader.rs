@@ -26,10 +26,11 @@ where
     /// The leader ID, including term and node ID.
     pub(crate) leader_id: LeaderIdOf<C>,
 
-    /// The timestamp when the leader was last acknowledged by a quorum.
+    /// The send time of the latest RPCs that a write quorum has acknowledged.
     ///
-    /// `None` if the leader has not yet been acknowledged by a quorum.
-    /// Being acknowledged means receiving a reply of AppendEntries with committed vote.
+    /// `None` if no such time is available. A leader that alone forms a write quorum has this time
+    /// from the moment it becomes leader, without any response. See
+    /// [`Leader::last_quorum_acked()`].
     pub(crate) last_quorum_acked: Option<InstantOf<C>>,
 }
 
@@ -82,7 +83,16 @@ where
         self.leader_id.to_committed()
     }
 
-    /// Returns when a quorum last acknowledged this leader, or `None` if none had yet.
+    /// Returns the send time of the latest RPCs that a write quorum has acknowledged, or `None` if
+    /// no such time is available, for example before a write quorum has acknowledged any RPC of
+    /// this leader.
+    ///
+    /// Each node of the write quorum, other than this leader, acknowledged an RPC that this leader
+    /// sent at or after the returned time. This leader counts toward the quorum without a response
+    /// when it is a write voter. The acknowledgements arrived at least one round trip after this
+    /// time. A leader that alone forms a write quorum needs no response: the value starts at the
+    /// time it became leader, and advances to the send time of each later RPC that another node
+    /// acknowledges.
     ///
     /// The value is a snapshot taken by the [`Raft::as_leader()`] call that returned this
     /// `Leader`.

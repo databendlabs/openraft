@@ -1,6 +1,7 @@
 //! Implement blocking-mode write operations for Raft.
-//! Blocking-mode write API blocks until the write operation is completed,
-//! where [`RaftTypeConfig::Responder`] is a [`OneshotResponder`].
+//! Blocking-mode write API blocks until the write operation is completed.
+//! It waits on a responder that it creates internally and does not use
+//! [`RaftTypeConfig::Responder`].
 
 use openraft_macros::since;
 
@@ -12,8 +13,6 @@ use crate::errors::RaftError;
 use crate::errors::into_raft_result::IntoRaftResult;
 #[cfg(doc)]
 use crate::impls::ChangeMembers;
-#[cfg(doc)]
-use crate::impls::OneshotResponder;
 use crate::membership::RaftMembershipEditOps;
 use crate::raft::ChangeMembershipOutcome;
 use crate::raft::ChangeMembershipRequest;
@@ -34,8 +33,11 @@ where
 {
     /// Propose a cluster configuration change.
     ///
-    /// A node in the proposed config has to be a learner, otherwise it fails with LearnerNotFound
-    /// error.
+    /// The target, the membership that applying `members` produces, has to hold a node for each of
+    /// its voters and for each node ID that `members` sets a role for, otherwise it fails with
+    /// [`LearnerNotFound`]. A new voter therefore has to be added as a learner first, such as with
+    /// [`Self::add_learner()`], unless `members` adds its node, as [`ChangeMembers::AddVoters`]
+    /// does.
     ///
     /// Internally:
     /// - If openraft can prove that every quorum of the current config intersects every quorum of
@@ -83,6 +85,7 @@ where
     /// ```
     ///
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
+    /// [`LearnerNotFound`]: crate::errors::LearnerNotFound
     #[since(version = "0.10.0", change = "the second step appends the target of the edit")]
     #[since(
         version = "0.10.0",
@@ -351,6 +354,11 @@ where
     /// [`Wait::replication`] when the application needs to distinguish these outcomes or impose
     /// a timeout.
     ///
+    /// The wait also ends, and this method returns the response, once the effective membership
+    /// gives the node no [`NodeRole::ReceiveLogs`]. The leader sends no log to a node without this
+    /// role, for example a re-added voter that only votes, so replication to it may never catch up.
+    /// [`Wait::replication`] keeps waiting for such a node until its timeout.
+    ///
     /// If blocking is `false`, this function returns at once as successfully setting up the
     /// replication.
     ///
@@ -379,6 +387,7 @@ where
     /// [`UncommittedLeaderLog`]: crate::errors::UncommittedLeaderLog
     /// [`Config::replication_lag_threshold`]: crate::Config::replication_lag_threshold
     /// [`Wait::replication`]: crate::metrics::Wait::replication
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
     ///
     /// Generic wrappers must carry the optional capability bound:
     ///
@@ -411,6 +420,10 @@ where
     ///     raft.add_learner(id, node, true).await.unwrap();
     /// }
     /// ```
+    #[since(
+        version = "0.10.2",
+        change = "with `blocking`, stops waiting for a node without `ReceiveLogs`"
+    )]
     #[since(
         version = "0.10.0",
         change = "requires the optional RaftMembershipEditOps capability"

@@ -1,8 +1,11 @@
+use validit::Validate;
+
 use crate::LogId;
 use crate::RaftState;
 use crate::engine::EngineConfig;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
+use crate::log_id_range::LogIdRange;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight::Inflight;
 use crate::progress::inflight_id::InflightId;
@@ -65,10 +68,11 @@ fn test_update_matching() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
         pe.data.inflight = inflight_probe(5, 10);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(6)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(6)), InflightId::new(0));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(6)), pe.matching());
         assert_eq!(20, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     // A response acknowledging prev completes the probe.
@@ -77,9 +81,10 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(5));
         pe.data.inflight = inflight_probe(5, 10);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(5)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(5)), InflightId::new(0));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(5)), pe.matching());
+        assert!(pe.validate().is_ok());
     }
 
     // A local progress update acknowledges its entire range immediately.
@@ -87,10 +92,11 @@ fn test_update_matching() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
         pe.data.inflight = inflight_probe(5, 10);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), InflightId::new(0));
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(Some(&log_id(10)), pe.matching());
         assert_eq!(20, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     // `searching_end` should be updated
@@ -99,8 +105,9 @@ fn test_update_matching() -> anyhow::Result<()> {
         pe.matching = Some(log_id(6));
         pe.data.inflight = inflight_probe(5, 20);
 
-        pe.new_updater(&engine_config).update_matching(Some(log_id(20)), Some(InflightId::new(0)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(20)), InflightId::new(0));
         assert_eq!(21, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     Ok(())
@@ -119,6 +126,7 @@ fn test_update_conflicting() -> anyhow::Result<()> {
     assert_eq!(Inflight::None, pe.data.inflight);
     assert_eq!(Some(&log_id(3)), pe.matching());
     assert_eq!(5, pe.data.searching_end);
+    assert!(pe.validate().is_ok());
 
     Ok(())
 }
@@ -137,6 +145,7 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
 
         assert!(!applied);
         assert_eq!(expected, pe);
+        assert!(pe.validate().is_ok());
     }
 
     tracing::info!(
@@ -149,6 +158,7 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
         assert!(applied);
         assert_eq!(inflight_probe(10, 15), pe.data.inflight);
         assert_eq!(8, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
     }
 
     tracing::info!(
@@ -161,6 +171,129 @@ fn test_update_conflicting_reports_whether_it_applied() -> anyhow::Result<()> {
         assert!(applied);
         assert_eq!(Inflight::None, pe.data.inflight);
         assert_eq!(8, pe.data.searching_end);
+        assert!(pe.validate().is_ok());
+    }
+
+    Ok(())
+}
+
+/// A permitted reversion drops the operation in flight, so that an answer that the follower sent
+/// before it lost its log acknowledges nothing. A clear stays: no follower answers it.
+#[test]
+fn test_update_conflicting_reversion_drops_the_operation_in_flight() -> anyhow::Result<()> {
+    let mut engine_config = EngineConfig::new_default(1);
+    engine_config.allow_log_reversion = true;
+
+    let clear = inflight_probe(5, 9).into_clear(InflightId::new(1)).unwrap();
+    let cases = [
+        (inflight_probe(5, 9), Inflight::None),
+        (
+            Inflight::logs_since(Some(log_id(5)), InflightId::new(0)),
+            Inflight::None,
+        ),
+        (Inflight::snapshot(InflightId::new(0)), Inflight::None),
+        (clear, clear),
+    ];
+
+    for (inflight, kept) in cases {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 10);
+        pe.matching = Some(log_id(5));
+        pe.data.inflight = inflight;
+
+        tracing::info!(%inflight, conflict = 5, "a heartbeat conflict at matching resets the entry");
+        {
+            let applied = pe.new_updater(&engine_config).update_conflicting(5, None);
+
+            assert!(applied);
+            let expected = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5).with_inflight(kept);
+            assert_eq!(expected, pe);
+            assert!(pe.validate().is_ok());
+        }
+
+        tracing::info!(inflight_id = 0, "an answer of the dropped operation changes nothing");
+        {
+            let expected = pe.clone();
+
+            pe.new_updater(&engine_config).update_matching(Some(log_id(9)), InflightId::new(0));
+
+            assert_eq!(expected, pe);
+        }
+    }
+
+    Ok(())
+}
+
+/// The one-shot reversion permission of a target is used only by a conflict that reverts
+/// `matching`.
+#[test]
+fn test_update_conflicting_uses_the_one_shot_permission_only_to_revert() -> anyhow::Result<()> {
+    let engine_config = EngineConfig::new_default(1);
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 10);
+    pe.matching = Some(log_id(5));
+    pe.data.inflight = inflight_probe(5, 9);
+    pe.data.allow_log_reversion = true;
+
+    tracing::info!(
+        conflict = 7,
+        "a conflict above matching keeps the permission and the probe"
+    );
+    {
+        let mut expected = pe.clone();
+        expected.data.searching_end = 7;
+
+        let applied = pe.new_updater(&engine_config).update_conflicting(7, None);
+
+        assert!(applied);
+        assert_eq!(expected, pe);
+    }
+
+    tracing::info!(
+        conflict = 5,
+        "a conflict at matching uses the permission and drops the probe"
+    );
+    {
+        let applied = pe.new_updater(&engine_config).update_conflicting(5, None);
+
+        assert!(applied);
+        let expected = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5);
+        assert_eq!(expected, pe);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_validate_rejects_malformed_entries() -> anyhow::Result<()> {
+    tracing::info!(
+        matching = 5,
+        searching_end = 5,
+        "reject a search range that excludes matching"
+    );
+    {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 5);
+        pe.matching = Some(log_id(5));
+
+        assert!(pe.validate().is_err(), "matching.next_index(6) > searching_end(5)");
+    }
+
+    tracing::info!(prev = 15, last = 10, "reject a probe whose range ends before its prev");
+    {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
+        pe.data.inflight = Inflight::Probe {
+            log_id_range: LogIdRange::new(Some(log_id(15)), Some(log_id(10))),
+            inflight_id: InflightId::new(0),
+        };
+
+        assert!(pe.validate().is_err(), "prev(15) > last(10)");
+    }
+
+    tracing::info!(matching = 12, prev = 10, "reject a probe whose prev is below matching");
+    {
+        let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 20);
+        pe.matching = Some(log_id(12));
+        pe.data.inflight = inflight_probe(10, 15);
+
+        assert!(pe.validate().is_err(), "matching(12) > prev(10)");
     }
 
     Ok(())
@@ -252,8 +385,9 @@ fn test_next_send_probe_at_purge_boundary() -> anyhow::Result<()> {
     //      6      10    20
     //
     // searching_end == purge_upto_next: the purge boundary (6) is itself still a
-    // candidate matching position, and its log id is known as the snapshot's last
-    // log id. Probe with prev at the boundary instead of falling back to a snapshot.
+    // candidate matching position. The purge is only scheduled here, as when it waits for
+    // replication: the log id at 6 comes from the leader's log ids, not from the snapshot,
+    // which ends at 10. Probe with prev at the boundary instead of falling back to a snapshot.
     let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), 7);
     pe.matching = Some(log_id(4));
 
@@ -279,6 +413,27 @@ fn test_next_send_probe_clamped_to_purge_boundary() -> anyhow::Result<()> {
 
     let res = pe.next_send(&mut new_raft_state(6, 10, 20), 100);
     assert_eq!(Ok(&inflight_probe(6, 20).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
+fn test_next_send_probe_clamped_to_purge_boundary_near_max_index() -> anyhow::Result<()> {
+    //  matching=None                end
+    //                               MAX
+    //                               v
+    // -------------+---------------+--->
+    //              purged/snap     last
+    //              MAX-4           MAX-1
+    //
+    // `MAX` is `u64::MAX`. The binary-search midpoint, calc_mid(0, MAX), is below the purge
+    // boundary, so the probe starts at MAX-3. `start + max_entries` would exceed `MAX`; the probe
+    // ends at the local tail: prev = log id MAX-4, last = log id MAX-1.
+    let max = u64::MAX;
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), max);
+
+    let res = pe.next_send(&mut new_raft_state(max - 4, max - 4, max - 1), 8);
+    assert_eq!(Ok(&inflight_probe(max - 4, max - 1).with_id(1)), res);
 
     Ok(())
 }
@@ -435,7 +590,7 @@ fn test_next_send_probe_partial_ack_recomputes_midpoint() -> anyhow::Result<()> 
     assert_eq!(Ok(&inflight_probe(52, 60).with_id(1)), res);
 
     // The log reader returned just the first entry from (52, 60].
-    pe.new_updater(&engine_config).update_matching(Some(log_id(53)), Some(InflightId::new(1)));
+    pe.new_updater(&engine_config).update_matching(Some(log_id(53)), InflightId::new(1));
     assert_eq!(Inflight::None, pe.data.inflight);
     assert_eq!(Some(&log_id(53)), pe.matching());
 
@@ -563,6 +718,26 @@ fn test_next_send_probe_start_limited_by_max_entries() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_next_send_probe_start_near_max_index() -> anyhow::Result<()> {
+    //                   probe,end
+    //                   MAX-1
+    //                   v
+    // -----+------+-----+--->
+    //      purged snap  last
+    //      6      10    MAX-1
+    //
+    // `MAX` is `u64::MAX`. The probe tries the last log first, as for a new leader's noop entry.
+    // `start + max_entries` would exceed `MAX`; the probe ends at the local tail: (MAX-2, MAX-1].
+    let max = u64::MAX;
+    let mut pe = ProgressEntry::<UTConfig>::empty(0, StreamId::new(0), max - 1).with_probe_start(max - 1);
+
+    let res = pe.next_send(&mut new_raft_state(6, 10, max - 1), 8);
+    assert_eq!(Ok(&inflight_probe(max - 2, max - 1).with_id(1)), res);
+
+    Ok(())
+}
+
+#[test]
 fn test_next_send_probe_start_at_searching_end() -> anyhow::Result<()> {
     //                  probe,end
     //                  18
@@ -627,7 +802,7 @@ fn test_next_send_snapshot_consumes_probe_start() -> anyhow::Result<()> {
         "after the snapshot ack, stream logs instead of probing again"
     );
     {
-        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), Some(InflightId::new(1)));
+        pe.new_updater(&engine_config).update_matching(Some(log_id(10)), InflightId::new(1));
 
         let res = pe.next_send(&mut state, 100);
         assert_eq!(Ok(&Inflight::logs_since(Some(log_id(10)), InflightId::new(2))), res);

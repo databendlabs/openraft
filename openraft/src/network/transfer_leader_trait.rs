@@ -26,6 +26,8 @@ where C: RaftTypeConfig
     /// Send TransferLeader message to the target node.
     ///
     /// The node received this message should pass it to [`Raft::handle_transfer_leader()`].
+    /// Return the [`TransferLeaderResponse`] that the target's call returned; the response type
+    /// describes what `Ok(())` and each error report.
     ///
     /// [`Raft::handle_transfer_leader()`]: crate::raft::Raft::handle_transfer_leader
     #[since(version = "0.10.0", change = "returns TransferLeaderResponse")]

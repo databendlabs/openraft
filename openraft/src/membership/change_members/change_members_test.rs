@@ -6,6 +6,7 @@ use crate::Membership;
 use crate::errors::EmptyMembership;
 use crate::errors::MembershipError;
 use crate::membership::RaftMembershipEdit;
+use crate::membership::RaftMembershipEditOps;
 
 #[test]
 fn nested_batch_applies_edits_in_order_before_finishing_target() {
@@ -305,6 +306,97 @@ fn edit_of_joint_respects_retention_and_preserves_learner_metadata() -> anyhow::
         };
         let expected = Membership::new(vec![btreeset! {4, 5}], target_nodes)?;
         assert_eq!(expected, result);
+    }
+    Ok(())
+}
+
+/// The learner edit keeps every voter set and the node of a known ID, whatever `retain` is.
+#[test]
+fn learner_edit_keeps_every_voter_set() -> anyhow::Result<()> {
+    let sets = [btreeset! {1, 2}, btreeset! {2, 3}, btreeset! {3, 4}];
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40, 5 => 50};
+
+    for set_count in 1..=sets.len() {
+        let configs = sets[sets.len() - set_count..].to_vec();
+        let membership = Membership::new(configs.clone(), nodes.clone())?;
+
+        for retain in [false, true] {
+            tracing::info!(set_count, retain, "--- add node 6 as a learner");
+            {
+                let mut want_nodes = nodes.clone();
+                want_nodes.insert(6, 60);
+                let want = Membership::new(configs.clone(), want_nodes)?;
+                let got = ChangeMembers::add_learner(6, 60).apply(&membership, retain)?;
+                assert_eq!(want, got);
+            }
+
+            tracing::info!(set_count, retain, "--- re-add known nodes, voters or learners");
+            {
+                for node_id in [1, 2, 4, 5] {
+                    let got = ChangeMembers::add_learner(node_id, 99).apply(&membership, retain)?;
+                    assert_eq!(membership, got, "re-add {node_id}");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A node edit, also in a nested batch, keeps every voter set of a joint membership and demotes
+/// no voter, whatever `retain` is.
+#[test]
+fn node_edits_keep_joint_voter_sets() -> anyhow::Result<()> {
+    let configs = vec![btreeset! {1, 2}, btreeset! {2, 3}];
+    let joint = Membership::new(configs.clone(), btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 40})?;
+    let batch = ChangeMembers::Batch(vec![
+        ChangeMembers::RemoveNodes(btreeset! {4}),
+        ChangeMembers::Batch(vec![ChangeMembers::AddNodes(btreemap! {4 => 41, 5 => 50})]),
+        ChangeMembers::SetNodes(btreemap! {5 => 51}),
+    ]);
+    let cases = [
+        (
+            ChangeMembers::SetNodes(btreemap! {1 => 11, 5 => 50}),
+            btreemap! {1 => 11, 2 => 20, 3 => 30, 4 => 40, 5 => 50},
+        ),
+        (
+            ChangeMembers::RemoveNodes(btreeset! {4}),
+            btreemap! {1 => 10, 2 => 20, 3 => 30},
+        ),
+        (
+            ChangeMembers::ReplaceAllNodes(btreemap! {1 => 11, 2 => 21, 3 => 31}),
+            btreemap! {1 => 11, 2 => 21, 3 => 31},
+        ),
+        (batch, btreemap! {1 => 10, 2 => 20, 3 => 30, 4 => 41, 5 => 51}),
+    ];
+
+    for retain in [false, true] {
+        for (edit, nodes) in cases.clone() {
+            let name = edit.to_string();
+            let want = Membership::new(configs.clone(), nodes)?;
+            assert_eq!(want, edit.apply(&joint, retain)?, "{name}, retain={retain}");
+        }
+    }
+    Ok(())
+}
+
+/// A voter edit leaves a joint membership: after it, the target holds only the voter set that the
+/// edit computes from the last set, and `retain` decides whether demoted voter 1 keeps its node.
+#[test]
+fn voter_edit_in_batch_leaves_joint_membership() -> anyhow::Result<()> {
+    let nodes = btreemap! {1 => 10, 2 => 20, 3 => 30};
+    let joint = Membership::new(vec![btreeset! {1, 2}, btreeset! {2, 3}], nodes)?;
+
+    for retain in [false, true] {
+        let edit = ChangeMembers::Batch(vec![
+            ChangeMembers::add_learner(4, 40),
+            ChangeMembers::AddVoterIds(btreeset! {}),
+        ]);
+        let mut nodes = btreemap! {2 => 20, 3 => 30, 4 => 40};
+        if retain {
+            nodes.insert(1, 10);
+        }
+        let want = Membership::new(vec![btreeset! {2, 3}], nodes)?;
+        assert_eq!(want, edit.apply(&joint, retain)?, "retain={retain}");
     }
     Ok(())
 }

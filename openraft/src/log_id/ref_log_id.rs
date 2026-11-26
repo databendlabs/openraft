@@ -7,13 +7,17 @@ use crate::vote::RaftCommittedLeaderId;
 
 /// A reference to a log id, combining a reference to a committed leader ID and an index.
 /// Committed leader ID is the `term` in standard Raft.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct RefLogId<'k, CLID>
 where CLID: RaftCommittedLeaderId
 {
     pub(crate) leader_id: &'k CLID,
     pub(crate) index: u64,
 }
+
+/// A `RefLogId` copies only the reference to the leader ID, so it is `Copy` even when `CLID` is
+/// not. `derive(Copy)` would add the bound `CLID: Copy`.
+impl<CLID> Copy for RefLogId<'_, CLID> where CLID: RaftCommittedLeaderId {}
 
 impl<'l, CLID> RefLogId<'l, CLID>
 where CLID: RaftCommittedLeaderId
@@ -52,15 +56,25 @@ where CLID: RaftCommittedLeaderId
 {
     type CommittedLeaderId = CLID;
 
-    fn new(_leader_id: CLID, _index: u64) -> Self {
-        unreachable!("RefLogId does not own the leader id, so it cannot be created from it.")
-    }
-
     fn committed_leader_id(&self) -> &CLID {
         self.leader_id
     }
 
     fn index(&self) -> u64 {
         self.index
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RefLogId;
+
+    #[test]
+    fn test_copy_for_non_copy_leader_id() {
+        fn assert_copy<X>()
+        where X: Copy {
+        }
+
+        assert_copy::<RefLogId<'_, String>>();
     }
 }

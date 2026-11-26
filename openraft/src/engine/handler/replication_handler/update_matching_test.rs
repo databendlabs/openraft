@@ -50,7 +50,7 @@ fn test_update_matching_no_leader() -> anyhow::Result<()> {
 
     let res = std::panic::catch_unwind(move || {
         let mut eng = eng();
-        eng.replication_handler().update_matching(3, Some(log_id(1, 1, 2)), None);
+        eng.replication_handler().update_matching(3, Some(log_id(1, 1, 2)), InflightId::new(1));
     });
     tracing::info!("res: {:?}", res);
     assert!(res.is_err());
@@ -65,8 +65,9 @@ fn test_update_matching() -> anyhow::Result<()> {
     eng.output.take_commands();
 
     let mut rh = eng.replication_handler();
+    // A log stream to each target: every acknowledgement of a stream carries its inflight id.
     let mut set_inflight = |id, prev| {
-        let inflight = Inflight::probe(prev, Some(log_id(2, 1, 4)), InflightId::new(1));
+        let inflight = Inflight::logs_since(prev, InflightId::new(1));
         assert_eq!(
             Some(&inflight),
             rh.leader.progress.update_data_with(&id, |data| data.inflight = inflight).map(|data| &data.inflight)
@@ -79,7 +80,7 @@ fn test_update_matching() -> anyhow::Result<()> {
 
     // progress: None, None, (1,2)
     {
-        rh.update_matching(3, Some(log_id(1, 1, 2)), None);
+        rh.update_matching(3, Some(log_id(1, 1, 2)), InflightId::new(1));
         assert_eq!(None, rh.state.local_committed());
         assert_eq!(0, rh.output.take_commands().len());
     }
@@ -87,7 +88,7 @@ fn test_update_matching() -> anyhow::Result<()> {
     // progress: None, (2,1), (1,2); quorum-ed: (1,2), not at leader vote, not committed
     {
         rh.output.clear_commands();
-        rh.update_matching(2, Some(log_id(2, 1, 1)), None);
+        rh.update_matching(2, Some(log_id(2, 1, 1)), InflightId::new(1));
         assert_eq!(None, rh.state.local_committed());
         assert_eq!(0, rh.output.take_commands().len());
     }
@@ -95,7 +96,7 @@ fn test_update_matching() -> anyhow::Result<()> {
     // progress: None, (2,1), (2,3); committed: (2,1)
     {
         rh.output.clear_commands();
-        rh.update_matching(3, Some(log_id(2, 1, 3)), None);
+        rh.update_matching(3, Some(log_id(2, 1, 3)), InflightId::new(1));
         assert_eq!(Some(&log_id(2, 1, 1)), rh.state.local_committed());
         assert_eq!(
             vec![Command::ReplicateCommitted {
@@ -110,7 +111,7 @@ fn test_update_matching() -> anyhow::Result<()> {
     // progress: (2,4), (2,1), (2,3); committed: (1,3)
     {
         rh.output.clear_commands();
-        rh.update_matching(1, Some(log_id(2, 1, 4)), None);
+        rh.update_matching(1, Some(log_id(2, 1, 4)), InflightId::new(1));
         assert_eq!(Some(&log_id(2, 1, 3)), rh.state.local_committed());
         assert_eq!(
             vec![Command::ReplicateCommitted {
@@ -140,8 +141,8 @@ fn test_update_matching_relaxed_read_bounds_committed_by_applied() -> anyhow::Re
 
     // committed: (2,1); the leader has applied nothing, so followers may apply nothing.
     {
-        rh.update_matching(2, Some(log_id(2, 1, 1)), None);
-        rh.update_matching(3, Some(log_id(2, 1, 3)), None);
+        rh.update_matching(2, Some(log_id(2, 1, 1)), InflightId::new(1));
+        rh.update_matching(3, Some(log_id(2, 1, 3)), InflightId::new(1));
         assert_eq!(Some(&log_id(2, 1, 1)), rh.state.cluster_committed());
         assert_eq!(
             vec![Command::ReplicateCommitted { committed: None }],
@@ -153,7 +154,7 @@ fn test_update_matching_relaxed_read_bounds_committed_by_applied() -> anyhow::Re
     {
         rh.state.io_state.apply_progress.submit(log_id(2, 1, 1));
         rh.state.io_state.apply_progress.flush(log_id(2, 1, 1));
-        rh.update_matching(1, Some(log_id(2, 1, 4)), None);
+        rh.update_matching(1, Some(log_id(2, 1, 4)), InflightId::new(1));
         assert_eq!(Some(&log_id(2, 1, 3)), rh.state.cluster_committed());
         assert_eq!(
             vec![Command::ReplicateCommitted {
@@ -190,6 +191,72 @@ fn test_empty_ack_clears_inflight_without_updating_matching() -> anyhow::Result<
     let entry = rh.leader.progress.try_get(&target).unwrap();
     assert_eq!(None, entry.matching());
     assert_eq!(Inflight::None, entry.data.inflight);
+
+    Ok(())
+}
+
+/// A success without an inflight id, such as the answer to an update of the commit index sent on
+/// its own, changes no progress, whatever the leader tracks for the target: no plan, a clear, or a
+/// probe that replaced a dropped plan. The target may have lost its log since it answered. Here a
+/// heartbeat's conflict at log 3 has reset the progress of node 3 under allowed log reversion, and
+/// node 1 matches log 3, so counting the answer would let nodes 1 and 3 accept log 3 as a quorum.
+#[test]
+fn test_untracked_success_changes_no_progress() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.testing_new_leader();
+    eng.output.take_commands();
+
+    let mut rh = eng.replication_handler();
+    rh.leader.progress.update_entry_with(&1, |entry| {
+        entry.matching = Some(log_id(2, 1, 3));
+        entry.data.searching_end = 4;
+    });
+    let data = rh.leader.progress.update_data_with(&3, |data| data.searching_end = 3);
+    let stream_id = data.unwrap().stream_id;
+
+    let success = crate::replication::response::Progress {
+        target: 3,
+        result: Ok(ReplicationResult(Ok(Some(log_id(2, 1, 3))))),
+        hint: None,
+    };
+    let clear = Inflight::Clear {
+        prev: Some(log_id(2, 1, 3)),
+        inflight_id: InflightId::new(5),
+    };
+    let probe = Inflight::probe(None, Some(log_id(2, 1, 3)), InflightId::new(6));
+
+    for inflight in [Inflight::None, clear, probe] {
+        tracing::info!(%inflight, "node 3 answers log 3 without an inflight id: nothing changes");
+        {
+            rh.leader.progress.update_data_with(&3, |data| data.inflight = inflight);
+            let expected = rh.leader.progress.iter().cloned().collect::<Vec<_>>();
+
+            rh.update_progress(stream_id, success.clone(), None);
+
+            let actual = rh.leader.progress.iter().cloned().collect::<Vec<_>>();
+            assert_eq!(expected, actual);
+            assert_eq!(&None, rh.leader.progress.quorum_accepted());
+            assert_eq!(Vec::<Command<UTConfig>>::new(), rh.output.take_commands());
+        }
+    }
+
+    tracing::info!(
+        inflight_id = 6,
+        "the same answer to the probe advances node 3 and commits log 3"
+    );
+    {
+        rh.update_progress(stream_id, success, Some(InflightId::new(6)));
+
+        let entry = rh.leader.progress.try_get(&3).unwrap();
+        assert_eq!(Some(&log_id(2, 1, 3)), entry.matching());
+        assert_eq!(Inflight::None, entry.data.inflight);
+        assert_eq!(
+            vec![Command::ReplicateCommitted {
+                committed: Some(log_id(2, 1, 3))
+            }],
+            rh.output.take_commands()
+        );
+    }
 
     Ok(())
 }

@@ -55,10 +55,31 @@ where C: RaftTypeConfig
     /// target that is restarting: the leader records nothing for it and sends the snapshot again
     /// after a backoff.
     ///
-    /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission.
     /// The network implementation is also responsible for enforcing `option.soft_ttl()`.
     ///
+    /// # Cancellation
+    ///
+    /// `cancel` gets `Ready` when the caller decides to cancel this snapshot transmission. The
+    /// caller may also drop the returned future at any `.await`, whether or not `cancel` is ready.
+    /// A dropped future does not resume: only its destructors run, so cleanup placed after an
+    /// `.await` never runs. Work that this method moved to another task, such as a spawned upload,
+    /// outlives the drop unless a value that the returned future owns stops it, such as a guard
+    /// that aborts the task when dropped.
+    ///
+    /// When a [quiet period] interrupts the transfer, Openraft drops the future, then calls
+    /// `full_snapshot()` again on the same `self` once sending resumes, possibly with a newer
+    /// snapshot. Keep `self` safe for that call:
+    ///
+    /// - A dropped call may leave a request partly written, or its reply unread, on a connection
+    ///   that `self` keeps for later calls. Discard such a connection instead of reusing it. For
+    ///   example, take the connection out of `self` for the exchange, and put it back only after a
+    ///   complete reply.
+    /// - Never return the reply to a dropped call as the response to a later call.
+    ///   [`SnapshotResponse`] carries only a vote, so the leader would take that reply as proof
+    ///   that the later snapshot is installed.
+    ///
     /// [`Raft::install_full_snapshot()`]: crate::raft::Raft::install_full_snapshot
+    /// [quiet period]: crate::docs::protocol::check_quorum#optional-quorum-loss-inactivity
     async fn full_snapshot(
         &mut self,
         vote: VoteOf<C>,

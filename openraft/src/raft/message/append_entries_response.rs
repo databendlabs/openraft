@@ -18,6 +18,17 @@ use crate::RaftTypeConfig;
 /// openraft-legacy = "0.10.2"
 /// ```
 ///
+/// A transport that serializes the response with Serde enables the `serde` feature of
+/// `openraft-legacy`, which also enables `openraft/serde`:
+/// ```toml
+/// [dependencies]
+/// openraft-legacy = { version = "0.10.2", features = ["serde"] }
+/// ```
+///
+/// The moved type derives `Serialize` and `Deserialize` only with this feature: `openraft/serde`
+/// derived them before 0.10.2 and no longer does. A transport that encodes the response without
+/// Serde does not need the feature.
+///
 /// Update imports:
 /// ```ignore
 /// use openraft_legacy::network_v1::AppendEntriesResponse;

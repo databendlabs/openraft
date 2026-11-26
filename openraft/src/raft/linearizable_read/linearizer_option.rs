@@ -19,10 +19,19 @@ use crate::raft::ReadPolicy;
 /// acknowledge an RPC sent after `requested_at`, as in ReadIndex. A nonzero duration allows a
 /// recent quorum acknowledgement to be reused as a leader lease.
 ///
-/// `heartbeat_if_quorum_ack_stale` controls whether [`RaftCore`] immediately broadcasts heartbeats
+/// `heartbeat_if_quorum_ack_stale` controls whether [`RaftCore`] requests a heartbeat broadcast
 /// when the recorded acknowledgement is missing or reaches the effective age limit. It does not
 /// control whether the read waits: a stale read may also be satisfied by a periodic heartbeat or
-/// replication acknowledgement.
+/// replication acknowledgement. With the flag set, a stale read behaves as follows:
+///
+/// - With a zero `wait_timeout`, the read requests no heartbeat and fails at once with
+///   [`LinearizableReadError::QuorumNotEnough`]. A failed read therefore does not renew the
+///   acknowledgement for later reads.
+/// - With a positive `wait_timeout`, [`RaftCore`] broadcasts heartbeats at once and queues the
+///   read. During a suppression phase of [`Config::quorum_loss_probe_interval`], it drops the
+///   heartbeat request instead of deferring it, so the read succeeds only if a periodic heartbeat
+///   or replication brings a qualifying acknowledgement within `wait_timeout`. If none does, the
+///   read times out with `QuorumNotEnough`.
 ///
 /// Replication acknowledgements at an unchanged log boundary retain that boundary's older
 /// sending time. This also applies to entry-less commit updates on the default sequential
@@ -35,6 +44,7 @@ use crate::raft::ReadPolicy;
 ///
 /// [`RaftCore`]: crate::core::RaftCore
 /// [`LinearizableReadError::QuorumNotEnough`]: crate::errors::LinearizableReadError::QuorumNotEnough
+/// [`Config::quorum_loss_probe_interval`]: crate::Config::quorum_loss_probe_interval
 #[since(version = "0.10.1", change = "add relaxed reads")]
 #[since(version = "0.10.0", change = "renamed from `LinearizableReadRequest`")]
 #[since(version = "0.10.0")]
@@ -52,6 +62,11 @@ pub struct LinearizerOption {
 
     /// Whether to broadcast heartbeats immediately when the latest quorum acknowledgement is
     /// missing or reaches the effective maximum age.
+    ///
+    /// No heartbeat is sent for a read with a zero `wait_timeout`, which fails at once, or during
+    /// a suppression phase of [`Config::quorum_loss_probe_interval`]; see [`LinearizerOption`].
+    ///
+    /// [`Config::quorum_loss_probe_interval`]: crate::Config::quorum_loss_probe_interval
     pub(crate) heartbeat_if_quorum_ack_stale: bool,
 
     /// The maximum time this read waits for a qualifying quorum acknowledgement.
@@ -95,6 +110,12 @@ impl LinearizerOption {
     /// If `heartbeat_if_quorum_ack_stale` is `true`, the leader immediately broadcasts heartbeats
     /// when its latest quorum acknowledgement is too old for this read. Otherwise, the read waits
     /// for a periodic heartbeat or replication acknowledgement without initiating one.
+    ///
+    /// Even when `heartbeat_if_quorum_ack_stale` is `true`, the leader sends no heartbeat for a
+    /// read with a zero [wait timeout](Self::with_wait_timeout), which fails at once, or during a
+    /// suppression phase of [`Config::quorum_loss_probe_interval`]; see [`LinearizerOption`].
+    ///
+    /// [`Config::quorum_loss_probe_interval`]: crate::Config::quorum_loss_probe_interval
     #[since(version = "0.10.0")]
     pub fn new(max_quorum_ack_age: Option<Duration>, heartbeat_if_quorum_ack_stale: bool) -> Self {
         Self {
@@ -108,9 +129,13 @@ impl LinearizerOption {
     /// Sets how long this read waits for a qualifying quorum acknowledgement.
     ///
     /// The wait applies only to a read that needs a newer quorum acknowledgement, and it replaces
-    /// the default wait of one leader lease. `Duration::ZERO` fails such a read at once instead of
-    /// queueing it. The value is not capped, so a long wait keeps the read in memory on the leader
-    /// until it elapses or the leader steps down.
+    /// the default wait of one leader lease. `Duration::ZERO` fails such a read at once with
+    /// [`LinearizableReadError::QuorumNotEnough`] instead of queueing it, and the leader requests
+    /// no heartbeat for it, even if `heartbeat_if_quorum_ack_stale` is `true`. The value is not
+    /// capped, so a long wait keeps the read in memory on the leader until it elapses or the
+    /// leader steps down.
+    ///
+    /// [`LinearizableReadError::QuorumNotEnough`]: crate::errors::LinearizableReadError::QuorumNotEnough
     #[since(version = "0.10.0")]
     pub fn with_wait_timeout(mut self, wait_timeout: Duration) -> Self {
         self.wait_timeout = Some(wait_timeout);

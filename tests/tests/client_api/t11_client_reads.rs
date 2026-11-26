@@ -9,6 +9,8 @@ use openraft::LogIdOptionExt;
 use openraft::RPCTypes;
 use openraft::ReadPolicy;
 use openraft::ServerState;
+use openraft::Vote;
+use openraft::async_runtime::OneshotSender;
 use openraft::async_runtime::WatchReceiver;
 use openraft::errors::LinearizableReadError;
 use openraft::errors::NetworkError;
@@ -17,11 +19,15 @@ use openraft::errors::RaftError;
 use openraft::raft::linearizable_read::LinearizerOption;
 use openraft::type_config::TypeConfigExt;
 use openraft::vote::RaftLeaderId;
+use openraft_memstore::ClientRequest;
+use openraft_memstore::IntoMemClientRequest;
 use openraft_memstore::TypeConfig;
 
 use crate::fixtures::RaftRouter;
 use crate::fixtures::RpcCall;
+use crate::fixtures::WAIT_TIMEOUT;
 use crate::fixtures::expect_timeout;
+use crate::fixtures::log_id;
 use crate::fixtures::rpc_kind::RpcKind;
 use crate::fixtures::rpc_request::RpcRequest;
 use crate::fixtures::rpc_rule::RpcRule;
@@ -683,6 +689,204 @@ async fn ensure_linearizable_process_from_followers() -> Result<()> {
             state.applied().index(),
             Some(log_index),
             "follower n1 applied should catch up leader's applied"
+        );
+    }
+
+    Ok(())
+}
+
+/// A linearizer wait ends once the state machine applies an entry of a newer leadership, even at an
+/// index below the read log ID.
+///
+/// Node 0 leads again after appending entries that no other node holds, so its read log ID is a
+/// no-op after that uncommitted suffix. Node 1 then leads without the suffix, and its no-op at a
+/// smaller index replaces the suffix on node 0. Within one leadership, a wait still ends only when
+/// the applied log ID reaches the read log ID.
+#[tracing::instrument]
+#[test_harness::test(harness = ut_harness)]
+async fn linearizer_wait_ends_when_a_newer_leader_replaces_the_read_log_id() -> Result<()> {
+    let config = Config {
+        enable_tick: false,
+        enable_heartbeat: false,
+        enable_elect: false,
+        enable_leader_restore: Some(false),
+        ..Default::default()
+    };
+    let mut router = RaftRouter::new(config)?;
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_cluster([0, 1, 2], []).await?;
+    let committed = log_id(1, 0, log_index);
+    let suffix_len = 3;
+
+    tracing::info!(
+        log_index,
+        "--- keep entries on node 0 only; node 1 still gets heartbeats, node 2 gets nothing, so it holds no lease of node 0"
+    );
+    {
+        let rule = RpcRule::new(0, 1, RpcKind::AppendEntries).matching(|request| {
+            let RpcRequest::AppendEntries(request) = request else {
+                return false;
+            };
+            !request.entries.is_empty()
+        });
+        router.add_rpc_rule(rule);
+        router.add_rpc_rule(RpcRule::new(0, 2, RpcKind::AppendEntries));
+    }
+
+    tracing::info!(log_index, suffix_len, "--- append a suffix that only node 0 holds");
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        for serial in 1..=suffix_len {
+            n0.write(ClientRequest::make_request("suffix", serial)).await?;
+        }
+        router.wait(&0).log_index(Some(log_index + suffix_len), "node 0 appends the suffix").await?;
+    }
+
+    tracing::info!(
+        log_index,
+        "--- restart node 0 and elect it in term 2, with its no-op after the suffix"
+    );
+    let (n0, noop) = {
+        let node = router.stop_node(0).await?;
+        router.new_raft_node_with_sto(0, node.log_store, node.state_machine).await?;
+        let n0 = router.get_raft_handle(&0)?;
+        n0.trigger().elect(false).await?;
+        router.wait(&0).vote(Vote::new_committed(2, 0), "node 0 leads term 2").await?;
+
+        let noop = log_id(2, 0, log_index + suffix_len + 1);
+        router.wait(&0).log_index(Some(noop.index()), "node 0 appends its no-op").await?;
+        (n0, noop)
+    };
+
+    tracing::info!(%noop, "--- confirm term 2 with node 1 and read at node 0's uncommitted no-op");
+    let linearizer = {
+        let linearizer = n0.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+        let read_log_id = linearizer.read_log_id();
+        assert_eq!(&noop, read_log_id.log_id());
+        assert_eq!(
+            (&0, &noop, Some(&committed), Some(&committed)),
+            (
+                linearizer.node_id(),
+                linearizer.noop_log_id(),
+                linearizer.committed(),
+                linearizer.applied()
+            )
+        );
+        linearizer
+    };
+
+    let finite_timeout = Duration::from_secs(3_600);
+    tracing::info!(
+        ?finite_timeout,
+        "--- pause node 0's state machine, then start an unlimited and a finite wait"
+    );
+    let (release_apply, mut unlimited, mut finite) = {
+        let (started_tx, started_rx) = TypeConfig::oneshot();
+        let (release_tx, release_rx) = TypeConfig::oneshot::<()>();
+        n0.external_state_machine_request(move |_| {
+            Box::pin(async move {
+                started_tx.send(()).unwrap();
+                let _ = release_rx.await;
+            })
+        })
+        .await?;
+        TypeConfig::timeout(WAIT_TIMEOUT, started_rx).await??;
+
+        let mut unlimited = Box::pin(linearizer.clone().await_ready(&n0));
+        let mut finite = Box::pin(linearizer.try_await_ready(&n0, Some(finite_timeout)));
+        let polled = futures::poll!(unlimited.as_mut());
+        assert!(polled.is_pending(), "node 0 has not applied the read log ID");
+        let polled = futures::poll!(finite.as_mut());
+        assert!(polled.is_pending(), "node 0 has not applied the read log ID");
+        (release_tx, unlimited, finite)
+    };
+
+    let newer = log_id(3, 1, log_index + 1);
+    tracing::info!(
+        %newer,
+        "--- node 1 leads term 3 without the suffix; node 0 replaces the suffix and commits node 1's no-op but cannot apply it"
+    );
+    {
+        let n1 = router.get_raft_handle(&1)?;
+        n1.trigger().elect(false).await?;
+        router.wait(&1).vote(Vote::new_committed(3, 1), "node 1 leads term 3").await?;
+        router.wait(&2).applied_index(Some(newer.index()), "node 2 applies node 1's no-op").await?;
+
+        let metrics = router
+            .wait(&0)
+            .metrics(|m| m.local_committed == Some(newer), "node 0 commits node 1's no-op")
+            .await?;
+        assert_eq!(Vote::new_committed(3, 1), metrics.vote);
+        assert_eq!(
+            Some(newer.index()),
+            metrics.last_log_index,
+            "node 1's no-op replaces the suffix"
+        );
+        assert_eq!(Some(committed), metrics.last_applied);
+
+        let polled = futures::poll!(unlimited.as_mut());
+        assert!(polled.is_pending(), "a higher vote and commit must not end the wait");
+        let polled = futures::poll!(finite.as_mut());
+        assert!(polled.is_pending(), "a higher vote and commit must not end the wait");
+    }
+
+    tracing::info!(%newer, "--- node 0 applies node 1's no-op, which ends both waits without another write");
+    {
+        drop(release_apply);
+        let unlimited_state = TypeConfig::timeout(WAIT_TIMEOUT, unlimited).await??;
+        let finite_state = TypeConfig::timeout(WAIT_TIMEOUT, finite).await??;
+        let finite_state = finite_state.expect("the finite wait ends before its timeout");
+        for state in [unlimited_state, finite_state] {
+            let read_log_id = state.read_log_id();
+            assert_eq!(&noop, read_log_id.log_id());
+            assert_eq!(
+                (&0, &noop, Some(&committed), Some(&newer)),
+                (state.node_id(), state.noop_log_id(), state.committed(), state.applied())
+            );
+        }
+    }
+
+    tracing::info!(
+        %newer,
+        "--- within term 3, a wait on node 2 stays pending below the read log ID and ends at it"
+    );
+    {
+        let n1 = router.get_raft_handle(&1)?;
+        let n2 = router.get_raft_handle(&2)?;
+        let (started_tx, started_rx) = TypeConfig::oneshot();
+        let (release_tx, release_rx) = TypeConfig::oneshot::<()>();
+        n2.external_state_machine_request(move |_| {
+            Box::pin(async move {
+                started_tx.send(()).unwrap();
+                let _ = release_rx.await;
+            })
+        })
+        .await?;
+        TypeConfig::timeout(WAIT_TIMEOUT, started_rx).await??;
+
+        let response = router.client_request(1, "term-3", 1).await?;
+        let written = response.log_id;
+        assert_eq!(log_id(3, 1, log_index + 2), written);
+        let linearizer = n1.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+        let read_log_id = linearizer.read_log_id();
+        assert_eq!(&written, read_log_id.log_id());
+
+        let result = linearizer.clone().try_await_ready(&n2, Some(Duration::ZERO)).await?;
+        let state = result.expect_err("node 2 has not applied the write");
+        assert_eq!(Some(&newer), state.applied());
+        let mut ready = Box::pin(linearizer.await_ready(&n2));
+        let polled = futures::poll!(ready.as_mut());
+        assert!(
+            polled.is_pending(),
+            "an applied log ID below the read log ID must not end the wait"
+        );
+
+        drop(release_tx);
+        let state = TypeConfig::timeout(WAIT_TIMEOUT, ready).await??;
+        assert_eq!(
+            (&2, &newer, Some(&written), Some(&written)),
+            (state.node_id(), state.noop_log_id(), state.committed(), state.applied())
         );
     }
 

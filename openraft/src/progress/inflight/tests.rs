@@ -320,7 +320,7 @@ fn test_inflight_into_clear() -> anyhow::Result<()> {
         assert_eq!(Some(expected), plan.into_clear(InflightId::new(2)));
     }
 
-    // No replication task reads the log for anything else
+    // Nothing else turns into a clear; an existing clear still waits for its confirmation
     let snapshot = Inflight::<UTConfig>::snapshot(InflightId::new(1));
     let clear = logs_since.into_clear(InflightId::new(2)).unwrap();
     for other in [Inflight::None, snapshot, clear] {

@@ -124,5 +124,14 @@ async fn replication_wait() -> Result<()> {
         );
     }
 
+    tracing::info!("--- after leader 0 shuts down, a replication wait must report shutdown, not lost leadership");
+    {
+        leader.shutdown().await?;
+        assert_eq!(
+            ReplicationWaitError::Wait(WaitError::ShuttingDown),
+            leader.wait(timeout()).replication(1, None, 0).await.unwrap_err()
+        );
+    }
+
     Ok(())
 }

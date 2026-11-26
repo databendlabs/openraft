@@ -4,9 +4,11 @@
 //! these metrics to a metrics collection system like Prometheus. Applications may also
 //! use this data to trigger events within higher levels of the parent application.
 //!
-//! Metrics are observed on a running Raft node via the [`Raft::metrics() ->
-//! watch::Receiver<RaftMetrics>`](`crate::Raft::metrics`) method, which will return a stream of
-//! metrics.
+//! [`Raft::metrics()`] returns a watch receiver of the latest [`RaftMetrics`] snapshot that the
+//! Raft node published. The runtime configured as [`RaftTypeConfig::AsyncRuntime`] provides the
+//! receiver type, and the [`WatchReceiver`] trait provides the methods that read the snapshot and
+//! wait for a newer one. [`Raft::wait()`] returns a [`Wait`] that waits until a snapshot satisfies
+//! a condition.
 //!
 //!
 //! ## [`RaftMetrics`]
@@ -20,12 +22,16 @@
 //! - Snapshot state,
 //! - etc.
 //!
-//! Metrics can be used as a trigger of application events, as a monitoring data
-//! source, etc.
+//! Each snapshot that the Raft node publishes replaces the previous one, so a reader observes the
+//! latest state but can miss intermediate changes. Application events are therefore reactions to
+//! observed snapshots. To act on a change, such as this node becoming the leader, compare each
+//! observed snapshot with the last one the application acted on, because a notification of a new
+//! snapshot says neither which field changed nor whether any did.
 //!
-//! Metrics is not a stream thus it only guarantees to provide the latest state but
-//! not every change of the state.
-//! Because internally, `watch::channel()` only stores one last state.
+//! [`Raft::metrics()`]: crate::Raft::metrics
+//! [`Raft::wait()`]: crate::Raft::wait
+//! [`RaftTypeConfig::AsyncRuntime`]: crate::RaftTypeConfig::AsyncRuntime
+//! [`WatchReceiver`]: crate::async_runtime::WatchReceiver
 
 mod metric;
 mod raft_metrics;
@@ -35,6 +41,8 @@ mod wait;
 mod metric_display;
 pub mod recorder;
 mod serde_instant;
+#[cfg(test)]
+mod testing;
 mod wait_condition;
 #[cfg(test)]
 mod wait_test;

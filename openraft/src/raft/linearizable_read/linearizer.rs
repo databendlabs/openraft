@@ -7,6 +7,7 @@ use crate::Raft;
 use crate::RaftTypeConfig;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::errors::Fatal;
+use crate::metrics::Metric;
 use crate::metrics::WaitError;
 use crate::raft::linearizable_read::LinearizeState;
 use crate::storage::RaftStateMachine;
@@ -98,11 +99,33 @@ where C: RaftTypeConfig
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let linearizer = raft.get_read_linearizer().await?;
-    /// let state = linearizer.await_ready(&raft).await?;
-    /// // Now safe to perform linearizable reads
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::ReadPolicy;
+    ///
+    /// # trait Get {
+    /// #     fn get(&self, key: &str) -> Option<String>;
+    /// # }
+    /// #
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + Get,
+    /// # {
+    /// let linearizer = raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+    ///
+    /// // `?` returns the `Fatal` error that stopped this node.
+    /// linearizer.await_ready(raft).await?;
+    ///
+    /// // This node has applied the read log ID: reads of its state machine are now linearizable.
+    /// let value = raft.with_state_machine(|sm| Box::pin(async move { sm.get("foo") })).await?;
+    /// println!("foo: {value:?}");
+    /// # Ok(())
+    /// # }
     /// ```
+    #[since(version = "0.10.2", change = "compares complete log IDs, not only indexes")]
     #[since(version = "0.10.0")]
     pub async fn await_ready<SM>(self, raft: &Raft<C, SM>) -> Result<LinearizeState<C>, Fatal<C>>
     where SM: RaftStateMachine<C> {
@@ -117,6 +140,10 @@ where C: RaftTypeConfig
     /// entries up to [`read_log_id_on(this node)`](LinearizeState::read_log_id_on): the
     /// `read_log_id`, or only the no-op log ID for a relaxed linearizer on the node that issued it.
     ///
+    /// The wait compares complete log IDs, which order by leader ID before index, so an applied
+    /// entry of a newer leadership ends it even at a smaller index. The read log ID may name an
+    /// uncommitted entry that a newer leader replaced.
+    ///
     /// # Returns
     ///
     /// Returns `Ok(Ok(LinearizeState))` once `applied >= read_log_id_on(this node)`, indicating
@@ -127,11 +154,45 @@ where C: RaftTypeConfig
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let linearizer = raft.get_read_linearizer().await?;
-    /// let state = linearizer.try_await_ready(&raft, Some(Duration::from_secs(1))).await??;
-    /// // Now safe to perform linearizable reads
+    /// ```no_run
+    /// # use std::time::Duration;
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// use openraft::ReadPolicy;
+    ///
+    /// # trait Get {
+    /// #     fn get(&self, key: &str) -> Option<String>;
+    /// # }
+    /// #
+    /// # async fn example<C, SM>(raft: &Raft<C, SM>) -> Result<(), Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C> + Get,
+    /// # {
+    /// let linearizer = raft.get_read_linearizer(ReadPolicy::ReadIndex).await?;
+    ///
+    /// // `?` returns the `Fatal` error that stopped this node.
+    /// match linearizer.try_await_ready(raft, Some(Duration::from_secs(1))).await? {
+    ///     Ok(_) => {
+    ///         // This node has applied the read log ID: reads of its state machine are now
+    ///         // linearizable.
+    ///         let value = raft
+    ///             .with_state_machine(|sm| Box::pin(async move { sm.get("foo") }))
+    ///             .await?;
+    ///         println!("foo: {value:?}");
+    ///     }
+    ///     Err(state) => {
+    ///         // The timeout expired before this node applied the read log ID, so its state
+    ///         // machine may miss a write that completed before this read. Retry the read
+    ///         // later, or report a timeout.
+    ///         println!("not ready to read: {state}");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
     /// ```
+    #[since(version = "0.10.2", change = "compares complete log IDs, not only indexes")]
     #[since(version = "0.10.0")]
     pub async fn try_await_ready<SM>(
         self,
@@ -147,9 +208,9 @@ where C: RaftTypeConfig
             return Ok(Ok(self.state));
         }
 
-        let expected = Some(self.state.read_log_id_on(this_id).index());
+        let expected = Some(self.state.read_log_id_on(this_id).log_id().clone());
 
-        let res = raft.inner.wait(timeout).applied_index_at_least(expected, "Linearizer::try_await_ready").await;
+        let res = raft.inner.wait(timeout).ge(Metric::Applied(expected), "Linearizer::try_await_ready").await;
 
         match res {
             Ok(metrics) => Ok(Ok(self.state.with_applied(this_id.clone(), metrics.last_applied))),

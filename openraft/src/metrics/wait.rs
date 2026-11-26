@@ -10,6 +10,7 @@ use crate::async_runtime::Select2;
 use crate::async_runtime::watch::WatchReceiver;
 use crate::core::ServerState;
 use crate::core::replication_lag;
+use crate::membership::RaftMembershipExt;
 use crate::metrics::Condition;
 use crate::metrics::Metric;
 use crate::metrics::RaftMetrics;
@@ -139,11 +140,13 @@ where C: RaftTypeConfig
     /// leader's reported last log index to reach `min_index`. For a newly added target, pass the
     /// membership entry's index so stale metrics are not mistaken for target removal.
     ///
-    /// Returns [`ReplicationWaitError::NotLeader`] immediately if the local node is not a leader,
-    /// or [`ReplicationWaitError::NodeNotFound`] if sufficiently fresh metrics do not contain the
-    /// target in the effective membership. Missing replication metrics for an existing target
-    /// keep the wait pending. Timeout and shutdown errors are wrapped in
-    /// [`ReplicationWaitError::Wait`].
+    /// Returns [`ReplicationWaitError::NotLeader`] immediately if the local node is running but is
+    /// not a leader, or [`ReplicationWaitError::NodeNotFound`] if sufficiently fresh metrics do not
+    /// contain the target in the effective membership. Missing replication metrics for an existing
+    /// target keep the wait pending. Timeout and shutdown errors are wrapped in
+    /// [`ReplicationWaitError::Wait`]. Metrics that report [`ServerState::Shutdown`] end the wait
+    /// with `Wait(WaitError::ShuttingDown)` before any other check, as a closed metrics channel
+    /// does.
     ///
     /// The result is an observation of replication, not a guarantee that the target has applied
     /// the entries. Like other metrics waits, it can miss intermediate leadership/membership
@@ -153,6 +156,10 @@ where C: RaftTypeConfig
     /// // Wait until node 4 has log 100 and is at most 10 entries behind the leader.
     /// let metrics = raft.wait(Some(timeout)).replication(4, Some(100), 10).await?;
     /// ```
+    #[since(
+        version = "0.10.2",
+        change = "returns `Wait(ShuttingDown)`, not `NotLeader`, when the node stops"
+    )]
     #[since(version = "0.10.0")]
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn replication(
@@ -172,14 +179,65 @@ where C: RaftTypeConfig
         Ok(metrics)
     }
 
+    /// Wait for replication to `node_id` as [`Self::replication()`] does, while `node_id` receives
+    /// logs.
+    ///
+    /// The leader sends no log to a node without [`NodeRole::ReceiveLogs`], such as a read voter
+    /// that only votes, so replication to it may never catch up. Once metrics as fresh as
+    /// `min_index` show `node_id` without this role in the effective membership, the wait returns
+    /// `Ok(None)`, unless the same metrics show replication caught up. Every metrics report is
+    /// checked, the first one included, so a membership change that takes the role away during
+    /// the wait ends it too.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    pub(crate) async fn replication_while_receiving_logs(
+        &self,
+        node_id: C::NodeId,
+        min_index: Option<u64>,
+        max_lag: u64,
+    ) -> Result<Option<RaftMetrics<C>>, ReplicationWaitError> {
+        let metrics = self
+            .metrics(
+                |m| {
+                    let caught_up = Self::check_replication(m, &node_id, min_index, max_lag);
+                    caught_up != Ok(false) || Self::receives_no_logs(m, &node_id, min_index)
+                },
+                format!("replication to {node_id} reaches {min_index:?} with lag <= {max_lag} while it receives logs"),
+            )
+            .await?;
+
+        let caught_up = Self::check_replication(&metrics, &node_id, min_index, max_lag)?;
+        Ok(caught_up.then_some(metrics))
+    }
+
+    /// Returns whether metrics as fresh as `min_index` show `node_id` without
+    /// [`NodeRole::ReceiveLogs`] in the effective membership.
+    ///
+    /// Older metrics may predate the membership entry at `min_index`, so they tell nothing about
+    /// the role of `node_id`.
+    ///
+    /// [`NodeRole::ReceiveLogs`]: crate::membership::NodeRole::ReceiveLogs
+    fn receives_no_logs(metrics: &RaftMetrics<C>, node_id: &C::NodeId, min_index: Option<u64>) -> bool {
+        if metrics.last_log_index < min_index {
+            return false;
+        }
+
+        let membership = metrics.membership_config.membership();
+        !membership.receives_logs(node_id)
+    }
+
     fn check_replication(
         metrics: &RaftMetrics<C>,
         node_id: &C::NodeId,
         min_index: Option<u64>,
         max_lag: u64,
     ) -> Result<bool, ReplicationWaitError> {
-        if metrics.state != ServerState::Leader {
-            return Err(ReplicationWaitError::NotLeader);
+        match metrics.state {
+            ServerState::Leader => {}
+            ServerState::Shutdown => return Err(ReplicationWaitError::Wait(WaitError::ShuttingDown)),
+            ServerState::Learner | ServerState::Follower | ServerState::Candidate => {
+                return Err(ReplicationWaitError::NotLeader);
+            }
         }
 
         if metrics.last_log_index < min_index {

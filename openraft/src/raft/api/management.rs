@@ -257,20 +257,30 @@ where C: RaftTypeConfig
         // Use the membership entry that adds this learner as the minimum index. Once leader
         // metrics reach it, the membership change has been processed and replication has been
         // set up, so checking replication status will not mistake stale metrics for learner removal.
+        //
+        // The leader sends no log to a target without `NodeRole::ReceiveLogs`, such as a re-added
+        // voter that only votes, so the wait also ends once the target lacks this role.
         let wait_res = self
             .inner
             .wait(None)
-            .replication(
-                id,
+            .replication_while_receiving_logs(
+                id.clone(),
                 Some(resp.log_id.index()),
                 self.inner.config.replication_lag_threshold,
             )
             .await;
 
-        tracing::info!(
-            "waiting for replication to new learner: wait_res: {}",
-            wait_res.display()
-        );
+        match wait_res {
+            Ok(Some(metrics)) => {
+                tracing::info!("replication to node {} caught up: {}", id, metrics);
+            }
+            Ok(None) => {
+                tracing::info!("node {} receives no logs, stop waiting for replication to it", id);
+            }
+            Err(e) => {
+                tracing::info!("stop waiting for replication to node {}: {}", id, e);
+            }
+        }
 
         Ok(Ok(resp))
     }

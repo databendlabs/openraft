@@ -23,31 +23,50 @@ where C: RaftTypeConfig
         Self { engine_config, entry }
     }
 
-    /// Update the conflicting log index for this follower.
+    /// Update the progress of this follower with a conflict: the follower rejected a request
+    /// because its log does not hold the request's `prev_log_id`, whose index is `conflict`.
     ///
-    /// The conflicting log index is the last log index found on a follower that does not match
-    /// the leader's log at that position.
+    /// The follower holds another log at `conflict`, or no log there. Either way, the last log it
+    /// shares with the leader lies below `conflict`, so `searching_end` drops to `conflict`. A
+    /// conflict at or above `searching_end` narrows nothing.
     ///
-    /// If `inflight_id` is `Some`, the inflight state is reset because the response corresponds
-    /// to a replication request with log payload. If `None`, the response is from an RPC without
-    /// payload (e.g., heartbeat), and inflight state is not modified. A payload response with a
-    /// stale inflight ID leaves the entire progress entry unchanged.
+    /// `inflight_id` names the tracked operation that the response answers. It does not tell
+    /// whether the request carried entries: a log stream's request that only sends the commit
+    /// index carries the stream's ID. With `Some`, the conflict ends that operation, see
+    /// [`Inflight::conflict()`]. The ID of an operation no longer in flight makes the response
+    /// stale, and a stale response changes nothing. With `None`, as for a heartbeat or for an
+    /// update of the commit index that the replication task sends on its own, the conflict ends
+    /// no operation, but it still narrows the search, and the reset below may drop the operation
+    /// in flight.
     ///
-    /// Normally, the `conflict` index should be greater than or equal to the `matching` index
-    /// when follower data is intact. However, for testing purposes, a follower may clean its
-    /// data and require the leader to replicate all data from the beginning.
+    /// While the follower's log is intact, the follower holds `matching`, so
+    /// `conflict >= matching.next_index()`. A lower conflict means that the follower lost a log it
+    /// had matched: its log reverted, such as after its data was wiped. This includes a conflict
+    /// at the index of `matching` itself, which a heartbeat reports, because it sends the known
+    /// `matching` as its `prev_log_id`.
     ///
-    /// To allow follower log reversion, enable [`Config::allow_log_reversion`].
+    /// [`Config::allow_log_reversion`] allows every reversion, and
+    /// [`Trigger::allow_next_revert()`] allows the next reversion of one target. An allowed
+    /// reversion resets `matching` to `None`, so that the leader searches again below `conflict`,
+    /// and it clears the target's one-shot permission. A conflict that reverts nothing keeps the
+    /// permission. The reset lowers the progress value, so the caller must apply it via
+    /// `VecProgress::reset_entry_with()`, which moves the entry down to keep the progress ordering
+    /// while keeping the already quorum-accepted value: a value accepted by a quorum must never be
+    /// withdrawn.
     ///
-    /// When log reversion is allowed and the conflict is before the last known matching log,
-    /// this method resets `matching` to `None`. This lowers the progress value, so the caller
-    /// must apply it via `VecProgress::reset_entry_with()`, which moves the entry down to keep
-    /// the progress ordering while keeping the already quorum-accepted value: a value accepted
-    /// by a quorum must never be withdrawn.
+    /// The reset also drops the operation in flight: a probe, a log stream, or a snapshot
+    /// transfer. An answer that the follower sent before it lost its log carries the operation's
+    /// ID, and acknowledging it would raise `matching` to logs the follower no longer holds. A
+    /// pending [`Inflight::Clear`] stays: no follower answers it, and it holds back the purge of
+    /// the logs that a dropped plan's stream may still read.
     ///
-    /// Returns `false` only for a stale payload response, which changes nothing.
+    /// A reversion that is not allowed fails a `debug_assert!`. A build without debug assertions
+    /// does not panic: it keeps `matching`, and `searching_end` ends below `matching.next_index()`.
+    ///
+    /// Returns `false` only for a stale response, which changes nothing.
     ///
     /// [`Config::allow_log_reversion`]: `crate::config::Config::allow_log_reversion`
+    /// [`Trigger::allow_next_revert()`]: crate::raft::trigger::Trigger::allow_next_revert
     pub(crate) fn update_conflicting(&mut self, conflict: u64, inflight_id: Option<InflightId>) -> bool {
         tracing::debug!(
             "update_conflict: current progress_entry: {}; conflict: {}",
@@ -74,10 +93,10 @@ where C: RaftTypeConfig
 
         self.entry.data.searching_end = conflict;
 
-        // An already matching log id is found lost:
+        // A conflict below `matching.next_index()` means the follower lost a log it had matched:
         //
-        // - If log reversion is allowed, just restart the binary search from the beginning.
-        // - Otherwise, panic it.
+        // - If log reversion is allowed, reset `matching` and search again below `conflict`.
+        // - Otherwise, fail the `debug_assert!` below. Without debug assertions, keep `matching`.
 
         let allow_reset = self.entry.data.allow_log_reversion || self.engine_config.allow_log_reversion;
 
@@ -97,9 +116,14 @@ where C: RaftTypeConfig
                 self.entry.matching = None;
                 self.entry.data.allow_log_reversion = false;
 
-                // Reset pipeline mode when logs are reverted
-                if self.entry.data.inflight.is_logs_since() {
-                    self.entry.data.inflight = Inflight::None;
+                // Drop the operation in flight, so that no answer to it raises `matching` again.
+                // `ReplicationHandler::update_conflicting()` turns a dropped log plan into an
+                // `Inflight::Clear`, which holds back the purge until its stream stops reading.
+                match self.entry.data.inflight {
+                    Inflight::Probe { .. } | Inflight::LogsSince { .. } | Inflight::Snapshot { .. } => {
+                        self.entry.data.inflight = Inflight::None;
+                    }
+                    Inflight::None | Inflight::Clear { .. } => {}
                 }
             }
         } else {
@@ -116,27 +140,34 @@ where C: RaftTypeConfig
         true
     }
 
-    /// Update the matching log id for this follower when replication succeeds.
+    /// Update the matching log id for this follower with a success that answers the tracked
+    /// operation `inflight_id`.
     ///
-    /// If `inflight_id` is `Some`, the inflight state is acknowledged because the response
-    /// corresponds to a replication request with log payload. If `None`, the response is from
-    /// an RPC without payload (e.g., heartbeat), and inflight state is not modified.
-    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>, inflight_id: Option<InflightId>) {
+    /// The success acknowledges the operation, and may complete it, only while the operation is in
+    /// flight, see [`Inflight::ack()`]. A success for any other operation changes nothing. Whether
+    /// the request carried entries does not matter: a log stream's request that only sends the
+    /// commit index carries the stream's ID too.
+    ///
+    /// A success that answers no tracked operation, such as the answer to an update of the commit
+    /// index that the replication task sends on its own, never updates the matching log id: it may
+    /// report a log that the follower has lost since it answered, and
+    /// [`ReplicationHandler::update_progress()`] drops it.
+    ///
+    /// [`ReplicationHandler::update_progress()`]: crate::engine::handler::replication_handler::ReplicationHandler::update_progress
+    pub(crate) fn update_matching(&mut self, matching: Option<LogIdOf<C>>, inflight_id: InflightId) {
         tracing::debug!(
             "update_matching: current progress_entry: {}; matching: {}",
             self.entry,
             matching.display()
         );
 
-        if let Some(inflight_id) = inflight_id {
-            let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
-            if !applied {
-                // Stale payload ack: a newer request superseded this one, or a concurrent log
-                // reversion cleared the inflight to `None` (see `update_conflicting`). Do not
-                // advance `matching`: the follower no longer holds the acked logs, and counting
-                // them as matched could form a false quorum over data the follower has reverted.
-                return;
-            }
+        let applied = self.entry.data.inflight.ack(matching.clone(), inflight_id);
+        if !applied {
+            // Stale ack: the operation it answers is no longer in flight, as when a newer request
+            // superseded it, or a log reversion dropped it (see `update_conflicting`). Do not
+            // advance `matching`: the follower may have lost the acked logs since it answered, and
+            // counting them as matched could form a false quorum over data it has reverted.
+            return;
         }
 
         // An acknowledgement may clear inflight without advancing matching.

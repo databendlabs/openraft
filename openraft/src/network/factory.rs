@@ -47,12 +47,16 @@ where C: RaftTypeConfig
     /// This client carries the Leader's liveness probes: the periodic heartbeat that maintains the
     /// Leader lease and the lease-confirmation probe issued for linearizable reads. These must not
     /// be delayed by replication backpressure. On a transport that cannot multiplex a single
-    /// connection (e.g., HTTP/1.1), sharing the replication client lets a large `AppendEntries`
-    /// batch or a snapshot transfer stall heartbeats through head-of-line blocking. Override this
-    /// method to isolate these probes on an independent connection when that matters.
+    /// connection (e.g., HTTP/1.1), sharing a connection with replication lets a large
+    /// `AppendEntries` batch or a snapshot transfer stall heartbeats through head-of-line blocking.
     ///
-    /// The default implementation delegates to [`new_client()`](Self::new_client), so heartbeats
-    /// share the replication path unless overridden.
+    /// The default implementation returns another client from [`new_client()`](Self::new_client),
+    /// separate from the client that replicates logs to the target. Whether the two share a
+    /// connection depends on what `new_client()` returns. If each client opens its own connection
+    /// when first used, heartbeats already have a connection of their own. If the clients hold
+    /// handles to one shared connection or pool, heartbeats go through it too. Override this
+    /// method when heartbeats need transport resources that `new_client()` does not provide, such
+    /// as a dedicated connection.
     #[since(version = "0.10.0")]
     async fn new_heartbeat_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network {
         self.new_client(target, node).await
@@ -61,11 +65,16 @@ where C: RaftTypeConfig
     /// Create a network client dedicated to transmitting snapshots to the target node.
     ///
     /// Snapshot transfers can be large and long-running. On a transport that cannot multiplex a
-    /// single connection, sharing the replication client lets an in-flight snapshot block ordinary
-    /// log replication. Override this method to isolate snapshot transfer on its own connection.
+    /// single connection, an in-flight snapshot can block ordinary log replication that shares its
+    /// connection.
     ///
-    /// The default implementation delegates to [`new_client()`](Self::new_client), so snapshot
-    /// transfer shares the replication path unless overridden.
+    /// The default implementation returns another client from [`new_client()`](Self::new_client),
+    /// separate from the client that replicates logs to the target. Whether the two share a
+    /// connection depends on what `new_client()` returns. If each client opens its own connection
+    /// when first used, snapshot transfer already has a connection of its own. If the clients hold
+    /// handles to one shared connection or pool, snapshot transfer goes through it too. Override
+    /// this method when snapshot transfer needs transport resources that `new_client()` does not
+    /// provide, such as a dedicated connection.
     #[since(version = "0.10.0")]
     async fn new_snapshot_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network {
         self.new_client(target, node).await

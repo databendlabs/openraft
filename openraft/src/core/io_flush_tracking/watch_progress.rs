@@ -1,3 +1,5 @@
+use openraft_macros::since;
+
 use crate::OptionalSend;
 use crate::OptionalSync;
 use crate::RaftTypeConfig;
@@ -20,6 +22,8 @@ use crate::type_config::alias::WatchReceiverOf;
 /// [`Raft::new`]: crate::Raft::new
 /// [`Raft::run`]: crate::Raft::run
 /// [`Raft::build`]: crate::Raft::build
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 
 /// Handle for tracking vote I/O flush progress.
@@ -28,24 +32,32 @@ pub type LogProgress<C> = WatchProgress<C, Option<FlushPoint<C>>>;
 /// the vote it recovered from storage, or the default vote when storage holds none, so `Some`
 /// alone does not mean that a vote was saved. Later values are the votes that storage reports as
 /// flushed.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type VoteProgress<C> = WatchProgress<C, Option<Vote<LeaderIdOf<C>>>>;
 
 /// Handle for tracking commit log progress.
 ///
 /// Returns `None` if no log has been committed yet.
 /// Returns `Some(LogId)` containing the latest committed log id.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type CommitProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Handle for tracking snapshot persistence progress.
 ///
 /// Returns `None` if no snapshot has been persisted yet.
 /// Returns `Some(LogId)` containing the last persisted snapshot log id.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type SnapshotProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Handle for tracking applied log progress.
 ///
 /// Returns `None` if no log has been applied yet.
 /// Returns `Some(LogId)` containing the last applied log id.
+#[since(version = "0.10.2", change = "exported from `openraft::raft`")]
+#[since(version = "0.10.0")]
 pub type AppliedProgress<C> = WatchProgress<C, Option<LogIdOf<C>>>;
 
 /// Watch handle for tracking I/O flush progress.
@@ -91,6 +103,10 @@ where
     /// Returns the current progress state once the condition is satisfied. If the progress
     /// is already >= `target`, returns immediately.
     ///
+    /// For log progress, the returned state can be a [`FlushPoint`] under a greater vote than the
+    /// target's, with any log id or none. It does not show that the target's log id was flushed,
+    /// so check the vote of the returned state; see [`Raft::watch_log_progress()`].
+    ///
     /// The wait does not mark the returned state as seen: if this handle had not seen that state
     /// when the wait began, a following [`next()`](Self::next) or [`changed()`](Self::changed)
     /// returns at once for the same state.
@@ -101,11 +117,40 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let target = Some(FlushPoint::new(Vote::new(2, node_id), Some(log_id(2, node_id, 100))));
+    /// Wait until storage flushes the entry `log_id`, which node `node_id` proposed as the leader
+    /// of `term`:
+    ///
+    /// ```no_run
+    /// # use openraft::Raft;
+    /// # use openraft::RaftTypeConfig;
+    /// # use openraft::storage::RaftStateMachine;
+    /// # use openraft::type_config::alias::LogIdOf;
+    /// use openraft::Vote;
+    /// use openraft::raft::FlushPoint;
+    ///
+    /// # async fn example<C, SM>(
+    /// #     raft: &Raft<C, SM>,
+    /// #     term: C::Term,
+    /// #     node_id: C::NodeId,
+    /// #     log_id: LogIdOf<C>,
+    /// # ) -> Result<bool, Box<dyn std::error::Error>>
+    /// # where
+    /// #     C: RaftTypeConfig,
+    /// #     SM: RaftStateMachine<C>,
+    /// # {
+    /// let mut log_progress = raft.watch_log_progress();
+    ///
+    /// let vote = Vote::new_committed(term, node_id);
+    /// let target = Some(FlushPoint::new(vote.clone(), Some(log_id)));
     /// let state = log_progress.wait_until_ge(&target).await?;
-    /// // state is guaranteed to be >= target
+    ///
+    /// // `state >= target` also holds under a greater vote, with any log id or none.
+    /// let flushed = state.is_some_and(|point| point.vote == vote);
+    /// # Ok(flushed)
+    /// # }
     /// ```
+    ///
+    /// [`Raft::watch_log_progress()`]: crate::Raft::watch_log_progress
     pub async fn wait_until_ge(&mut self, target: &T) -> Result<T, RecvError> {
         self.inner.wait_until_ge(target).await
     }

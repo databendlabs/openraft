@@ -59,6 +59,16 @@ impl instant::Instant for TokioInstant {
     }
 
     #[inline]
+    fn checked_add(&self, duration: Duration) -> Option<Self> {
+        self.0.checked_add(duration).map(Self)
+    }
+
+    #[inline]
+    fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        self.0.checked_sub(duration).map(Self)
+    }
+
+    #[inline]
     fn elapsed(&self) -> Duration {
         self.0.elapsed()
     }

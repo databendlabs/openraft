@@ -12,11 +12,13 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::engine::testing::UTConfig;
 use crate::engine::testing::log_id;
+use crate::log_id_range::LogIdRange;
 use crate::progress::Inflight;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::inflight_id::InflightId;
 use crate::progress::stream_id::StreamId;
 use crate::raft::ConflictHint;
+use crate::replication::replicate::Replicate;
 use crate::replication::response::Progress;
 use crate::replication::response::ReplicationResult;
 use crate::type_config::TypeConfigExt;
@@ -204,6 +206,10 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
         let actual = entry(&eng, 1);
         assert_eq!(expected, actual);
 
+        // The conflict answers the probe, whose only request the stream has sent: no clear.
+        let commands = eng.output.take_commands();
+        assert_eq!(Vec::<Command<UTConfig>>::new(), commands);
+
         let ordered = ordered_matching(&eng);
         let expected_ordered = vec![(2, Some(log_id(2, 1, 7))), (3, Some(log_id(2, 1, 6))), (1, None)];
         assert_eq!(expected_ordered, ordered);
@@ -233,6 +239,9 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
         let actual = entry(&eng, 3);
         assert_eq!(expected, actual);
 
+        let commands = eng.output.take_commands();
+        assert_eq!(Vec::<Command<UTConfig>>::new(), commands);
+
         let ordered = ordered_matching(&eng);
         let expected_ordered = vec![(2, Some(log_id(2, 1, 7))), (3, None), (1, None)];
         assert_eq!(expected_ordered, ordered);
@@ -245,26 +254,306 @@ fn test_update_conflicting_reversion() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// A heartbeat's conflict that finds the target's log reverted drops its `LogsSince` plan, which
-/// the target's stream never hears of. The leader asks the replication task to confirm that it no
-/// longer reads the log for the plan, and starts no other plan and purges the entries the plan held
-/// back only once the task answers.
+/// A heartbeat's conflict that finds the target's log reverted drops its log plan, a `LogsSince`
+/// plan or a probe, which the target's stream never hears of. The leader asks the replication task
+/// to confirm that it no longer reads the log for the plan, and starts no other plan and purges the
+/// entries the plan held back only once the task answers.
 #[test]
 fn reverted_log_purges_only_after_the_stream_confirms_the_clear() {
+    let logs_since = Inflight::logs_since(Some(log_id(2, 1, 5)), InflightId::new(7));
+    let probe = Inflight::probe(Some(log_id(2, 1, 5)), Some(log_id(2, 1, 9)), InflightId::new(7));
+
+    for (plan, searching_end) in [(logs_since, 6), (probe, 10)] {
+        let mut eng = eng();
+        eng.config.allow_log_reversion = true;
+        eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 1), log_id(2, 1, 3), log_id(2, 1, 10)]);
+        eng.state.purge_upto = Some(log_id(2, 1, 8));
+        eng.state.last_inflight_id = 10;
+        update_entry(&mut eng, 2, |entry| {
+            entry.matching = Some(log_id(2, 1, 5));
+            entry.data.searching_end = searching_end;
+            entry.data.inflight = plan;
+        });
+        let stream_id = entry(&eng, 2).data.stream_id;
+        let clear = InflightId::new(11);
+
+        tracing::info!(target = 2, %plan, "a heartbeat at index 5 finds the log of node 2 reverted");
+        {
+            let response = Progress {
+                target: 2,
+                result: Ok(ReplicationResult(Err(log_id(2, 1, 5)))),
+                hint: None,
+            };
+            eng.replication_handler().update_progress(stream_id, response, None);
+
+            let expected = vec![Command::ClearReplicate {
+                target: 2,
+                inflight_id: clear,
+            }];
+            assert_eq!(expected, eng.output.take_commands());
+            let expected = Inflight::Clear {
+                prev: Some(log_id(2, 1, 5)),
+                inflight_id: clear,
+            };
+            assert_eq!(expected, entry(&eng, 2).data.inflight);
+        }
+
+        tracing::info!(target = 2, "node 2 gets no new plan before the clear is confirmed");
+        {
+            eng.replication_handler().initiate_replication();
+
+            let commands = eng.output.take_commands();
+            let to_node_2 = commands.iter().any(|cmd| match cmd {
+                Command::Replicate { target, .. } | Command::ReplicateSnapshot { target, .. } => *target == 2,
+                _ => false,
+            });
+            assert!(!to_node_2, "expect no plan for node 2, got {:?}", commands);
+        }
+
+        tracing::info!(target = 2, "the replication task confirms the clear: the purge runs");
+        {
+            eng.replication_handler().update_cleared(stream_id, 2, clear);
+
+            let expected = vec![Command::PurgeLog { upto: log_id(2, 1, 8) }];
+            assert_eq!(expected, eng.output.take_commands());
+            assert_eq!(Inflight::None, entry(&eng, 2).data.inflight);
+        }
+    }
+}
+
+/// A heartbeat's conflict that finds the log of node 2 reverted drops its log plan, whether log
+/// reversion is allowed for every target or once for node 2. An answer that node 2 sent before it
+/// lost its log carries the dropped plan's inflight id: it neither raises the reset progress nor
+/// completes the probe that replaces the plan, while the probe's own answer does.
+#[test]
+fn reverted_log_ignores_the_answers_of_a_dropped_log_plan() -> anyhow::Result<()> {
+    let dropped = InflightId::new(7);
+    let probe = Inflight::probe(Some(log_id(2, 1, 5)), Some(log_id(2, 1, 9)), dropped);
+    let logs_since = Inflight::logs_since(Some(log_id(2, 1, 5)), dropped);
+    let stream_id = StreamId::new(2);
+    let clear = InflightId::new(11);
+    let new_probe = InflightId::new(12);
+    let stale_answer = Progress {
+        target: 2,
+        result: Ok(ReplicationResult(Ok(Some(log_id(2, 1, 9))))),
+        hint: None,
+    };
+
+    for allow_once in [false, true] {
+        for (plan, searching_end) in [(probe, 10), (logs_since, 6)] {
+            let mut eng = eng();
+            eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 2), log_id(2, 1, 10)]);
+            eng.state.last_inflight_id = 10;
+            update_entry(&mut eng, 2, |entry| {
+                *entry = ProgressEntry::empty(2, stream_id, searching_end).with_inflight(plan);
+                entry.matching = Some(log_id(2, 1, 5));
+            });
+            // Node 3 is busy, so that only node 2 gets a new plan.
+            update_entry(&mut eng, 3, |entry| {
+                entry.data.inflight = Inflight::snapshot(InflightId::new(1))
+            });
+            if allow_once {
+                eng.replication_handler().allow_next_revert(2, true)?;
+            } else {
+                eng.config.allow_log_reversion = true;
+            }
+
+            tracing::info!(%plan, allow_once, "a heartbeat at index 5 finds the log of node 2 reverted");
+            {
+                let response = Progress {
+                    target: 2,
+                    result: Ok(ReplicationResult(Err(log_id(2, 1, 5)))),
+                    hint: None,
+                };
+                eng.replication_handler().update_progress(stream_id, response, None);
+
+                let inflight = Inflight::Clear {
+                    prev: Some(log_id(2, 1, 5)),
+                    inflight_id: clear,
+                };
+                let expected = ProgressEntry::empty(2, stream_id, 5).with_inflight(inflight);
+                assert_eq!(expected, entry(&eng, 2));
+                let expected = vec![Command::ClearReplicate {
+                    target: 2,
+                    inflight_id: clear,
+                }];
+                assert_eq!(expected, eng.output.take_commands());
+            }
+
+            tracing::info!(inflight_id = 7, "an answer of the dropped plan changes nothing");
+            {
+                let expected = entry(&eng, 2);
+
+                eng.replication_handler().update_progress(stream_id, stale_answer.clone(), Some(dropped));
+
+                assert_eq!(expected, entry(&eng, 2));
+                assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+            }
+
+            tracing::info!("the replication task confirms the clear, and node 2 gets a new probe");
+            {
+                eng.replication_handler().update_cleared(stream_id, 2, clear);
+                eng.replication_handler().initiate_replication();
+
+                let log_id_range = LogIdRange::new(None, Some(log_id(2, 1, 7)));
+                let expected = vec![Command::Replicate {
+                    target: 2,
+                    req: Replicate::new_probe(log_id_range, new_probe),
+                }];
+                assert_eq!(expected, eng.output.take_commands());
+            }
+
+            tracing::info!(
+                inflight_id = 7,
+                "an answer of the dropped plan does not complete the new probe"
+            );
+            {
+                let expected = entry(&eng, 2);
+
+                eng.replication_handler().update_progress(stream_id, stale_answer.clone(), Some(dropped));
+
+                assert_eq!(expected, entry(&eng, 2));
+                assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+            }
+
+            tracing::info!(inflight_id = 12, "the answer of the new probe advances matching");
+            {
+                let response = Progress {
+                    target: 2,
+                    result: Ok(ReplicationResult(Ok(Some(log_id(2, 1, 7))))),
+                    hint: None,
+                };
+                eng.replication_handler().update_progress(stream_id, response, Some(new_probe));
+
+                let mut expected = ProgressEntry::empty(2, stream_id, 8);
+                expected.matching = Some(log_id(2, 1, 7));
+                assert_eq!(expected, entry(&eng, 2));
+                assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// A heartbeat's conflict that finds the log of node 2 reverted drops its snapshot transfer, which
+/// reads no log, so no clear is needed. The leader's next plan for node 2 is another snapshot,
+/// because the search range still lies below the purged logs. An answer of the dropped transfer
+/// neither raises the reset progress nor completes the new transfer, while the new one's does.
+#[test]
+fn reverted_log_ignores_the_answer_of_a_dropped_snapshot() -> anyhow::Result<()> {
+    let dropped = InflightId::new(7);
+    let new_snapshot = InflightId::new(11);
+    let stream_id = StreamId::new(2);
+    let snapshot_answer = Progress {
+        target: 2,
+        result: Ok(ReplicationResult(Ok(Some(log_id(2, 1, 8))))),
+        hint: None,
+    };
+
+    for allow_once in [false, true] {
+        let mut eng = eng();
+        eng.state.log_ids = LogIdList::new(Some(log_id(2, 1, 8)), [log_id(2, 1, 10)]);
+        eng.state.purge_upto = Some(log_id(2, 1, 8));
+        eng.state.last_inflight_id = 10;
+        update_entry(&mut eng, 2, |entry| {
+            *entry = ProgressEntry::empty(2, stream_id, 6).with_inflight(Inflight::snapshot(dropped));
+            entry.matching = Some(log_id(2, 1, 5));
+        });
+        // Node 3 is busy, so that only node 2 gets a new plan.
+        update_entry(&mut eng, 3, |entry| {
+            entry.data.inflight = Inflight::snapshot(InflightId::new(1))
+        });
+        if allow_once {
+            eng.replication_handler().allow_next_revert(2, true)?;
+        } else {
+            eng.config.allow_log_reversion = true;
+        }
+
+        tracing::info!(allow_once, "a heartbeat at index 5 finds the log of node 2 reverted");
+        {
+            let response = Progress {
+                target: 2,
+                result: Ok(ReplicationResult(Err(log_id(2, 1, 5)))),
+                hint: None,
+            };
+            eng.replication_handler().update_progress(stream_id, response, None);
+
+            let expected = ProgressEntry::empty(2, stream_id, 5);
+            assert_eq!(expected, entry(&eng, 2));
+            assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+        }
+
+        tracing::info!(inflight_id = 7, "the answer of the dropped transfer changes nothing");
+        {
+            let expected = entry(&eng, 2);
+
+            eng.replication_handler().update_progress(stream_id, snapshot_answer.clone(), Some(dropped));
+
+            assert_eq!(expected, entry(&eng, 2));
+            assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+        }
+
+        tracing::info!("node 2 gets a new snapshot transfer");
+        {
+            eng.replication_handler().initiate_replication();
+
+            let leader_vote = eng.leader.as_ref().unwrap().committed_vote.clone();
+            let expected = vec![Command::ReplicateSnapshot {
+                leader_vote,
+                target: 2,
+                inflight_id: new_snapshot,
+            }];
+            assert_eq!(expected, eng.output.take_commands());
+        }
+
+        tracing::info!(
+            inflight_id = 7,
+            "the answer of the dropped transfer does not complete the new one"
+        );
+        {
+            let expected = entry(&eng, 2);
+
+            eng.replication_handler().update_progress(stream_id, snapshot_answer.clone(), Some(dropped));
+
+            assert_eq!(expected, entry(&eng, 2));
+            assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+        }
+
+        tracing::info!(inflight_id = 11, "the answer of the new transfer advances matching");
+        {
+            eng.replication_handler().update_progress(stream_id, snapshot_answer.clone(), Some(new_snapshot));
+
+            let mut expected = ProgressEntry::empty(2, stream_id, 9);
+            expected.matching = Some(log_id(2, 1, 8));
+            assert_eq!(expected, entry(&eng, 2));
+            assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+        }
+    }
+
+    Ok(())
+}
+
+/// A heartbeat's conflict that finds the log of node 2 reverted keeps the clear that waits for its
+/// replication task: no follower answers a clear, and the logs that the dropped plan's stream may
+/// still read stay unpurged until the task confirms it.
+#[test]
+fn reverted_log_keeps_a_pending_clear() {
     let mut eng = eng();
     eng.config.allow_log_reversion = true;
-    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 1), log_id(2, 1, 3), log_id(2, 1, 10)]);
+    eng.state.log_ids = LogIdList::new(None, [log_id(1, 1, 2), log_id(2, 1, 10)]);
     eng.state.purge_upto = Some(log_id(2, 1, 8));
-    eng.state.last_inflight_id = 10;
+    let stream_id = StreamId::new(2);
+    let clear = Inflight::Clear {
+        prev: Some(log_id(2, 1, 5)),
+        inflight_id: InflightId::new(9),
+    };
     update_entry(&mut eng, 2, |entry| {
+        *entry = ProgressEntry::empty(2, stream_id, 6).with_inflight(clear);
         entry.matching = Some(log_id(2, 1, 5));
-        entry.data.searching_end = 6;
-        entry.data.inflight = Inflight::logs_since(Some(log_id(2, 1, 5)), InflightId::new(7));
     });
-    let stream_id = entry(&eng, 2).data.stream_id;
-    let clear = InflightId::new(11);
 
-    tracing::info!(target = 2, "a heartbeat at index 5 finds the log of node 2 reverted");
+    tracing::info!("a heartbeat at index 5 resets the progress of node 2 and keeps its clear");
     {
         let response = Progress {
             target: 2,
@@ -273,33 +562,32 @@ fn reverted_log_purges_only_after_the_stream_confirms_the_clear() {
         };
         eng.replication_handler().update_progress(stream_id, response, None);
 
-        let expected = vec![Command::ClearReplicate {
+        let expected = ProgressEntry::empty(2, stream_id, 5).with_inflight(clear);
+        assert_eq!(expected, entry(&eng, 2));
+        assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
+    }
+
+    tracing::info!(inflight_id = 7, "an answer of the dropped plan changes nothing");
+    {
+        let expected = entry(&eng, 2);
+        let response = Progress {
             target: 2,
-            inflight_id: clear,
-        }];
-        assert_eq!(expected, eng.output.take_commands());
-        let expected = Inflight::Clear {
-            prev: Some(log_id(2, 1, 5)),
-            inflight_id: clear,
+            result: Ok(ReplicationResult(Ok(Some(log_id(2, 1, 9))))),
+            hint: None,
         };
-        assert_eq!(expected, entry(&eng, 2).data.inflight);
+
+        eng.replication_handler().update_progress(stream_id, response, Some(InflightId::new(7)));
+
+        assert_eq!(expected, entry(&eng, 2));
+        assert_eq!(Vec::<Command<UTConfig>>::new(), eng.output.take_commands());
     }
 
-    tracing::info!(target = 2, "node 2 gets no new plan before the clear is confirmed");
+    tracing::info!(
+        inflight_id = 9,
+        "the replication task confirms the clear: the purge runs"
+    );
     {
-        eng.replication_handler().initiate_replication();
-
-        let commands = eng.output.take_commands();
-        let to_node_2 = commands.iter().any(|cmd| match cmd {
-            Command::Replicate { target, .. } | Command::ReplicateSnapshot { target, .. } => *target == 2,
-            _ => false,
-        });
-        assert!(!to_node_2, "expect no plan for node 2, got {:?}", commands);
-    }
-
-    tracing::info!(target = 2, "the replication task confirms the clear: the purge runs");
-    {
-        eng.replication_handler().update_cleared(stream_id, 2, clear);
+        eng.replication_handler().update_cleared(stream_id, 2, InflightId::new(9));
 
         let expected = vec![Command::PurgeLog { upto: log_id(2, 1, 8) }];
         assert_eq!(expected, eng.output.take_commands());
@@ -343,7 +631,7 @@ fn hinted_prefix_waits_for_durable_acknowledgement() {
     assert_eq!(None, quorum);
 
     eng.replication_handler().initiate_replication();
-    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 10)), Some(InflightId::new(1)));
+    eng.replication_handler().update_matching(2, Some(log_id(2, 1, 10)), InflightId::new(1));
     let quorum = quorum_accepted(&eng);
     let expected = Some(log_id(2, 1, 10));
     assert_eq!(expected, quorum);
