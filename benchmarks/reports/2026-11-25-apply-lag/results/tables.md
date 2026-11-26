@@ -2,8 +2,8 @@
 
 Generated from the runs of `report-full.md`. The first two tables come from the first pass of the
 grid, which ran without `--measure-apply`, except the `arrival no-op` rows. The apply backlog table
-and the `arrival no-op` rows come from the second pass, and the last table from 30 more pairs of
-runs of the saturated 2 ms row.
+and the `arrival no-op` rows come from the second pass, the next table from 30 more pairs of
+runs of the saturated 2 ms row, and the last one from 8 traced runs of that row.
 
 Runs per row: 5, in shuffled order per round. Clients: 256. Load average (1 min) at run start: min 6.3, median 14.8, max 26.0. Failed writes: 0.
 
@@ -82,3 +82,18 @@ Runs per row: 5, in shuffled order per round. Load average (1 min) at run start:
 | slow runs, both configurations | 42 | 51,338 | 50,832–63,294 | 4,462 | – |
 
 Mann-Whitney U on writes/s: 476 of 900; two-sided permutation p = 0.71 (20,000 permutations).
+
+## Traced runs of the saturated 2 ms-per-call row
+
+8 runs at `8e375e23`, built with `--no-default-features --features runtime-stats,apply-pipeline` and run with `--measure-apply-pipeline --trace-limit 4096`, in this order. Leader only; calls and reads that ended during the measurement. Entry and gap percentiles are over the retained traces; the last column lists the sizes of the last 12 calls of the run, drain included. The load average (1 min) was taken after each run.
+
+| run | load | writes/s | committed→applied p50 µs | apply() calls | apply() p50 ms | entries per call p10 / p50 / p90 | gap between calls p10 / p50 / p90 µs | read time during a call ms | last 12 calls |
+| --: | --: | --: | --: | --: | --: | --: | --: | --: | :-- |
+| 1 | 37.8 | 33,442 | 3,328 | 544 | 2.653 | 101 / 251 / 256 | 2 / 1,090 / 3,887 | 68 | 256 256 256 256 256 256 256 256 256 256 252 55 |
+| 2 | 35.4 | 59,926 | 2,945 | 596 | 2.549 | 23 / 233 / 256 | 1 / 2 / 980 | 34 | 256 256 256 256 256 256 256 256 256 256 256 233 |
+| 3 | 32.9 | 50,189 | 4,466 | 803 | 2.543 | 91 / 165 / 165 | 1 / 2 / 3 | 69 | 91 165 91 165 91 165 91 165 91 165 91 165 |
+| 4 | 31.6 | 50,789 | 4,489 | 773 | 2.544 | 102 / 154 / 154 | 1 / 2 / 3 | 65 | 102 154 102 154 102 154 102 154 101 126 64 5 |
+| 5 | 29.6 | 52,749 | 4,428 | 762 | 2.54 | 49 / 53 / 207 | 1 / 2 / 3 | 65 | 49 207 49 207 49 207 49 207 49 207 49 207 |
+| 6 | 28.1 | 50,791 | 4,502 | 803 | 2.545 | 128 / 128 / 128 | 1 / 2 / 3 | 69 | 128 128 128 128 128 128 128 128 128 128 128 128 |
+| 7 | 26.2 | 73,938 | 2,796 | 402 | 2.552 | 256 / 256 / 256 | 856 / 917 / 1,020 | 0 | 256 256 256 256 256 256 256 256 256 256 256 256 |
+| 8 | 24.5 | 73,759 | 2,783 | 402 | 2.549 | 256 / 256 / 256 | 845 / 924 / 1,039 | 0 | 256 256 256 256 256 256 256 256 256 256 256 256 |
