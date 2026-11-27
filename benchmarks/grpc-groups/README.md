@@ -107,6 +107,14 @@ Two options, both off by default, batch the heartbeats as `examples/multi-raft-k
 With batching, `rpcs/s` falls below `appends/s`, since several requests share a call. `hb_rtt_*`
 times each request from its arrival at the router, so it includes the wait for its batch.
 
+With `--node-heartbeat-timer`, the leaders of a node send their heartbeats at about the same
+moments, every `heartbeat_interval`. The node samples `ack_age` every 100 ms, a multiple of the
+default interval of 50 ms, so all its samples fall at the same point between two rounds, and that
+point differs from run to run. The `ack_age` fields and `quorum_age_max_ms` then depend on where
+that point falls: in 3 runs of `steady` at 1,000 groups, `ack_age_p50_ms` was 16.2, 22.2 and
+45.8 ms with the option, and 28.9 to 29.7 ms in 6 runs without it. Compare these fields only
+between runs that both have the option, or that both lack it.
+
 [`measure_change.py`](#measuring-a-change) compares two builds, and cannot compare these options
 with a build that has none. Run one build with and without them in turns instead.
 
@@ -223,5 +231,5 @@ and report the load average.
 
 ## Results
 
-[results.md](results.md) has the baseline at 51592651, and how far the medians of two builds of
-the same code differ in a comparison of 5 rounds.
+[results.md](results.md) has the baseline at 51592651, how far the medians of two builds of the
+same code differ in a comparison of 5 rounds, and the runs with batched heartbeats at a324507f.

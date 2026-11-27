@@ -8,8 +8,9 @@ All runs used one Apple M3 Max (16 cores, 128 GiB) with macOS 14.5, the machine 
 idle-groups [results](../idle-groups/results.md). They were release builds with the toolchain of
 `rust-toolchain`, nightly-2026-03-01, with tokio 1.54.1 and tonic 0.14.9, and ran with the
 default options and `Config`: 3 node processes with 4 worker threads each, and 1,000 groups.
-Other work ran on the machine. Sampled every 30 s, its 1-minute load average was 7.5 to 45 during
-the runs.
+Only the last section adds options, those that batch the heartbeats. Other work ran on the
+machine. Sampled every 30 s, its 1-minute load average was 7.5 to 45 during the runs of the
+baseline, and 5.4 to 12.6 during those of the last section.
 
 ## Baseline at 51592651
 
@@ -113,6 +114,111 @@ printf '\n// A/A run: this comment is the only change between the two builds.\n'
 benchmarks/idle-groups/scripts/measure_change.py baseline benchmarks/grpc-groups/src/main.rs \
     --bench grpc-groups --case '5 steady' --case '5 crash'
 git checkout -- benchmarks/grpc-groups/src/main.rs
+```
+
+## Batched heartbeats at a324507f
+
+The options of [#2516] batch the heartbeats, as the [README](README.md#batching-heartbeats)
+describes. One build of a324507f ran 3 rounds of `steady` and `crash` with each of three sets of
+options, the sets in turns, in a different order each round:
+
+- `off`: neither option, as in the baseline.
+- `batch`: `--batch-heartbeats`.
+- `batch+timer`: `--batch-heartbeats` and `--node-heartbeat-timer`.
+
+Each cell holds the median of the 3 runs of a phase, with the smallest and the largest run in
+parentheses.
+
+`measure` of `steady`:
+
+| Field               |                  `off` |                `batch` |          `batch+timer` |
+|---------------------|-----------------------:|-----------------------:|-----------------------:|
+| `cpu%`              |          253 (245–264) |          123 (105–124) |          116 (116–132) |
+| `memory_mib`        |          455 (451–463) |          417 (396–427) |          428 (424–428) |
+| `appends/s`         | 39,124 (39,064–39,129) | 38,931 (38,926–38,992) | 39,997 (39,961–39,998) |
+| `rpcs/s`            | 39,124 (39,064–39,129) |          529 (499–609) |          224 (219–248) |
+| `hb_rtt_p50_us`     |    2,945 (2,656–3,217) |    2,771 (2,674–3,050) |    2,806 (2,718–2,844) |
+| `hb_rtt_p99_us`     |    7,824 (6,680–7,991) |   7,894 (4,337–10,019) |    6,735 (5,390–7,392) |
+| `hb_rtt_max_us`     | 45,149 (16,659–68,231) | 18,568 (10,457–34,788) | 15,824 (15,790–16,106) |
+| `hb_failed`         |              0 (0–254) |                0 (0–0) |                0 (0–0) |
+| `ack_age_p50_ms`    |       29.5 (29.1–29.7) |       29.2 (28.9–29.7) |       22.2 (16.2–45.8) |
+| `ack_age_p99_ms`    |       55.3 (55.0–55.6) |       54.8 (54.1–55.3) |       30.4 (23.5–54.0) |
+| `ack_age_max_ms`    |      84.0 (63.8–140.5) |       64.0 (56.6–64.1) |       63.9 (31.7–64.7) |
+| `quorum_age_max_ms` |      83.9 (60.9–101.9) |       63.1 (56.6–63.9) |       62.8 (31.7–63.7) |
+
+- `--batch-heartbeats` cuts `rpcs/s` from 39,124 to 529, so a call carries 74 requests on
+  average, and both options cut it to 224, 179 requests a call. One call per node, target and
+  round of heartbeats would make 120 calls a second, so with both options each node sends a round
+  to each other node in about 2 calls.
+- `cpu%` halves, from 253 to 123 and 116, and `memory_mib` falls from 455 to 417 and 428. The
+  nodes run one more task each for the batcher, 25,036 in all, and one more for the timer of the
+  node, 25,039.
+- The round trips change little, although each request waits up to 1 ms for its batch:
+  `hb_rtt_p50_us` is 2,945 without batching, and 2,771 and 2,806 with it. The slowest round trip
+  falls from 45 ms to 19 and 16 ms.
+- With the timer of the node, `appends/s` is 39,997 instead of 39,124. That timer fires every
+  50 ms, while the timer of a group fires 50 ms after the group sent its last round, and each round
+  goes out a little after its timer fires.
+- With the timer of the node, the `ack_age` fields and `quorum_age_max_ms` do not compare with
+  runs without it: `ack_age_p50_ms` was 16.2, 22.2 and 45.8 ms in its 3 runs. The
+  [README](README.md#batching-heartbeats) explains why.
+- In `baseline` of `crash`, the three sets made 39,090, 816 and 229 calls a second, with `cpu%`
+  at 253, 144 and 122.
+
+`degraded` of `crash`:
+
+| Field               |                     `off` |                   `batch` |             `batch+timer` |
+|---------------------|--------------------------:|--------------------------:|--------------------------:|
+| `cpu%`              |             181 (179–188) |              104 (91–111) |               98 (85–100) |
+| `appends/s`         |    39,128 (39,046–39,175) |    39,357 (39,323–39,376) |    40,349 (40,327–40,370) |
+| `rpcs/s`            |    39,128 (39,046–39,175) |       1,284 (1,217–1,372) |             511 (508–528) |
+| `hb_rtt_p50_us`     |       2,385 (2,143–2,525) |       2,906 (2,559–2,951) |       2,939 (2,938–2,943) |
+| `hb_rtt_p99_us`     |       6,841 (6,414–8,699) |       6,360 (4,202–9,270) |       9,078 (5,760–9,958) |
+| `hb_failed`         | 194,824 (194,523–194,989) | 195,398 (195,121–195,429) | 200,318 (200,163–200,334) |
+| `ack_age_p99_ms`    |          53.9 (53.8–54.1) |          54.2 (53.8–55.9) |          42.6 (27.7–50.5) |
+| `quorum_age_max_ms` |          59.2 (58.1–65.6) |          57.5 (55.1–61.9) |          43.5 (28.6–51.2) |
+
+- The survivors fail as many heartbeats to node 1 with batching as without it, about 195,000 in
+  a window, but send them in far fewer calls. With the timer of the node, they send 40,349 requests
+  a second and fail 200,318.
+- Unlike in `steady`, the round trip at p50 grows with batching, from 2,385 µs to 2,906 and
+  2,939 µs.
+
+`failover` of `crash`:
+
+| Field          |         `off` |       `batch` | `batch+timer` |
+|----------------|--------------:|--------------:|--------------:|
+| `elect_p50_ms` | 478 (460–478) | 467 (448–481) | 488 (486–490) |
+| `elect_p99_ms` | 674 (566–674) | 582 (566–645) | 591 (578–677) |
+| `elect_max_ms` | 791 (681–862) | 695 (574–702) | 645 (585–814) |
+| `ready_p50_ms` | 478 (460–479) | 467 (448–481) | 488 (486–490) |
+| `ready_p99_ms` | 674 (566–674) | 582 (566–645) | 591 (578–677) |
+| `retried`      |       6 (3–7) |       3 (0–5) |       1 (0–6) |
+| `unrecovered`  |       0 (0–0) |       0 (0–0) |       0 (0–0) |
+| `moved`        |       0 (0–0) |       0 (0–0) |       0 (0–0) |
+
+- In every run, each of the 334 groups that node 1 led got a new leader that committed an entry
+  of its term, and no other group changed its leader.
+- `elect_p50_ms` is 478, 467 and 488, inside the 400 to 600 ms in which the first survivor of a
+  group campaigns. With 3 runs of each set, the higher percentiles and `retried` vary too much
+  between runs to tell the sets apart.
+
+To repeat these runs, from the root of a checkout:
+
+```sh
+cargo build --release --manifest-path benchmarks/grpc-groups/Cargo.toml
+bin=benchmarks/grpc-groups/target/release/grpc-groups
+for round in 'off batch batch+timer' 'batch batch+timer off' 'batch+timer off batch'; do
+    for set in $round; do
+        case $set in
+            off) options= ;;
+            batch) options=--batch-heartbeats ;;
+            batch+timer) options='--batch-heartbeats --node-heartbeat-timer' ;;
+        esac
+        $bin run --scenario steady $options
+        $bin run --scenario crash $options
+    done
+done
 ```
 
 [#2304]: https://github.com/databendlabs/openraft/issues/2304
