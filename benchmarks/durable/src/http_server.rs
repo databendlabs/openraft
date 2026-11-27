@@ -115,18 +115,22 @@ where
             .post("/write", App::<C, SM, Data>::write)
     }
 
-    pub(crate) fn benchmark_routes(self, backend: &'static str) -> Self {
+    /// Add the benchmark probes; `apply_delay_us` is the state machine's delay per `apply()` call.
+    pub(crate) fn benchmark_routes(self, backend: &'static str, apply_delay_us: u64) -> Self {
         self.get("/benchmark/stats", |_app: Arc<App<C, SM, Data>>| async move {
             Ok::<_, String>(crate::benchmark_metrics::report())
         })
         .get("/benchmark/storage", move |_app: Arc<App<C, SM, Data>>| async move {
-            Ok::<_, String>(storage(backend))
+            Ok::<_, String>(storage(backend, apply_delay_us))
         })
         .get("/benchmark/config", |app: Arc<App<C, SM, Data>>| async move {
             Ok::<_, String>(app.raft.config().as_ref().clone())
         })
         .get("/benchmark/runtime", |_app: Arc<App<C, SM, Data>>| async move {
             Ok::<_, String>(runtime_metadata())
+        })
+        .get("/benchmark/runtime_stats", |app: Arc<App<C, SM, Data>>| async move {
+            crate::runtime_stats::report(&app.raft).await
         })
         .post(
             "/benchmark/transfer",
@@ -221,12 +225,13 @@ fn response(status: StatusCode, content_type: &'static str, body: Bytes) -> Resp
     resp
 }
 
-fn storage(backend: &str) -> serde_json::Value {
+fn storage(backend: &str, apply_delay_us: u64) -> serde_json::Value {
     match backend {
         "wal" => serde_json::json!({"backend":"wal", "durability":"sync_WAL_append_flush",
-            "state_machine":"volatile_replayed_from_retained_WAL", "snapshots":"disabled"}),
+            "state_machine":"volatile_replayed_from_retained_WAL", "snapshots":"disabled",
+            "apply_delay_us":apply_delay_us}),
         "rocks" => serde_json::json!({"backend":"rocks", "durability":"sync_RocksDB_log_and_state_machine_batches",
-            "state_machine":"persistent_RocksDB", "snapshots":"checkpoint"}),
+            "state_machine":"persistent_RocksDB", "snapshots":"checkpoint", "apply_delay_us":apply_delay_us}),
         _ => unreachable!("fixed backend"),
     }
 }
@@ -234,7 +239,8 @@ fn storage(backend: &str) -> serde_json::Value {
 fn runtime_metadata() -> serde_json::Value {
     let handle = tokio::runtime::Handle::current();
     let workers = handle.metrics().num_workers();
-    serde_json::json!({"server_worker_threads": workers, "compiled_rocks": cfg!(feature = "rocks")})
+    serde_json::json!({"server_worker_threads": workers, "compiled_rocks": cfg!(feature = "rocks"),
+        "compiled_runtime_stats": cfg!(feature = "runtime-stats")})
 }
 
 #[cfg(test)]
@@ -263,7 +269,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn runtime_metadata_reports_the_effective_worker_allocation() {
         let actual = runtime_metadata();
-        let expected = serde_json::json!({"server_worker_threads": 2, "compiled_rocks": cfg!(feature = "rocks")});
+        let expected = serde_json::json!({"server_worker_threads": 2, "compiled_rocks": cfg!(feature = "rocks"),
+            "compiled_runtime_stats": cfg!(feature = "runtime-stats")});
         assert_eq!(expected, actual);
     }
 

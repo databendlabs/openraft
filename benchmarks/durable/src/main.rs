@@ -11,6 +11,8 @@ mod http_server;
 mod network;
 #[cfg(feature = "rocks")]
 mod rocks;
+mod runtime_stats;
+mod slow_apply;
 mod wal;
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -37,6 +39,9 @@ struct Options {
     snapshot_logs: Option<u64>,
     #[arg(long)]
     snapshot_keep: Option<u64>,
+    /// Delay every `apply()` call of the WAL backend's state machine by this many microseconds.
+    #[arg(long, default_value_t = 0)]
+    apply_delay_us: u64,
 }
 
 #[tokio::main]
@@ -66,6 +71,12 @@ fn validate(options: &Options) -> std::io::Result<()> {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "WAL snapshots are disabled",
+        ));
+    }
+    if matches!(options.backend, Backend::Rocks) && options.apply_delay_us > 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "apply-delay-us requires the WAL backend",
         ));
     }
     Ok(())

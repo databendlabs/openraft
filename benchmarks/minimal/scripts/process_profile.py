@@ -339,6 +339,9 @@ class Cluster:
                    "--benchmark-control-addr", options["control_addr"]]
         if self.args.backend == "rocks" and (self.args.snapshot_logs or self.args.scenario == "snapshot"):
             command += ["--snapshot-logs", str(self.args.snapshot_logs or 16), "--snapshot-keep", "0"]
+        apply_delay = getattr(self.args, "apply_delay_us", 0)
+        if apply_delay:
+            command += ["--apply-delay-us", str(apply_delay)]
         self.spawn(node, command, directory / "process.log")
         self.wait(lambda: self.api(node, "/metrics"), f"node {node} API readiness")
         self.wait(lambda: self.http.request(options["control_addr"], "/status", None, time.monotonic() + 1),
@@ -430,6 +433,8 @@ class Cluster:
             self.start(node)
         self.api(1, "/init", [])
         self.wait(lambda: self.leading(), "initial leadership")
+        # The leader accepts a membership change only after it commits the first entry of its term.
+        self.wait(lambda: (self.api(1, "/metrics").get("last_applied") or {}).get("index", 0) >= 1, "initial commit")
         for node in (2, 3):
             self.api(1, "/add-learner", {"node_id": node, "api_addr": self.nodes[node]["api_addr"],
                                                 "raft_addr": self.nodes[node]["raft_addr"]})
@@ -1012,6 +1017,8 @@ def process_arguments(parser):
     parser.add_argument("--fault-after", type=float, default=1)
     parser.add_argument("--fault-seconds", type=float, default=1)
     parser.add_argument("--snapshot-logs", type=int)
+    parser.add_argument("--apply-delay-us", type=int, default=0,
+                        help="delay every apply() call of each owned WAL node's state machine [default: 0]")
 
 
 def reproducibility_arguments(parser):
@@ -1064,6 +1071,10 @@ def validate_process(args, parser):
         parser.error("snapshot-logs must be in 1..65536")
     if args.scenario == "snapshot" and args.backend != "rocks":
         parser.error("snapshot recovery requires the persistent RocksDB profile")
+    if args.apply_delay_us < 0:
+        parser.error("apply-delay-us must be nonnegative")
+    if args.apply_delay_us and (args.attach or args.backend != "wal"):
+        parser.error("apply-delay-us requires owned WAL nodes")
 
 
 def validate_reproducibility(args, parser):
@@ -1112,7 +1123,7 @@ def prepare_binary(cluster, report):
         captured = json.loads(manifest.read_text())
         build = verified_entry(manifest.parent, captured["inputs"])
     elif getattr(args, "build", False):
-        features = ("rocks",) if args.backend == "rocks" else ()
+        features = ("runtime-stats", "rocks") if args.backend == "rocks" else ("runtime-stats",)
         request = BuildRequest("durable", features=features, lockfile=args.lockfile, toolchain=args.toolchain,
                                crate="benchmarks/durable", binary="bench-durable-node")
         build = BuildCache(args).build(request)
@@ -1163,6 +1174,25 @@ def runtime_metadata(cluster, report):
         "scope": "Python threads; server_worker_threads are per-node Tokio runtime workers"}
 
 
+def runtime_stats_report(cluster, node):
+    try:
+        return cluster.api(node, "/benchmark/runtime_stats")
+    except AvailabilityError as error:
+        if error.status != 404:
+            raise
+        if not cluster.args.attach:
+            raise ValueError("owned binary lacks /benchmark/runtime_stats; rebuild the durable harness") from error
+        return None
+
+
+def runtime_stats(cluster, report):
+    report["runtime_stats"] = {node: cluster.wait(lambda: runtime_stats_report(cluster, node), f"node {node} runtime stats")
+                               for node in cluster.nodes}
+    report["runtime_stats_scope"] = ("per node after the workload; null without the runtime-stats feature; "
+        "log_stages_us are microseconds per entry over the last Config::log_stage_capacity log ranges; "
+        "apply_call_entries covers every apply() call since the node started")
+
+
 def server_metadata(cluster, report):
     topology_metadata(cluster, report)
     runtime_metadata(cluster, report)
@@ -1173,6 +1203,9 @@ def server_metadata(cluster, report):
         raise ValueError("node storage profile differs from the selected backend or other nodes")
     report["storage"] = storage
     if not cluster.args.attach:
+        apply_delay = getattr(cluster.args, "apply_delay_us", 0)
+        if any(item.get("apply_delay_us", 0) != apply_delay for item in storage.values()):
+            raise ValueError("node apply delay differs from --apply-delay-us")
         executable = Path(cluster.commands[1][0])
         report["executable_sha256"] = hashlib.sha256(executable.read_bytes()).hexdigest()
 
@@ -1187,6 +1220,7 @@ def execute_cluster(cluster, report):
         raise ValueError("read-on-follower must name a configured node")
     server_metadata(cluster, report)
     report["workload"] = workload(cluster)
+    runtime_stats(cluster, report)
     report["application_http"] = cluster.read_reports("/benchmark/stats")
     report["http_counter_units"] = ["requests", "request_body_bytes", "response_body_bytes"]
     report["http_counter_scope"] = "startup through post-workload sample; fully received request bodies and constructed responses; includes follower authorization /get_linearizer"

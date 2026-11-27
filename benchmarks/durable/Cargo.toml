@@ -10,8 +10,10 @@ name = "bench-durable-node"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["runtime-stats"]
 rocks = ["dep:raft-kv-rocksdb"]
+# Serve each node's stage latencies and `apply()` batch sizes at `/benchmark/runtime_stats`.
+runtime-stats = ["openraft/runtime-stats"]
 
 [dependencies]
 app-http = { path = "../../examples/app-http" }
@@ -21,6 +23,7 @@ raft-kv-rocksdb = { path = "../../examples/raft-kv-rocksdb", optional = true }
 openraft = { path = "../../openraft", features = ["serde", "type-alias"] }
 types-kv = { path = "../../examples/types-kv" }
 bytes = "1.0"
+futures = "0.3"
 clap = { version = "4.1", features = ["derive"] }
 http-body-util = "0.1"
 hyper = { version = "1.0", features = ["http1", "server"] }

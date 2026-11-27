@@ -722,6 +722,13 @@ The WAL profile syncs its log and rebuilds its volatile state machine from retai
 restart. Its snapshots are disabled. RocksDB uses durable logs and persistent state-machine
 transactions; its snapshot scenario installs and restarts from a checkpoint.
 
+The durable node builds with the `runtime-stats` feature by default, and the driver builds it
+with that feature. After the workload, the report's `runtime_stats` holds each node's role, its
+per-entry stage latencies in µs over its last 1,024 log ranges (`Config::log_stage_capacity`),
+from proposal through persisted and committed to applied, and the entries of its `apply()` calls
+since it started. `--apply-delay-us N` makes every `apply()` call of each owned WAL node's state
+machine take N µs longer, on a blocking-pool thread before the call applies its entries.
+
 `--scenario transfer|crash|partition|restart|snapshot` injects one event during measurement.
 Crash kills and restarts the leader; restart targets a follower. Partition blocks all outgoing
 Raft RPCs, including in-flight snapshots, in both directions around one node. Application HTTP

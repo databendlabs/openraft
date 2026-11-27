@@ -49,7 +49,7 @@ async fn app(options: &Options, faults: Arc<Faults>) -> std::io::Result<Arc<rock
 fn http(app: Arc<rocks::app::App>) -> Server<rocks::app::App> {
     Server::new(app)
         .add_openraft_routes()
-        .benchmark_routes("rocks")
+        .benchmark_routes("rocks", 0)
         .post("/read", rocks::http_api::read)
         .post("/linearizable_read", rocks::http_api::linearizable_read)
         .post("/follower_read", follower_read)

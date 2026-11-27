@@ -450,6 +450,24 @@ class ProcessMetadataTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "rebuild"):
             process_profile.runtime_report(cluster, 1)
 
+    def test_runtime_stats_of_an_older_attached_node_are_null_and_owned_nodes_require_them(self):
+        cluster = types.SimpleNamespace(args=types.SimpleNamespace(attach=Path("manifest")),
+                                        api=mock.Mock(side_effect=process_profile.AvailabilityError("missing", status=404)))
+        self.assertIsNone(process_profile.runtime_stats_report(cluster, 1))
+        cluster.args.attach = None
+        with self.assertRaisesRegex(ValueError, "rebuild"):
+            process_profile.runtime_stats_report(cluster, 1)
+
+    def test_owned_nodes_must_report_the_requested_apply_delay(self):
+        storage = {node: {"backend": "wal", "apply_delay_us": 0} for node in (1, 2, 3)}
+        reports = {"/benchmark/config": {}, "/benchmark/storage": storage}
+        args = types.SimpleNamespace(attach=None, backend="wal", apply_delay_us=2000)
+        cluster = types.SimpleNamespace(args=args, read_reports=reports.get)
+        with mock.patch.object(process_profile, "topology_metadata"), \
+                mock.patch.object(process_profile, "runtime_metadata"), \
+                self.assertRaisesRegex(ValueError, "apply delay"):
+            process_profile.server_metadata(cluster, {})
+
 
 if __name__ == "__main__":
     unittest.main()
