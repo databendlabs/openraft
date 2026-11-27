@@ -45,6 +45,7 @@ mod metrics_channels;
 mod notification_name;
 mod raft_core;
 mod replication_state;
+mod serial_rpc;
 mod server_state;
 mod shared_replicate_batch;
 mod step_down_watcher;

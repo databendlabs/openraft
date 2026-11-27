@@ -56,6 +56,7 @@ use crate::core::raft_msg::external_command::ExternalCommand;
 use crate::core::raft_msg::install_full_snapshot_request::InstallFullSnapshotRequest;
 use crate::core::raft_msg::membership_payloads::MembershipPayloads;
 use crate::core::runtime_stats::RuntimeStats;
+use crate::core::serial_rpc::SerialRpc;
 use crate::core::sm;
 use crate::core::stage::Stage;
 use crate::display_ext::DisplayInstantExt;
@@ -264,6 +265,10 @@ where
     pub(crate) lingering_replications: Vec<StreamId>,
 
     pub(crate) heartbeat_handle: HeartbeatWorkersHandle<C>,
+
+    /// The vote and pre-vote requests to each other voter: one in flight at a time, so that none is
+    /// dropped before it ends, see [`SerialRpc`].
+    pub(crate) vote_rpcs: BTreeMap<C::NodeId, SerialRpc<C>>,
 
     #[allow(dead_code)]
     pub(crate) tx_api: MpscSenderOf<C, RaftMsg<C>>,
@@ -1700,6 +1705,9 @@ where
     /// partitioned peer — is **not** a grant, otherwise a fully isolated node would synthesize a
     /// quorum and inflate its term. A network that has not implemented `pre_vote` returns
     /// `Ok(granted)` from the default impl, keeping Pre-Vote a no-op during a rolling upgrade.
+    ///
+    /// A request without a response within `election_timeout_min` stays in flight, and the next
+    /// request to its target waits for it, see [`SerialRpc`].
     #[tracing::instrument(level = "trace", skip_all)]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C>, kind: VoteRequestKind) {
         let vote = vote_req.vote.clone();
@@ -1710,7 +1718,7 @@ where
         let voter_ids = membership.voter_ids();
         let targets: Vec<_> = voter_ids.collect();
 
-        self.broadcast_to(targets, ttl, |target, mut client, option| {
+        let requests = self.rpcs_to(targets.clone(), ttl, |target, mut client, option| {
             let req = vote_req.clone();
             let vote = vote.clone();
             let id = id.clone();
@@ -1726,13 +1734,16 @@ where
             };
 
             async move {
-                let tm_res = match kind {
-                    VoteRequestKind::Vote => C::timeout(ttl, client.vote(req, option)).await,
-                    VoteRequestKind::PreVote => C::timeout(ttl, client.pre_vote(req, option)).await,
+                let rpc = async {
+                    match kind {
+                        VoteRequestKind::Vote => client.vote(req, option).await,
+                        VoteRequestKind::PreVote => client.pre_vote(req, option).await,
+                    }
                 };
-                let res = match tm_res {
-                    Ok(res) => res,
+                let mut rpc = std::pin::pin!(rpc);
 
+                let res = match C::timeout(ttl, rpc.as_mut()).await {
+                    Ok(res) => res,
                     Err(_timeout) => {
                         let timeout_err = Timeout::<C> {
                             action: kind.rpc_type(),
@@ -1740,8 +1751,12 @@ where
                             target: target.clone(),
                             timeout: ttl,
                         };
-                        tracing::warn!("timeout while requesting {}: {}", kind.as_str(), timeout_err);
-                        return;
+                        tracing::warn!(
+                            "timeout while requesting {}: {}; the request stays in flight until it ends",
+                            kind.as_str(),
+                            timeout_err
+                        );
+                        rpc.await
                     }
                 };
 
@@ -1772,8 +1787,15 @@ where
                 }
             }
             .instrument(span)
-        })
-        .await;
+        });
+        let requests = requests.await;
+
+        // Dropping the queue of a voter that is gone drops its waiting request; the request in
+        // flight runs on until it ends.
+        self.vote_rpcs.retain(|target, _| targets.contains(target));
+        for (target, request) in requests {
+            self.vote_rpcs.entry(target).or_insert_with(SerialRpc::new).send(Box::pin(request));
+        }
     }
 
     /// Tell every other voter and the known transfer target to accept a new leader.
@@ -1791,7 +1813,7 @@ where
             targets.insert(to.clone());
         }
 
-        self.broadcast_to(targets, ttl, |target, mut client, option| {
+        let requests = self.rpcs_to(targets, ttl, |target, mut client, option| {
             let r = req.clone();
 
             let span = tracing::debug_span!(
@@ -1820,21 +1842,28 @@ where
                 }
             }
             .instrument(span)
-        })
-        .await;
+        });
+        let requests = requests.await;
+
+        for (_target, request) in requests {
+            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
+            #[allow(clippy::let_underscore_future)]
+            let _ = C::spawn(request);
+        }
     }
 
-    /// Send an RPC to each target except this node, each in its own detached task.
+    /// Create an RPC to each target except this node, for the caller to run.
     ///
-    /// `make_rpc` is handed a fresh client for one target and the shared [`RPCOption`], and returns
-    /// the future that talks to it. Nothing is joined, so each future has to report its own
-    /// outcome; `ttl` is the timeout the caller is expected to enforce inside that future.
-    async fn broadcast_to<I, F, Fut>(&mut self, targets: I, ttl: Duration, make_rpc: F)
+    /// `make_rpc` is handed a fresh client for one target and an [`RPCOption`] of `ttl`, and
+    /// returns the future that talks to it. Nothing awaits the futures' output, so each future has
+    /// to report its own outcome.
+    async fn rpcs_to<I, F, Fut>(&mut self, targets: I, ttl: Duration, make_rpc: F) -> Vec<(C::NodeId, Fut)>
     where
         I: IntoIterator<Item = C::NodeId>,
         F: Fn(C::NodeId, NF::Network, RPCOption) -> Fut,
         Fut: Future<Output = ()> + OptionalSend + 'static,
     {
+        let mut rpcs = Vec::new();
         for target in targets {
             if target == self.id {
                 continue;
@@ -1847,12 +1876,10 @@ where
                 factory.new_client(target.clone(), &target_node).await
             };
 
-            let fut = make_rpc(target, client, RPCOption::new(ttl));
-
-            // False positive lint warning(`non-binding `let` on a future`): https://github.com/rust-lang/rust-clippy/issues/9932
-            #[allow(clippy::let_underscore_future)]
-            let _ = C::spawn(fut);
+            let rpc = make_rpc(target.clone(), client, RPCOption::new(ttl));
+            rpcs.push((target, rpc));
         }
+        rpcs
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

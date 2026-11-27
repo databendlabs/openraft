@@ -51,6 +51,10 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(1);
 /// Long enough that no heartbeat RPC times out during a test.
 const HEARTBEAT_MS: u64 = 3_600_000;
 
+/// The `election_timeout_max` of a test whose worker stops with a pending RPC: the worker drops
+/// the RPC once it has passed.
+const STOP_LIMIT_MS: u64 = 50;
+
 /// A heartbeat request, with the node of the client that sent it.
 type Sent = (String, AppendEntriesRequest<C>);
 
@@ -203,13 +207,14 @@ async fn next_progress(
 }
 
 /// A worker whose node changed is replaced, even while its RPC is pending: the next heartbeat
-/// goes through a client created from the new node. A worker whose node did not change keeps its
-/// client.
+/// goes through a client created from the new node. The old worker drops its pending RPC once
+/// `election_timeout_max` has passed. A worker whose node did not change keeps its client.
 #[test]
 fn test_changed_node_replaces_the_worker_and_its_client() {
     C::run(async {
         let config = Arc::new(Config {
             heartbeat_interval: HEARTBEAT_MS,
+            election_timeout_max: STOP_LIMIT_MS,
             ..Config::default()
         });
         let mut handle = HeartbeatWorkersHandle::<C>::new(1, config);
@@ -233,13 +238,13 @@ fn test_changed_node_replaces_the_worker_and_its_client() {
             assert_eq!("old", node);
         }
 
-        tracing::info!("--- moving target 2 to `new` cancels the pending worker and creates a client");
+        tracing::info!("--- moving target 2 to `new` stops the pending worker and creates a client");
         {
             let progresses = [progress(2, "new", 2), progress(3, "three", 3)];
             handle.spawn_workers(vote.clone(), &mut factory, &tx_notification, &progresses, false).await;
 
             let dropped = C::timeout(TEST_TIMEOUT, factory.dropped(0)).await.unwrap();
-            assert!(dropped.is_ok(), "the worker of the old node must be cancelled");
+            assert!(dropped.is_ok(), "the worker of the old node must stop");
 
             let expected = vec![(2, "old".to_string()), (3, "three".to_string()), (2, "new".to_string())];
             assert_eq!(expected, factory.created());
@@ -270,10 +275,10 @@ fn test_changed_node_replaces_the_worker_and_its_client() {
     });
 }
 
-/// Removing a target cancels its worker; adding it back creates a new client, even for the same
+/// Removing a target stops its worker; adding it back creates a new client, even for the same
 /// node.
 #[test]
-fn test_removed_target_is_cancelled_and_readded_with_a_new_client() {
+fn test_removed_target_is_stopped_and_readded_with_a_new_client() {
     C::run(async {
         let config = Arc::new(Config {
             heartbeat_interval: HEARTBEAT_MS,
@@ -291,7 +296,7 @@ fn test_removed_target_is_cancelled_and_readded_with_a_new_client() {
             handle.spawn_workers(vote.clone(), &mut factory, &tx_notification, [], false).await;
 
             let dropped = C::timeout(TEST_TIMEOUT, factory.dropped(0)).await.unwrap();
-            assert!(dropped.is_ok(), "the worker of a removed target must be cancelled");
+            assert!(dropped.is_ok(), "the worker of a removed target must stop");
             assert!(handle.workers.is_empty());
         }
 
@@ -345,7 +350,7 @@ fn test_close_old_replaces_workers_for_a_new_leader_vote() {
             handle.spawn_workers(vote.clone(), &mut factory, &tx_notification, &progresses, true).await;
 
             let dropped = C::timeout(TEST_TIMEOUT, factory.dropped(0)).await.unwrap();
-            assert!(dropped.is_ok(), "close_old must cancel the old worker");
+            assert!(dropped.is_ok(), "close_old must stop the old worker");
             let expected = vec![(2, "two".to_string()), (2, "two".to_string())];
             assert_eq!(expected, factory.created());
 

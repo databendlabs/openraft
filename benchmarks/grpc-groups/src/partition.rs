@@ -8,9 +8,9 @@ use tokio::sync::watch;
 /// its router holds each Raft request to a peer without sending it, and its server holds each
 /// Raft request from a peer without passing it on.
 ///
-/// A held request gets no reply, so a sender with a timeout drops it, as openraft does with a
-/// heartbeat after `heartbeat_interval`. A request whose sender still waits at the heal goes on,
-/// as data that TCP sends again once a blackhole ends.
+/// A held request gets no reply, so a sender with a timeout drops it. Openraft keeps a heartbeat
+/// or a vote in flight instead, until it gets a reply. A request whose sender still waits at the
+/// heal goes on, as data that TCP sends again once a blackhole ends.
 #[derive(Clone, Default)]
 pub(crate) struct Partition {
     inner: Arc<Inner>,
