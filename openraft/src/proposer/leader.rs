@@ -204,7 +204,12 @@ where
 
     /// Mark this Leader as transferring leadership to `to`, which has to take over within
     /// `timeout`.
+    /// A retry to the same target keeps the original deadline.
     pub(crate) fn mark_transfer(&mut self, to: C::NodeId, timeout: Duration) {
+        if self.get_transfer_to() == Some(&to) {
+            return;
+        }
+
         let deadline = C::now() + timeout;
         self.transfer_to = Some((to, deadline));
     }

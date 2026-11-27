@@ -379,7 +379,9 @@ fn test_elect_on_leader_with_expired_transfer_steps_down() -> anyhow::Result<()>
 
     tracing::info!("--- a transfer past its deadline steps down and campaigns in the next term");
     {
-        eng.leader.as_mut().unwrap().mark_transfer(2, Duration::ZERO);
+        let deadline = UTConfig::<()>::now();
+        let leader = eng.leader.as_mut().unwrap();
+        leader.transfer_to = Some((2, deadline));
 
         eng.elect();
 

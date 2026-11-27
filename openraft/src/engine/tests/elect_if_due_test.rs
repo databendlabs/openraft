@@ -213,7 +213,9 @@ fn test_stale_deadline_after_becoming_leader_is_rejected() {
 
     tracing::info!("--- once the transfer has expired, the Leader steps down and campaigns in term 3");
     {
-        eng.leader.as_mut().unwrap().mark_transfer(2, Duration::ZERO);
+        let deadline = UTConfig::<()>::now();
+        let leader = eng.leader.as_mut().unwrap();
+        leader.transfer_to = Some((2, deadline));
 
         eng.elect_if_due(late, true, false);
 

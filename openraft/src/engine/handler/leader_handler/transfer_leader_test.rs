@@ -73,3 +73,40 @@ fn test_leader_send_heartbeat() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_transfer_retry_keeps_original_deadline() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.output.take_commands();
+    let mut lh = eng.try_leader_handler()?;
+
+    tracing::info!("--- start a transfer to node 2 with a deadline that is already due");
+    let deadline = {
+        lh.config.timer_config.election_timeout = Duration::ZERO;
+        lh.transfer_leader(2);
+        lh.output.take_commands();
+        lh.leader.transfer_deadline().expect("transfer sets a deadline")
+    };
+
+    tracing::info!("--- retry to node 2 with a longer timeout and keep the original deadline");
+    {
+        lh.config.timer_config.election_timeout = Duration::from_secs(1);
+        lh.transfer_leader(2);
+        let retry_deadline = lh.leader.transfer_deadline();
+        let retry_broadcast = lh.output.take_commands();
+        let req = TransferLeaderRequest::new(Vote::new_committed(3, 1), 2, Some(log_id(2, 1, 3)));
+        assert_eq!(Some(deadline), retry_deadline);
+        assert_eq!(vec![Command::BroadcastTransferLeader { req }], retry_broadcast);
+    }
+
+    tracing::info!("--- a transfer to node 3 starts a new attempt");
+    {
+        lh.transfer_leader(3);
+        let target = lh.leader.get_transfer_to();
+        let replacement_deadline = lh.leader.transfer_deadline();
+        assert_eq!(Some(&3), target);
+        assert!(replacement_deadline > Some(deadline));
+    }
+
+    Ok(())
+}
