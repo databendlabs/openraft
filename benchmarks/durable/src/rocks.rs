@@ -58,8 +58,8 @@ fn http(app: Arc<rocks::app::App>) -> Server<rocks::app::App> {
 async fn follower_read(
     app: Arc<rocks::app::App>,
     key: String,
-) -> Result<types_kv::Response, app_http::FollowerReadError> {
-    app.ensure_follower_read_ready().await?;
+) -> Result<types_kv::Response, app_http::FollowerReadError<rocks::TypeConfig>> {
+    app.ensure_follower_read_ready(app_http::FOLLOWER_READ_TIMEOUT).await?;
     let response = rocks::http_api::read(app, key).await.expect("infallible read handler");
     Ok(response)
 }
