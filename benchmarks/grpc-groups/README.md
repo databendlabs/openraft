@@ -16,10 +16,11 @@ writes. It implements the design agreed in
 - **Transport.** Each node implements the `GroupRouter` of `openraft-multi` over tonic. It keeps
   one gRPC channel per peer node, which all groups share over HTTP/2, and each request carries its
   group id. A heartbeat reaches the router as one `append_entries()` call, through the default
-  `RaftNetworkV2::stream_append()`, and openraft drops it if no reply comes within
-  `heartbeat_interval`. The same default sends a group's replication to each follower one
-  request at a time. Each request is one gRPC call, unless `--batch-heartbeats` sends the
-  heartbeats to a node together: see [Batching heartbeats](#batching-heartbeats).
+  `RaftNetworkV2::stream_append()`, and openraft counts it as failed if no reply comes within
+  `heartbeat_interval`, but lets the call finish before it sends the next heartbeat to that node.
+  The same default sends a group's replication to each follower one request at a time. Each
+  request is one gRPC call, unless `--batch-heartbeats` sends the heartbeats to a node together:
+  see [Batching heartbeats](#batching-heartbeats).
 - **Types and stores.** The protobuf messages, their conversions and the in-memory stores come
   from `examples/raft-kv-memstore-grpc`.
 - **Config.** The groups use openraft's default `Config`. Flags after `--` set its fields on
@@ -64,15 +65,15 @@ leader of each group has committed its blank entry, the run waits `--settle-secs
 
 A crashed node stays down: its in-memory stores lost its vote, which Raft requires a node to keep.
 A stopped node keeps its state and its connections, but runs nothing, its timers included. The
-other nodes get no reply from it, so openraft drops their requests to it at their timeout.
+other nodes get no reply from it, and openraft keeps their requests to it in flight until it
+resumes: one heartbeat from each leader, and one vote from each candidate.
 
 A cut node keeps running, but no Raft request crosses the cut and none gets a reply, as with a
 blackholed network: its router holds each request to a peer without sending it, and its server
 holds each request from a peer without passing it on. The connections stay open, as they would
 through a real blackhole, since tonic sends no HTTP/2 keepalive pings by default. The admin calls
-are not cut. openraft drops a held
-heartbeat after `heartbeat_interval` and a held vote after `election_timeout_min`. A held request
-whose sender still waits at the heal goes on, as data that TCP sends again after a blackhole.
+are not cut. openraft keeps a held heartbeat or vote until the heal. A held request whose sender
+still waits at the heal goes on, as data that TCP sends again after a blackhole.
 
 The driver and the nodes stamp the fault, the takeovers, the resume and the rejoins with
 `CLOCK_MONOTONIC`, which all processes on one host share.
@@ -135,7 +136,7 @@ and percentiles cover the samples of all nodes:
 | `appends/s`, `rpcs/s` | AppendEntries requests that the routers sent, and the gRPC calls that carried them. They are equal unless `--batch-heartbeats` sends several requests in one call. |
 | `votes/s` | Vote and PreVote requests |
 | `hb_rtt_p50_us`, `hb_rtt_p99_us`, `hb_rtt_max_us` | the round trip of each AppendEntries request without entries that got a reply, timed in the sending router from the arrival of the request |
-| `hb_failed` | those that got no reply: openraft dropped them at their timeout, `heartbeat_interval`, or the transport failed them |
+| `hb_failed` | those that got no reply: the transport failed them, or openraft dropped them `election_timeout_max` after it stopped the heartbeats to their target |
 | `ack_age_p50_ms`, `ack_age_p99_ms`, `ack_age_max_ms` | `now - heartbeat[follower]` on each leader, sampled every 100 ms. `degraded` leaves node 1 out. |
 | `quorum_age_max_ms` | the largest `now - last_quorum_acked` that the same samples saw. A leader refuses writes once this reaches `leader_lease`, 300 ms by default. |
 | `elections` | how far the highest term of each group grew, summed over the groups; 0 while every group keeps its leader |
@@ -197,8 +198,8 @@ window is within 1.6% of the true value: it comes from a log-scale histogram.
 - In `degraded` at 1,000 groups, `crash` counts 18,016 tasks, `partition` about 19,356, and
   `hang` about 20,356. At 300 groups, `hang` counted nearly the same with windows of 2 s and 6 s,
   so these tasks do not pile up.
-  Requests to a crashed node fail at once, but those to a stopped or cut node stay in flight
-  until openraft drops them, and hyper's HTTP/2 client runs each request in flight on a task.
+  Requests to a crashed node fail at once, but those to a stopped or cut node stay in flight,
+  and hyper's HTTP/2 client runs each request in flight on a task.
   The extra 1,340 and 2,340 tasks fit about 1,000 heartbeats in flight, one per group, and one
   request per group that node 1 led, with a second task per heartbeat in `hang`, where hyper also
   runs a body that the connection cannot send. The tasks have not been counted by kind to confirm

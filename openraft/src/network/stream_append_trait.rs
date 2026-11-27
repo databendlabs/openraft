@@ -77,9 +77,17 @@ where C: RaftTypeConfig
     /// - Log replication drops the output stream, without polling it again, as soon as the stream
     ///   yields an error, a conflict, or a higher vote. It also drops the stream when replication
     ///   to the target stops, such as when this node is no longer the leader.
-    /// - The heartbeat sender, whose streams carry a single request each, drops the returned future
-    ///   or the output stream once `option.hard_ttl()` has passed since the call, or as soon as the
-    ///   stream yields an error. It also drops them when heartbeats to the target stop.
+    /// - The heartbeat sender, whose streams carry a single request each, polls the returned
+    ///   future, and then the output stream, until the stream ends. A heartbeat without a response
+    ///   within `option.hard_ttl()` counts as failed, but the sender keeps polling, and sends no
+    ///   other heartbeat to the target meanwhile: it never cancels a request in flight, because a
+    ///   transport over HTTP/2 resets the stream of a canceled request, and a server closes the
+    ///   connection with `GOAWAY` once too many reset streams wait for it. A transport that does
+    ///   not enforce `option.soft_ttl()` thus stops the heartbeats to a target that does not
+    ///   answer, until the request ends. Once the stream has yielded a response or an error, the
+    ///   sender drops it if it does not end within `option.hard_ttl()`. When the heartbeats to the
+    ///   target stop, the sender polls the future or the stream for up to `election_timeout_max`
+    ///   more, then drops it.
     ///
     /// A dropped future or stream does not resume: only its destructors run, so cleanup placed
     /// after an `.await`, or left for a later poll of the output, never runs. Work that this method
@@ -113,6 +121,10 @@ where C: RaftTypeConfig
     /// captures the lifetime `'s` in an `impl Trait` position.
     ///
     /// [`Raft::stream_append()`]: crate::raft::Raft::stream_append
+    #[since(
+        version = "0.10.2",
+        change = "the heartbeat sender polls a stream to its end instead of dropping it at `option.hard_ttl()`"
+    )]
     #[since(
         version = "0.10.0",
         change = "response stream yields AppendError with an optional conflict hint"

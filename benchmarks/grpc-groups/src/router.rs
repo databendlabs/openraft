@@ -224,8 +224,9 @@ impl GroupRouter<C, u64> for Router {
 /// Times one AppendEntries request without entries, a heartbeat or a probe, and counts it as
 /// failed unless it gets a reply.
 ///
-/// Openraft drops a heartbeat that has no reply within `heartbeat_interval`, which drops this timer
-/// too.
+/// Openraft waits for the reply to a heartbeat, even after `heartbeat_interval`, and drops a
+/// heartbeat, and this timer with it, only `election_timeout_max` after it stops the heartbeats to
+/// the target.
 struct HeartbeatTimer<'a> {
     stats: &'a RouterStats,
     started: Instant,

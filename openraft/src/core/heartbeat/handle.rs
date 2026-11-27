@@ -26,6 +26,8 @@ pub(crate) struct WorkerHandle<C>
 where C: RaftTypeConfig
 {
     /// Channel to send heartbeat events to the worker.
+    ///
+    /// The worker stops once it has handled the events sent before this channel closes.
     event_tx: WatchSenderOf<C, Option<HeartbeatEvent<C>>>,
 
     /// The stream id that the worker stamps on its heartbeats.
@@ -40,7 +42,7 @@ where C: RaftTypeConfig
     /// the same metadata.
     node: C::Node,
 
-    /// Dropping this handle cancels the worker during any await.
+    /// Dropping this handle stops the worker, see [`HeartbeatWorker::run()`].
     _cancel: CancelHandleOf<C>,
 
     /// Join handle for the worker task.
@@ -99,7 +101,7 @@ where C: RaftTypeConfig
             let removed = self.workers.remove(target);
 
             // A changed node, such as a new address from `SetNodes`, needs a client created from
-            // it, so its old worker is dropped and cancelled as well. The engine gives such a
+            // it, so its old worker is dropped and stopped as well. The engine gives such a
             // target a new stream id, which the old worker would stamp wrongly on its heartbeats.
             let handle = removed.filter(|removed| {
                 !close_old && removed.node == prog.target_node && removed.stream_id == prog.progress.data.stream_id

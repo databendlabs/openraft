@@ -88,6 +88,16 @@ use crate::type_config::alias::VoteOf;
 /// Openraft may shut down an in-flight RPC once `RPCOption::hard_ttl()` has elapsed, so network
 /// implementations should return timeout errors before the hard limit.
 ///
+/// Votes, pre-votes and heartbeats are the exception. Openraft keeps each of them in flight until
+/// its call returns, and sends the next one to the same target only then. It drops a heartbeat
+/// only `election_timeout_max` after the heartbeats to its target stop, such as when the leader
+/// steps down. Dropping an RPC in flight cancels it: a transport over HTTP/2 resets its stream, and
+/// a server on the `h2` crate, as tonic's is, closes the connection with `GOAWAY` once more than
+/// 20 reset streams, by default, wait for it to accept them, as they do when a stalled server
+/// resumes. A call that never returns thus stops these RPCs to its target. To detect a target that
+/// stopped answering, prefer transport keepalives, which fail all the RPCs of a connection
+/// together, to a timeout per RPC, which resets each stream.
+///
 /// For `stream_append`, `hard_ttl()` is not a hard limit on the lifetime of the whole stream.
 /// A streaming transport should instead use `soft_ttl()` for setup, per-response, or idle-timeout
 /// policy and return an error when the connection stops making progress.
@@ -109,6 +119,10 @@ use crate::type_config::alias::VoteOf;
 /// [`NetBackoff`]: crate::network::NetBackoff
 /// [`RaftNetworkFactory::Network`]: crate::network::RaftNetworkFactory::Network
 /// [correct-node]: `crate::docs::cluster_control::dynamic_membership#ensure-connection-to-the-correct-node`
+#[since(
+    version = "0.10.2",
+    change = "votes, pre-votes and heartbeats stay in flight past `RPCOption::hard_ttl()`"
+)]
 #[since(version = "0.10.0")]
 #[add_async_trait]
 pub trait RaftNetworkV2<C>: OptionalSend + OptionalSync + 'static

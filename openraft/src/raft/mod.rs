@@ -714,6 +714,7 @@ where
                     lingering_replications: Default::default(),
 
                     heartbeat_handle: HeartbeatWorkersHandle::new(id.clone(), config.clone()),
+                    vote_rpcs: Default::default(),
                     tx_api: tx_api.clone(),
                     rx_api: BatchRaftMsgReceiver::new(
                         rx_api,

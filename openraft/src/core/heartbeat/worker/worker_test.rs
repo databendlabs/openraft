@@ -24,6 +24,7 @@ use crate::OptionalSend;
 use crate::RaftTypeConfig;
 use crate::async_runtime::MpscReceiver;
 use crate::async_runtime::MpscSender;
+use crate::async_runtime::OneshotSender;
 use crate::async_runtime::watch::WatchSender;
 use crate::base::BoxFuture;
 use crate::base::BoxStream;
@@ -49,6 +50,7 @@ use crate::type_config::alias::CommittedVoteOf;
 use crate::type_config::alias::LogIdOf;
 use crate::type_config::alias::MpscReceiverOf;
 use crate::type_config::alias::MpscSenderOf;
+use crate::type_config::alias::OneshotReceiverOf;
 use crate::type_config::alias::VoteOf;
 use crate::type_config::alias::WatchSenderOf;
 use crate::type_config::async_runtime::hook_runtime::HookRuntime;
@@ -58,6 +60,9 @@ type C = UTConfig;
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(1);
 const BLOCKED_HEARTBEAT_MS: u64 = 3_600_000;
+/// The `election_timeout_max` of a [`Fixture`]: how long its worker polls a heartbeat in flight
+/// after its event channel closes.
+const STOP_LIMIT_MS: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockAt {
@@ -135,6 +140,7 @@ impl Fixture {
         };
         let config = Config {
             heartbeat_interval: BLOCKED_HEARTBEAT_MS,
+            election_timeout_max: STOP_LIMIT_MS,
             ..Config::default()
         };
         Self {
@@ -179,11 +185,15 @@ fn test_heartbeat_polls_response_stream_to_end() {
     });
 }
 
+/// Dropping the cancel handle stops a worker at once while it waits for an event or for room in
+/// the channel to RaftCore. While it sends a heartbeat that never ends, the worker stops once
+/// `election_timeout_max` has passed. A stopped worker releases its network and its notification
+/// sender.
 #[test]
-fn cancellation_interrupts_every_worker_wait() {
+fn dropping_the_handle_ends_every_worker_wait() {
     C::run(async {
         for block_at in [BlockAt::Idle, BlockAt::Setup, BlockAt::Response, BlockAt::Notification] {
-            tracing::info!(?block_at, "cancel a heartbeat worker while its current wait is blocked");
+            tracing::info!(?block_at, "stop a heartbeat worker while its current wait is blocked");
             let (tx_notification, mut rx_notification) = C::mpsc(1);
             tx_notification.send(Notification::Tick { i: 1 }).await.unwrap();
             let fixture = Fixture::new(block_at, tx_notification);
@@ -204,17 +214,26 @@ fn cancellation_interrupts_every_worker_wait() {
             let expected_reached = block_at != BlockAt::Idle;
             assert_eq!(expected_reached, reached, "worker must reach {block_at:?}");
 
+            let stopped_at = C::now();
             drop(cancel);
             C::timeout(TEST_TIMEOUT, future).await.unwrap();
+            if matches!(block_at, BlockAt::Setup | BlockAt::Response) {
+                let waited = C::now() - stopped_at;
+                let limit = Duration::from_millis(STOP_LIMIT_MS);
+                assert!(
+                    waited >= limit,
+                    "the heartbeat in flight must get {limit:?} to end, got {waited:?}"
+                );
+            }
             let dropped = fixture.dropped.load(Ordering::Relaxed);
-            assert!(dropped, "cancellation must release the worker's network");
+            assert!(dropped, "a stopped worker must release its network");
 
             let first = rx_notification.recv().await;
             let sentinel = matches!(first, Some(Notification::Tick { i: 1 }));
             assert!(sentinel);
             let next = rx_notification.recv().await;
             let closed = next.is_none();
-            assert!(closed, "the cancelled worker must release its notification sender");
+            assert!(closed, "a stopped worker must release its notification sender");
         }
     });
 }
@@ -719,6 +738,251 @@ fn test_only_the_first_failure_in_a_row_warns() {
     assert!(after_two.contains("after 2 failed heartbeats"), "got: {after_two}");
     let after_one = &logged[4].1;
     assert!(after_one.contains("after 1 failed heartbeat"), "got: {after_one}");
+}
+
+/// Sets its flag when it is dropped while it is armed.
+struct DropAlarm {
+    flag: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl DropAlarm {
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for DropAlarm {
+    fn drop(&mut self) {
+        if self.armed {
+            self.flag.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+/// A network whose target answers each heartbeat with one success, once the test opens the gate
+/// of the heartbeat.
+struct GatedNetwork {
+    /// The gate of each heartbeat, in order.
+    gates: VecDeque<OneshotReceiverOf<C, ()>>,
+
+    /// The index of the `prev_log_id` of each heartbeat sent, in order.
+    sent: Arc<Mutex<Vec<u64>>>,
+
+    /// Set when a response stream is dropped before it yields its reply.
+    cut_short: Arc<AtomicBool>,
+}
+
+impl NetStreamAppend<C> for GatedNetwork {
+    fn stream_append<'s, S>(
+        &'s mut self,
+        mut input: S,
+        _option: RPCOption,
+    ) -> BoxFuture<'s, Result<BoxStream<'s, Result<AppendResult<C>, RPCError<C>>>, RPCError<C>>>
+    where
+        S: Stream<Item = AppendEntriesRequest<C>> + OptionalSend + Unpin + 'static,
+    {
+        let request = input.next().now_or_never().flatten().expect("the heartbeat is ready");
+        let matching = request.prev_log_id.expect("every heartbeat has a matching log id");
+        self.sent.lock().unwrap().push(matching.index);
+
+        let gate = self.gates.pop_front().expect("a gate for every heartbeat");
+        let mut alarm = DropAlarm {
+            flag: self.cut_short.clone(),
+            armed: true,
+        };
+        let reply = async move {
+            gate.await.expect("the test opens every gate");
+            alarm.disarm();
+            Ok(Ok(None))
+        };
+        let output: BoxStream<'s, _> = Box::pin(futures_util::stream::once(reply));
+        Box::pin(async move { Ok(output) })
+    }
+}
+
+/// A heartbeat without a reply in time stays in flight until its reply arrives: the worker
+/// neither drops its response stream nor sends another heartbeat meanwhile, and it reports the
+/// late reply. The heartbeat events that arrive meanwhile count as failed heartbeats, and the
+/// latest of them goes out once the late heartbeat has ended.
+#[test]
+fn test_a_heartbeat_without_a_reply_in_time_stays_in_flight() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let recorder = EventRecorder { events: events.clone() };
+    // See `test_only_the_first_failure_in_a_row_warns`.
+    let _second = tracing::Dispatch::new(NoSubscriber::default());
+
+    tracing::subscriber::with_default(recorder, || {
+        C::run(async {
+            let (open_first, first_gate) = C::oneshot();
+            let (open_third, third_gate) = C::oneshot();
+            let sent = Arc::new(Mutex::new(Vec::new()));
+            let cut_short = Arc::new(AtomicBool::new(false));
+            let network = GatedNetwork {
+                gates: VecDeque::from([first_gate, third_gate]),
+                sent: sent.clone(),
+                cut_short: cut_short.clone(),
+            };
+            let (tx_notification, mut rx_notification) = C::mpsc(16);
+            let (event_tx, rx) = C::watch_channel(None);
+            let config = Config {
+                heartbeat_interval: SCRIPTED_HEARTBEAT_MS,
+                ..Config::default()
+            };
+            let worker = HeartbeatWorker {
+                id: 1,
+                leader_vote: leader_vote(),
+                stream_id: StreamId::new(1),
+                rx,
+                network,
+                target: 2,
+                node: (),
+                config: Arc::new(config),
+                tx_notification,
+            };
+            let (_cancel, worker) = worker.run();
+
+            let interval = Duration::from_millis(SCRIPTED_HEARTBEAT_MS);
+            let event = |index| HeartbeatEvent {
+                time: SendStamp::new(C::now(), index),
+                matching: Some(log_id(1, 1, index)),
+                cluster_committed: None,
+            };
+
+            // The test drives the worker on this thread, so that the recorder sees its logs.
+            let test = async {
+                let first = event(1);
+                let third = event(3);
+
+                tracing::info!("--- heartbeat 1 gets no reply in time, and events 2 and 3 arrive meanwhile");
+                {
+                    event_tx.send(Some(first.clone())).unwrap();
+                    C::sleep(interval * 2).await;
+                    event_tx.send(Some(event(2))).unwrap();
+                    C::sleep(interval / 2).await;
+                    event_tx.send(Some(third.clone())).unwrap();
+                    C::sleep(interval / 2).await;
+
+                    assert_eq!(
+                        vec![1],
+                        *sent.lock().unwrap(),
+                        "no heartbeat goes out while one is in flight"
+                    );
+                    assert!(!cut_short.load(Ordering::Relaxed), "heartbeat 1 stays in flight");
+                    assert!(
+                        rx_notification.try_recv().is_err(),
+                        "nothing is reported before a reply"
+                    );
+                }
+
+                tracing::info!("--- the late reply to heartbeat 1 arrives, then heartbeat 3 goes out");
+                {
+                    open_first.send(()).unwrap();
+                    let late = C::timeout(TEST_TIMEOUT, rx_notification.recv()).await.unwrap().unwrap();
+                    assert_progress(&late, &first);
+
+                    open_third.send(()).unwrap();
+                    let in_time = C::timeout(TEST_TIMEOUT, rx_notification.recv()).await.unwrap().unwrap();
+                    assert_progress(&in_time, &third);
+                    assert_eq!(vec![1, 3], *sent.lock().unwrap(), "event 2 is replaced by event 3");
+                }
+
+                drop(event_tx);
+            };
+
+            let (stopped, ()) = futures_util::future::join(C::timeout(TEST_TIMEOUT * 5, worker), test).await;
+            stopped.expect("closing the event channel stops the worker");
+            assert!(
+                !cut_short.load(Ordering::Relaxed),
+                "no response stream is dropped before its reply"
+            );
+        })
+    });
+
+    // Heartbeat 1 fails at its deadline, each event that arrives while it is in flight counts as
+    // another failure, and the reply in time to heartbeat 3 ends them. Events 2 and 3 count as one
+    // failure or two, as the worker sees them apart or together.
+    let events = events.lock().unwrap();
+    let logged: Vec<_> = events.iter().filter(|(_, message)| message.starts_with("id=1 target=2 ")).collect();
+    let levels: Vec<_> = logged.iter().map(|(level, _)| *level).collect();
+    assert_eq!(Some(&Level::WARN), levels.first(), "got: {logged:?}");
+    assert_eq!(Some(&Level::INFO), levels.last(), "got: {logged:?}");
+    assert!(
+        levels[1..levels.len() - 1].iter().all(|level| *level == Level::DEBUG),
+        "got: {logged:?}"
+    );
+    let late = logged.iter().filter(|(_, message)| message.contains("late reply")).count();
+    assert_eq!(1, late, "got: {logged:?}");
+    let replied = &logged[logged.len() - 1].1;
+    assert!(replied.contains("failed heartbeats"), "got: {replied}");
+}
+
+/// A worker stopped while a heartbeat is in flight lets the heartbeat end instead of dropping it,
+/// then ends without reporting the reply.
+#[test]
+fn test_a_stopped_worker_lets_its_heartbeat_end() {
+    C::run(async {
+        let (open, gate) = C::oneshot();
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let cut_short = Arc::new(AtomicBool::new(false));
+        let network = GatedNetwork {
+            gates: VecDeque::from([gate]),
+            sent: sent.clone(),
+            cut_short: cut_short.clone(),
+        };
+        let (tx_notification, mut rx_notification) = C::mpsc(16);
+        let (event_tx, rx) = C::watch_channel(None);
+        // Neither the heartbeat's deadline nor the limit after the stop passes in this test.
+        let config = Config {
+            heartbeat_interval: BLOCKED_HEARTBEAT_MS,
+            election_timeout_max: BLOCKED_HEARTBEAT_MS,
+            ..Config::default()
+        };
+        let worker = HeartbeatWorker {
+            id: 1,
+            leader_vote: leader_vote(),
+            stream_id: StreamId::new(1),
+            rx,
+            network,
+            target: 2,
+            node: (),
+            config: Arc::new(config),
+            tx_notification,
+        };
+        let (cancel, worker) = worker.run();
+        let mut worker = std::pin::pin!(worker);
+
+        tracing::info!("--- heartbeat 1 is in flight when the worker stops");
+        {
+            let heartbeat = HeartbeatEvent {
+                time: SendStamp::new(C::now(), 1),
+                matching: Some(log_id(1, 1, 1)),
+                cluster_committed: None,
+            };
+            event_tx.send(Some(heartbeat)).unwrap();
+            assert_eq!(None, worker.as_mut().now_or_never(), "heartbeat 1 waits for its gate");
+            assert_eq!(vec![1], *sent.lock().unwrap());
+
+            drop(cancel);
+            assert_eq!(
+                None,
+                worker.as_mut().now_or_never(),
+                "the stopped worker waits for heartbeat 1"
+            );
+        }
+
+        tracing::info!("--- the reply to heartbeat 1 arrives, and the worker ends");
+        {
+            open.send(()).unwrap();
+            C::timeout(TEST_TIMEOUT, worker).await.unwrap();
+            assert!(
+                !cut_short.load(Ordering::Relaxed),
+                "heartbeat 1 is not dropped before its reply"
+            );
+            let reported = rx_notification.recv().await;
+            assert!(reported.is_none(), "a stopped worker reports nothing");
+        }
+    });
 }
 
 /// A type config on [`HookRuntime`]: Tokio, with a watch receiver that can run a hook right after
