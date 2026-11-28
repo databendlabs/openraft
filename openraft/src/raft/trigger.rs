@@ -137,13 +137,15 @@ where C: RaftTypeConfig
     /// By default, this also resets the target's active replication backoff. Set
     /// [`Config::reset_backoff_on_transfer_leader`] to `Some(false)` to disable the reset.
     ///
-    /// While the transfer is in progress, this node forwards client requests to `to`. If `to` has
-    /// not taken over within an election timeout, this node steps down and starts an election,
-    /// which it may win again.
+    /// While the transfer is pending, this node rejects new writes and linearizable reads with a
+    /// forwarding error. Once the transfer deadline passes, an eligible source with automatic
+    /// elections enabled can campaign again. The source can still report `Leader` and reject
+    /// requests after the deadline.
     ///
     /// It returns once the request is queued, not when `to` has taken over. To learn the outcome,
     /// wait on the metrics; see
-    /// [handing over leadership](crate::docs::cluster_control::leadership#handing-over-leadership).
+    /// [handing over leadership](crate::docs::cluster_control::leadership#handing-over-leadership)
+    /// for the conditions that control recovery.
     ///
     /// If this node is not a Leader, it is just ignored.
     ///
