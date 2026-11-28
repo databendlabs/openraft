@@ -43,18 +43,35 @@ The manual triggers work whatever `enable_elect` says:
 ## Handing over leadership
 
 [`Trigger::transfer_leader()`] returns once the leader has queued the request.
-It does not report whether the target took over. The target campaigns only
-when its log holds everything the leader had when it sent the request. If the
-target has not taken over within an election timeout, the old leader steps
-down and campaigns, and may win again.
+The target can campaign even with `enable_elect` disabled. It must recognize
+the source leader's vote and have flushed its log through the entry named in
+the request.
 
-To learn the outcome, wait on the metrics and look at who leads. For example,
-on the old leader `my_id`:
+The source gives the transfer one sampled election timeout. If the source
+still holds leadership after the deadline, its election timer can start
+recovery when the usual election timing allows it. The source must have
+[`Config::enable_elect`] enabled and have the campaigner role in its effective
+or committed membership. The election timer works even with
+[`Config::enable_tick`] disabled.
+
+With [`Config::enable_pre_vote`] enabled, the source first needs a Pre-Vote
+quorum. A source that is the sole voter in its effective membership and can
+campaign in that membership skips Pre-Vote. When the source starts a real
+election, it steps down and campaigns in a new term. It can win again.
+
+The source can still report `Leader` past the deadline while it waits for a
+Pre-Vote quorum or cannot campaign. While the transfer remains pending, new
+writes and linearizable reads return [`ForwardToLeader`] with reason
+`LeadershipTransfer`. The error names the target if it is in the source's
+effective membership.
+
+To observe a successor, wait for the metrics on the source `my_id` to report
+a different leader.
 
 ```ignore
 raft.trigger().transfer_leader(to).await?;
 
-// Allow the target an election timeout, and the old leader's own election after it.
+// Choose how long to wait for metrics to show a different leader.
 let timeout = Duration::from_millis(raft.config().election_timeout_max * 2);
 let moved = raft
     .wait(Some(timeout))
@@ -67,7 +84,7 @@ let moved = raft
 match moved {
     Ok(m) if m.current_leader == Some(to) => { /* the target leads */ }
     Ok(m) => { /* another node, m.current_leader, leads */ }
-    Err(WaitError::Timeout(..)) => { /* this node still leads, or no leader is known */ }
+    Err(WaitError::Timeout(..)) => { /* no different leader was observed within the wait */ }
     Err(e) => return Err(e.into()),
 }
 ```
@@ -113,3 +130,6 @@ operation complete.
 [`Raft::change_membership()`]: `crate::Raft::change_membership`
 [`RaftMetrics::replication`]: `crate::RaftMetrics::replication`
 [`RaftMetrics::state`]: `crate::RaftMetrics::state`
+[`Config::enable_pre_vote`]: `crate::Config::enable_pre_vote`
+[`Config::enable_tick`]: `crate::Config::enable_tick`
+[`ForwardToLeader`]: `crate::errors::ForwardToLeader`
